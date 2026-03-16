@@ -1,0 +1,15 @@
+{
+  "symbols": ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META"],
+  "sectors": {
+    "SPY": "index",
+    "QQQ": "index",
+    "IWM": "index",
+    "AAPL": "technology",
+    "MSFT": "technology",
+    "NVDA": "technology",
+    "GOOGL": "technology",
+    "AMZN": "consumer_discretionary",
+    "TSLA": "consumer_discretionary",
+    "META": "technology"
+  }
+}

@@ -1,0 +1,16 @@
+.env
+*.pyc
+__pycache__/
+.venv/
+node_modules/
+data/logs/*
+data/journal/*
+data/briefs/*
+data/cache/*
+!data/**/.gitkeep
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.swp
+*.swo

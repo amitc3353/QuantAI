@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add . && git commit -m \"Phase 1: scaffold — Discord bot, guard engine, orchestrator, Docker stack\" && git push -u origin main)"
+    ]
+  }
+}

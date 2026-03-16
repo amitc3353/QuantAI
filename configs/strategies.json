@@ -1,0 +1,60 @@
+{
+  "strategies": {
+    "pmcc": {
+      "name": "Poor Man's Covered Call",
+      "enabled": true,
+      "mode": "advisory",
+      "description": "Buy deep ITM LEAPS, sell OTM short calls against it",
+      "allowed_symbols": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"],
+      "parameters": {
+        "leaps_delta_target": 0.80,
+        "short_call_delta_target": 0.20,
+        "min_leaps_dte": 120,
+        "roll_trigger_dte": 21
+      }
+    },
+    "bull_put": {
+      "name": "Bull Put Spread",
+      "enabled": true,
+      "mode": "advisory",
+      "description": "Sell put spread below support when IV is elevated",
+      "allowed_symbols": ["SPY", "QQQ", "IWM"],
+      "parameters": {
+        "target_iv_rank": 55,
+        "target_credit_ratio": 0.33,
+        "max_width": 5,
+        "target_dte": 30
+      }
+    },
+    "iron_condor": {
+      "name": "Iron Condor",
+      "enabled": true,
+      "mode": "advisory",
+      "description": "Sell both sides when IV is high, range-bound thesis",
+      "allowed_symbols": ["SPY", "QQQ", "IWM"],
+      "parameters": {
+        "target_iv_rank": 65,
+        "short_strike_sigma": 1.0,
+        "target_dte": 35,
+        "max_risk_credit_ratio": 2.0
+      }
+    },
+    "covered_call": {
+      "name": "Covered Call",
+      "enabled": true,
+      "mode": "advisory",
+      "description": "Sell calls against existing shares",
+      "allowed_symbols": ["*"],
+      "parameters": {
+        "target_delta": 0.25,
+        "target_dte": 30,
+        "avoid_earnings": true
+      }
+    }
+  },
+  "modes": {
+    "advisory": "System proposes, you always approve",
+    "copilot": "System proposes, you approve via Discord reaction",
+    "autonomous": "Guards approve automatically within rules"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_comment": "Replace these with your actual Discord channel IDs after creating them",
+  "command": 0,
+  "research": 0,
+  "trade_proposals": 0,
+  "guard_log": 0,
+  "execution_log": 0,
+  "system_health": 0,
+  "pr_updates": 0
+}

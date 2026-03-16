@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  # ============================================
+  # Discord Bot — Command center for all agents
+  # ============================================
+  discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: trader-discord
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+    depends_on:
+      - guard-engine
+    networks:
+      - trader-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Guard Engine — Deterministic constraint layer
+  # Zero AI tokens. Pure Python rule enforcement.
+  # ============================================
+  guard-engine:
+    build:
+      context: ./guard-engine
+      dockerfile: Dockerfile
+    container_name: trader-guards
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8100:8100"
+    networks:
+      - trader-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ============================================
+  # Orchestrator — Cron scheduler + agent router
+  # ============================================
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: trader-orchestrator
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro
+    depends_on:
+      - discord-bot
+      - guard-engine
+    networks:
+      - trader-net
+
+  # ============================================
+  # Alpaca MCP Server — Broker bridge
+  # ============================================
+  alpaca-mcp:
+    build:
+      context: ./services/alpaca-mcp
+      dockerfile: Dockerfile
+    container_name: trader-alpaca
+    restart: unless-stopped
+    environment:
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER_TRADE=${ALPACA_PAPER:-true}
+    networks:
+      - trader-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  trader-net:
+    driver: bridge
+
+volumes:
+  trader-data:
