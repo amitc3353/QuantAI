@@ -7,6 +7,9 @@ data/logs/*
 data/journal/*
 data/briefs/*
 data/cache/*
+data/memory/paper/*
+data/memory/live/*
+data/memory/shared/*
 !data/**/.gitkeep
 *.egg-info/
 dist/
@@ -14,4 +17,3 @@ build/
 .DS_Store
 *.swp
 *.swo
-.claude/settings.local.json

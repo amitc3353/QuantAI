@@ -157,6 +157,14 @@ async def on_ready():
     log.info(f"✅ Bot connected as {bot.user} (ID: {bot.user.id})")
     log.info(f"   Guilds: {[g.name for g in bot.guilds]}")
 
+    # Load cogs
+    for cog in ["cogs.infra_agent", "cogs.chat_agent"]:
+        try:
+            await bot.load_extension(cog)
+            log.info(f"   Loaded {cog}")
+        except Exception as e:
+            log.error(f"   Failed to load {cog}: {e}")
+
     # Sync slash commands
     try:
         guild = discord.Object(id=int(os.getenv("DISCORD_GUILD_ID", "0")))
