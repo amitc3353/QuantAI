@@ -160,6 +160,7 @@ async def on_ready():
     # Sync slash commands
     try:
         guild = discord.Object(id=int(os.getenv("DISCORD_GUILD_ID", "0")))
+        bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
         log.info(f"   Synced {len(synced)} slash commands")
     except Exception as e:

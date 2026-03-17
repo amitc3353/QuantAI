@@ -21,7 +21,7 @@ from enum import Enum
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
 import uvicorn
 
@@ -449,9 +449,9 @@ def get_config():
 
 
 @app.post("/check", response_model=GuardResult)
-def check_trade(proposal: TradeProposal, portfolio: Optional[PortfolioState] = None):
+def check_trade(proposal: TradeProposal = Body(..., embed=False)):
     """Run full guard pipeline on a trade proposal."""
-    return run_guard_pipeline(proposal, portfolio)
+    return run_guard_pipeline(proposal)
 
 
 @app.post("/halt")
