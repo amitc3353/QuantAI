@@ -421,7 +421,7 @@ async def get_snapshot(symbol: str) -> dict:
             result["low"] = float(snap.daily_bar.low)
             result["close"] = float(snap.daily_bar.close)
             result["volume"] = int(snap.daily_bar.volume)
-        if snap.prev_daily_bar:
+        if hasattr(snap, 'prev_daily_bar') and snap.prev_daily_bar:
             result["prev_close"] = float(snap.prev_daily_bar.close)
             if "price" in result:
                 result["change"] = round(result["price"] - result["prev_close"], 2)
