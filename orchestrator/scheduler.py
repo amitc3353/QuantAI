@@ -480,7 +480,12 @@ async def run_eod_scoring():
                 f.write(json.dumps(record) + "\n")
 
         if score < 90 and score_data.get("rule_suggestions"):
-            log.warning(f"Score {score} < 90 — rule suggestions generated")
+            log.warning(f"Score {score} < 90 — triggering self-improvement engine")
+            from self_improve import run_daily_improvement
+            try:
+                await run_daily_improvement(score_data, today)
+            except Exception as e:
+                log.error(f"Self-improvement failed: {e}", exc_info=True)
 
     log.info(f"EOD scoring complete for {today}")
 
@@ -522,6 +527,15 @@ async def scheduled_eod_scoring():
         SYSTEM_STATE["errors_today"] += 1
 
 
+async def scheduled_weekly_review():
+    log.info("=== Scheduled Weekly Review ===")
+    try:
+        from self_improve import run_weekly_review
+        await run_weekly_review()
+    except Exception as e:
+        log.error(f"Weekly review failed: {e}", exc_info=True)
+
+
 async def scheduled_health_check():
     await health_check()
 
@@ -547,7 +561,11 @@ async def main():
 
     scheduler.add_job(scheduled_eod_scoring,
         CronTrigger(hour=16, minute=30, day_of_week="mon-fri"),
-        id="eod_scoring", name="EOD Scoring + Lessons")
+        id="eod_scoring", name="EOD Scoring + Lessons + Self-Improve")
+
+    scheduler.add_job(scheduled_weekly_review,
+        CronTrigger(hour=16, minute=45, day_of_week="fri"),
+        id="weekly_review", name="Weekly Review (Friday)")
 
     scheduler.add_job(scheduled_health_check,
         CronTrigger(minute="*/5", hour="9-16", day_of_week="mon-fri"),
