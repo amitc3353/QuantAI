@@ -158,7 +158,7 @@ async def on_ready():
     log.info(f"   Guilds: {[g.name for g in bot.guilds]}")
 
     # Load cogs
-    for cog in ["cogs.infra_agent", "cogs.chat_agent"]:
+    for cog in ["cogs.infra_agent", "cogs.chat_agent", "cogs.trading"]:
         try:
             await bot.load_extension(cog)
             log.info(f"   Loaded {cog}")
