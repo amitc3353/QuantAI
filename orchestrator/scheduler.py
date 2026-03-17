@@ -1,28 +1,25 @@
 """
-Orchestrator — Cron Scheduler + Agent Router
-==============================================
-Schedules automated tasks:
-  - 6:30 AM ET: Morning research brief → posts to #research via webhook
-  - 4:30 PM ET: End-of-day journal + scoring
-  - Every 5 min (market hours): Portfolio health check
+Orchestrator — Full Trading Pipeline
+=======================================
+Morning brief → auto-propose high-conviction trades → guard check → post to #trade-proposals
+
+Scheduled tasks:
+  - 6:30 AM ET: Morning brief + auto-proposals
+  - 4:30 PM ET: EOD scoring + lesson extraction
+  - Every 5 min (market hours): Health check
 """
 
 import os
 import json
 import logging
 import asyncio
-import hashlib
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s [orchestrator] %(levelname)s: %(message)s",
@@ -39,25 +36,27 @@ SONNET_MODEL = os.getenv("CLAUDE_SONNET_MODEL", "claude-sonnet-4-20250514")
 HAIKU_MODEL = os.getenv("CLAUDE_HAIKU_MODEL", "claude-haiku-4-5-20251001")
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 
-# Discord webhook URLs — create in Discord channel settings → Integrations → Webhooks
 WEBHOOK_RESEARCH = os.getenv("DISCORD_WEBHOOK_RESEARCH", "")
 WEBHOOK_SYSTEM = os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
+WEBHOOK_PROPOSALS = os.getenv("DISCORD_WEBHOOK_PROPOSALS", "")
+
+# Auto-proposal threshold: only propose trades when conviction >= this
+AUTO_PROPOSE_THRESHOLD = int(os.getenv("AUTO_PROPOSE_THRESHOLD", "7"))
 
 SYSTEM_STATE = {
     "halted": False,
     "trading_mode": TRADING_MODE,
     "last_brief": None,
-    "last_health_check": None,
     "errors_today": 0,
 }
 
 
 # ---------------------------------------------------------------------------
-# Discord Webhook — post embeds to any channel
+# Discord webhook
 # ---------------------------------------------------------------------------
 async def post_to_discord(webhook_url: str, embeds: list[dict], content: str = ""):
     if not webhook_url:
-        log.warning("No webhook URL configured, skipping Discord post")
+        log.warning("No webhook URL, skipping post")
         return False
     payload = {}
     if content:
@@ -66,29 +65,19 @@ async def post_to_discord(webhook_url: str, embeds: list[dict], content: str = "
         payload["embeds"] = embeds
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                webhook_url, json=payload, timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
+            async with session.post(webhook_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status in (200, 204):
-                    log.info(f"Posted to Discord ({resp.status})")
                     return True
-                else:
-                    body = await resp.text()
-                    log.error(f"Webhook failed ({resp.status}): {body[:200]}")
-                    return False
+                log.error(f"Webhook failed ({resp.status}): {(await resp.text())[:200]}")
+                return False
     except Exception as e:
         log.error(f"Webhook error: {e}")
         return False
 
 
-def make_embed(title: str, description: str, color: int = 0x3498DB,
-               fields: list[dict] = None, footer: str = None) -> dict:
-    embed = {
-        "title": title,
-        "description": description,
-        "color": color,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+def make_embed(title, description, color=0x3498DB, fields=None, footer=None):
+    embed = {"title": title, "description": description, "color": color,
+             "timestamp": datetime.now(timezone.utc).isoformat()}
     if fields:
         embed["fields"] = fields
     if footer:
@@ -97,143 +86,149 @@ def make_embed(title: str, description: str, color: int = 0x3498DB,
 
 
 # ---------------------------------------------------------------------------
-# Alpha Vantage — free market data
+# Alpha Vantage
 # ---------------------------------------------------------------------------
-async def fetch_quote(symbol: str) -> dict:
+async def fetch_quote(symbol):
     if not ALPHA_VANTAGE_KEY:
-        return {"symbol": symbol, "error": "No Alpha Vantage key"}
-    url = (
-        f"https://www.alphavantage.co/query"
-        f"?function=GLOBAL_QUOTE&symbol={symbol}&apikey={ALPHA_VANTAGE_KEY}"
-    )
+        return {"symbol": symbol, "error": "No AV key"}
+    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={ALPHA_VANTAGE_KEY}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 data = await resp.json()
                 quote = data.get("Global Quote", {})
                 if not quote:
-                    note = data.get("Note", data.get("Information", "No data"))
-                    return {"symbol": symbol, "error": str(note)[:100]}
+                    return {"symbol": symbol, "error": str(data.get("Note", data.get("Information", "No data")))[:100]}
                 return {
                     "symbol": quote.get("01. symbol", symbol),
                     "price": float(quote.get("05. price", 0)),
                     "change": float(quote.get("09. change", 0)),
                     "change_pct": quote.get("10. change percent", "0%"),
                     "volume": int(quote.get("06. volume", 0)),
-                    "prev_close": float(quote.get("08. previous close", 0)),
                     "high": float(quote.get("03. high", 0)),
                     "low": float(quote.get("04. low", 0)),
                 }
     except Exception as e:
-        log.error(f"Alpha Vantage error for {symbol}: {e}")
         return {"symbol": symbol, "error": str(e)}
 
 
-async def fetch_all_quotes(symbols: list[str]) -> list[dict]:
+async def fetch_all_quotes(symbols):
     quotes = []
-    for symbol in symbols:
-        quote = await fetch_quote(symbol)
-        quotes.append(quote)
-        await asyncio.sleep(1.5)  # AV free tier: ~5 calls/min
+    for s in symbols:
+        quotes.append(await fetch_quote(s))
+        await asyncio.sleep(1.5)
     return quotes
 
 
 # ---------------------------------------------------------------------------
 # Claude API
 # ---------------------------------------------------------------------------
-async def call_claude(prompt: str, system: str = "", model: str = None,
-                      max_tokens: int = 2000) -> str:
+async def call_claude(prompt, system="", model=None, max_tokens=2000):
     if not ANTHROPIC_API_KEY:
-        log.warning("No ANTHROPIC_API_KEY")
         return '{"error": "no api key"}'
     model = model or SONNET_MODEL
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-    }
-    payload = {
-        "model": model, "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }
+    payload = {"model": model, "max_tokens": max_tokens,
+               "messages": [{"role": "user", "content": prompt}]}
     if system:
         payload["system"] = system
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://api.anthropic.com/v1/messages",
-                json=payload, headers=headers,
+                json=payload,
+                headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY,
+                          "anthropic-version": "2023-06-01"},
                 timeout=aiohttp.ClientTimeout(total=60),
             ) as resp:
                 data = await resp.json()
                 if resp.status != 200:
-                    log.error(f"Claude API error {resp.status}: {data}")
                     return json.dumps({"error": str(data)})
-                return "".join(
-                    b["text"] for b in data.get("content", []) if b.get("type") == "text"
-                )
+                return "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
     except Exception as e:
-        log.error(f"Claude API failed: {e}")
         return json.dumps({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------
-# Morning Brief — the main automation
+# Guard check
 # ---------------------------------------------------------------------------
-def load_watchlist() -> list[str]:
-    config_path = Path("/app/configs/watchlist.json")
-    if config_path.exists():
-        with open(config_path) as f:
+async def check_guard(proposal):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{GUARD_URL}/check", json=proposal,
+                                     timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                return await resp.json()
+    except Exception as e:
+        return {"result": "REJECT", "reason": f"Guard unreachable: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Watchlist
+# ---------------------------------------------------------------------------
+def load_watchlist():
+    p = Path("/app/configs/watchlist.json")
+    if p.exists():
+        with open(p) as f:
             return json.load(f).get("symbols", [])
     return ["SPY", "QQQ", "NVDA"]
 
 
+def load_strategies():
+    p = Path("/app/configs/strategies.json")
+    if p.exists():
+        with open(p) as f:
+            return json.load(f).get("strategies", {})
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Morning Brief + Auto-Proposals
+# ---------------------------------------------------------------------------
 async def run_morning_brief():
     symbols = load_watchlist()
     log.info(f"=== Morning Brief: {', '.join(symbols)} ===")
 
-    # Step 1: Fetch real market data
-    log.info("Fetching market data...")
+    # Fetch market data
     quotes = await fetch_all_quotes(symbols[:10])
-
     market_data = []
     for q in quotes:
         if "error" not in q:
-            market_data.append(
-                f"{q['symbol']}: ${q['price']:.2f} ({q['change_pct']}) "
-                f"H={q['high']:.2f} L={q['low']:.2f} Vol={q['volume']:,}"
-            )
+            market_data.append(f"{q['symbol']}: ${q['price']:.2f} ({q['change_pct']}) H={q['high']:.2f} L={q['low']:.2f} Vol={q['volume']:,}")
         else:
-            market_data.append(f"{q['symbol']}: unavailable — {q.get('error', '?')}")
+            market_data.append(f"{q['symbol']}: unavailable")
     market_summary = "\n".join(market_data)
 
-    # Step 2: Claude analysis
-    log.info("Running Claude analysis...")
+    # Claude analysis
+    log.info("Claude analysis...")
     system_prompt = (
         "You are a senior market research analyst for an options trading system. "
-        "Analyze the provided market data and produce a concise morning brief. "
-        "Output ONLY valid JSON array. No markdown, no preamble, no code fences."
+        "Analyze market data and produce a morning brief with trade recommendations. "
+        "Output ONLY valid JSON array. No markdown, no code fences."
     )
     user_prompt = f"""Today: {datetime.now(timezone.utc).strftime('%A, %B %d, %Y')}. Mode: {TRADING_MODE}
 
 Market data:
 {market_summary}
 
-Return JSON array. Each item:
-{{"symbol":"SPY","price":570.25,"change_pct":"-0.3%","bias":"bullish|bearish|neutral","conviction":0-10,"thesis":"Under 40 words","key_risk":"One sentence","options_play":"Strategy or none","iv_estimate":"low|medium|high"}}
+For each symbol return:
+{{"symbol":"SPY","price":570.25,"change_pct":"-0.3%","bias":"bullish|bearish|neutral","conviction":0-10,"thesis":"Under 40 words","key_risk":"One sentence","options_play":"Specific strategy with strikes/DTE or none","iv_estimate":"low|medium|high","proposed_trade":{{"strategy":"bull_put|iron_condor|covered_call|none","short_strike":0,"long_strike":0,"dte":30,"rationale":"Why this trade now"}}}}
 
-Only analyze symbols with data. Be specific about levels."""
+Rules for proposed_trade:
+- Only propose if conviction >= {AUTO_PROPOSE_THRESHOLD}
+- Bull put: only when iv_estimate is medium or high
+- Iron condor: only on indices (SPY/QQQ/IWM) when iv_estimate is high
+- Set strategy to "none" if no good setup exists
+- Be conservative. Missing a trade is better than a bad trade."""
 
-    raw_result = await call_claude(user_prompt, system=system_prompt, max_tokens=2000)
+    raw_result = await call_claude(user_prompt, system=system_prompt, max_tokens=3000)
 
-    # Step 3: Save
+    # Save
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
     brief_path = Path("/app/data/briefs")
     brief_path.mkdir(parents=True, exist_ok=True)
     with open(brief_path / f"brief_{TRADING_MODE}_{today_str}.json", "w") as f:
         f.write(raw_result)
 
-    # Step 4: Parse and post to Discord
+    # Parse
     try:
         cleaned = raw_result.strip()
         if cleaned.startswith("```"):
@@ -242,36 +237,35 @@ Only analyze symbols with data. Be specific about levels."""
     except json.JSONDecodeError:
         brief_data = None
 
+    # Post brief to #research
     if brief_data and isinstance(brief_data, list):
         await post_brief_embeds(brief_data)
+        # Auto-propose high-conviction trades
+        await auto_propose_trades(brief_data, quotes)
     else:
         await post_to_discord(WEBHOOK_RESEARCH, [
-            make_embed("🔍 Morning Brief", raw_result[:2000], color=0x1ABC9C,
-                        footer=f"QuantAI · {TRADING_MODE}")
+            make_embed("🔍 Morning Brief", raw_result[:2000], color=0x1ABC9C, footer=f"QuantAI · {TRADING_MODE}")
         ])
 
     SYSTEM_STATE["last_brief"] = datetime.now(timezone.utc).isoformat()
-    log.info("Morning brief posted to Discord")
+    log.info("Morning brief complete")
     return raw_result
 
 
-async def post_brief_embeds(brief_data: list[dict]):
+async def post_brief_embeds(brief_data):
     header = make_embed(
         f"🔍 Morning Brief — {datetime.now(timezone.utc).strftime('%A, %b %d')}",
-        f"**{TRADING_MODE.upper()}** mode | {len(brief_data)} symbols analyzed",
+        f"**{TRADING_MODE.upper()}** mode | {len(brief_data)} symbols | Auto-propose threshold: {AUTO_PROPOSE_THRESHOLD}/10",
         color=0x1ABC9C, footer="QuantAI Research Agent",
     )
-    symbol_embeds = []
+    embeds = []
     for item in brief_data[:10]:
         bias = item.get("bias", "neutral")
         conviction = item.get("conviction", 0)
-        if bias == "bullish":
-            color, emoji = 0x2ECC71, "🟢"
-        elif bias == "bearish":
-            color, emoji = 0xE74C3C, "🔴"
-        else:
-            color, emoji = 0x95A5A6, "⚪"
+        color = {"bullish": 0x2ECC71, "bearish": 0xE74C3C}.get(bias, 0x95A5A6)
+        emoji = {"bullish": "🟢", "bearish": "🔴"}.get(bias, "⚪")
         bar = "█" * conviction + "░" * (10 - conviction)
+
         fields = [
             {"name": "Bias", "value": f"{emoji} {bias.title()}", "inline": True},
             {"name": "Conviction", "value": f"`{bar}` {conviction}/10", "inline": True},
@@ -281,45 +275,214 @@ async def post_brief_embeds(brief_data: list[dict]):
             fields.append({"name": "Options Play", "value": item["options_play"], "inline": False})
         if item.get("key_risk"):
             fields.append({"name": "Risk", "value": item["key_risk"], "inline": False})
-        price_str = ""
-        if item.get("price"):
-            price_str = f"**${item['price']:.2f}** ({item.get('change_pct', '')})\n"
-        symbol_embeds.append(make_embed(
-            item.get("symbol", "?"), f"{price_str}{item.get('thesis', 'No thesis')}",
+
+        # Flag if auto-proposal will be generated
+        trade = item.get("proposed_trade", {})
+        if trade and trade.get("strategy") not in (None, "none", ""):
+            fields.append({"name": "🤖 Auto-Proposal", "value": f"Trade card posting to #trade-proposals", "inline": False})
+
+        price_str = f"**${item.get('price', 0):.2f}** ({item.get('change_pct', '')})\n" if item.get("price") else ""
+        embeds.append(make_embed(
+            item.get("symbol", "?"), f"{price_str}{item.get('thesis', '')}",
             color=color, fields=fields,
         ))
-    await post_to_discord(WEBHOOK_RESEARCH, [header] + symbol_embeds[:9])
-    if len(symbol_embeds) > 9:
-        await post_to_discord(WEBHOOK_RESEARCH, symbol_embeds[9:])
+
+    await post_to_discord(WEBHOOK_RESEARCH, [header] + embeds[:9])
+    if len(embeds) > 9:
+        await post_to_discord(WEBHOOK_RESEARCH, embeds[9:])
 
 
 # ---------------------------------------------------------------------------
-# EOD Scoring
+# Auto-Propose: High conviction → guard check → post to #trade-proposals
+# ---------------------------------------------------------------------------
+async def auto_propose_trades(brief_data, quotes):
+    """For each high-conviction signal, generate a trade card, guard-check it, post to #trade-proposals."""
+    if not WEBHOOK_PROPOSALS:
+        log.warning("No WEBHOOK_PROPOSALS configured, skipping auto-proposals")
+        return
+
+    proposals_posted = 0
+    for item in brief_data:
+        conviction = item.get("conviction", 0)
+        trade = item.get("proposed_trade", {})
+
+        if conviction < AUTO_PROPOSE_THRESHOLD:
+            continue
+        if not trade or trade.get("strategy") in (None, "none", ""):
+            continue
+
+        symbol = item.get("symbol", "?")
+        strategy = trade.get("strategy", "unknown")
+        short_strike = trade.get("short_strike", 0)
+        long_strike = trade.get("long_strike", 0)
+        dte = trade.get("dte", 30)
+        rationale = trade.get("rationale", "")
+
+        log.info(f"Auto-proposing: {strategy} on {symbol} (conviction {conviction}/10)")
+
+        # Guard check
+        guard_proposal = {
+            "symbol": symbol,
+            "strategy": strategy,
+            "position_pct": 3.0,  # Conservative default
+            "max_loss_pct": 1.5,
+            "dte": dte,
+            "iv_rank": 55 if item.get("iv_estimate") in ("medium", "high") else 30,
+        }
+        guard_result = await check_guard(guard_proposal)
+
+        if guard_result.get("result") == "REJECT":
+            log.info(f"Guard REJECTED {symbol} {strategy}: {guard_result.get('reason')}")
+            await post_to_discord(WEBHOOK_PROPOSALS, [
+                make_embed(
+                    f"🛡️ Auto-Proposal REJECTED: {symbol}",
+                    f"**{strategy}** — Guard: {guard_result.get('reason', '?')}\n"
+                    f"Conviction: {conviction}/10 | Thesis: {item.get('thesis', '')}",
+                    color=0xE74C3C,
+                    footer="QuantAI Pipeline · Guard rejected",
+                )
+            ])
+            continue
+
+        # Build trade card embed
+        price = item.get("price", 0)
+        fields = [
+            {"name": "Strategy", "value": strategy.replace("_", " ").title(), "inline": True},
+            {"name": "Conviction", "value": f"{conviction}/10", "inline": True},
+            {"name": "DTE", "value": str(dte), "inline": True},
+            {"name": "Bias", "value": item.get("bias", "?").title(), "inline": True},
+            {"name": "IV Estimate", "value": item.get("iv_estimate", "?").title(), "inline": True},
+            {"name": "Guard", "value": "✅ APPROVED", "inline": True},
+        ]
+
+        if short_strike:
+            fields.append({"name": "Short Strike", "value": f"${short_strike}", "inline": True})
+        if long_strike:
+            fields.append({"name": "Long Strike", "value": f"${long_strike}", "inline": True})
+
+        fields.append({"name": "Rationale", "value": rationale[:200] if rationale else "See morning brief", "inline": False})
+        fields.append({"name": "Key Risk", "value": item.get("key_risk", "See brief"), "inline": False})
+
+        await post_to_discord(WEBHOOK_PROPOSALS, [
+            make_embed(
+                f"📊 Trade Proposal: {strategy.replace('_', ' ').title()} on {symbol}",
+                f"**${price:.2f}** | Conviction {conviction}/10\n{item.get('thesis', '')}\n\n"
+                f"⚠️ **Co-pilot mode**: Review this proposal and use `/bull_put` or `/iron_condor` "
+                f"in Discord to analyze with real Greeks, then `/buy` to execute.",
+                color=0xF1C40F,
+                fields=fields,
+                footer=f"QuantAI Pipeline · {TRADING_MODE} · Auto-proposed",
+            )
+        ])
+        proposals_posted += 1
+
+    if proposals_posted > 0:
+        log.info(f"Posted {proposals_posted} auto-proposals to #trade-proposals")
+    else:
+        log.info("No symbols met auto-proposal threshold")
+
+
+# ---------------------------------------------------------------------------
+# EOD Scoring + Lesson Extraction
 # ---------------------------------------------------------------------------
 async def run_eod_scoring():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Check for trades in both old journal and memory
     journal_file = Path(f"/app/data/journal/trades_{today}.jsonl")
-    if not journal_file.exists():
+    memory_file = Path(f"/app/data/memory/{TRADING_MODE}/trade_journal.jsonl")
+
+    trades = []
+    for f in [journal_file, memory_file]:
+        if f.exists():
+            with open(f) as fh:
+                for line in fh:
+                    if line.strip():
+                        try:
+                            record = json.loads(line)
+                            if record.get("timestamp", "").startswith(today):
+                                trades.append(record)
+                        except json.JSONDecodeError:
+                            continue
+
+    if not trades:
         log.info("No trades today")
         await post_to_discord(WEBHOOK_SYSTEM, [
             make_embed("📊 End of Day", f"No trades today ({TRADING_MODE}). System healthy.",
                         color=0x3498DB, footer="QuantAI EOD")
         ])
         return
-    trades = []
-    with open(journal_file) as f:
-        for line in f:
-            if line.strip():
-                trades.append(json.loads(line))
-    if not trades:
-        return
+
+    # Score with Claude
     result = await call_claude(
-        f"Score trades from {today}:\n{json.dumps(trades, indent=1)}",
-        system="Output JSON: {score:0-100, summary:str, patterns:[str], suggestions:[str]}",
-        model=HAIKU_MODEL, max_tokens=800,
+        f"Score these {len(trades)} trades from {today}:\n{json.dumps(trades[:20], indent=1)}",
+        system=(
+            "You are a trading performance analyst. Output ONLY valid JSON, no markdown:\n"
+            '{"score":0-100,"summary":"Brief summary","winners":["list"],"losers":["list"],'
+            '"patterns":["patterns observed"],"lessons":["actionable lessons"],'
+            '"rule_suggestions":["suggested rule changes"]}'
+        ),
+        model=HAIKU_MODEL, max_tokens=1000,
     )
-    with open(Path("/app/data/journal") / f"score_{TRADING_MODE}_{today}.json", "w") as f:
+
+    # Save
+    score_path = Path("/app/data/journal")
+    score_path.mkdir(parents=True, exist_ok=True)
+    with open(score_path / f"score_{TRADING_MODE}_{today}.json", "w") as f:
         f.write(result)
+
+    # Parse and post
+    try:
+        cleaned = result.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0]
+        score_data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        score_data = None
+
+    if score_data:
+        score = score_data.get("score", 0)
+        color = 0x2ECC71 if score >= 70 else (0xF39C12 if score >= 50 else 0xE74C3C)
+
+        fields = [
+            {"name": "Score", "value": f"**{score}/100**", "inline": True},
+            {"name": "Trades", "value": str(len(trades)), "inline": True},
+            {"name": "Mode", "value": TRADING_MODE, "inline": True},
+        ]
+        if score_data.get("patterns"):
+            fields.append({"name": "Patterns", "value": "\n".join(f"• {p}" for p in score_data["patterns"][:3]), "inline": False})
+        if score_data.get("lessons"):
+            fields.append({"name": "Lessons", "value": "\n".join(f"• {l}" for l in score_data["lessons"][:3]), "inline": False})
+        if score_data.get("rule_suggestions"):
+            fields.append({"name": "Rule Suggestions", "value": "\n".join(f"• {r}" for r in score_data["rule_suggestions"][:2]), "inline": False})
+
+        await post_to_discord(WEBHOOK_SYSTEM, [
+            make_embed(
+                f"📊 EOD Score: {score}/100",
+                score_data.get("summary", "See details below"),
+                color=color, fields=fields,
+                footer=f"QuantAI EOD · {TRADING_MODE}",
+            )
+        ])
+
+        # Save lessons to memory
+        lessons_file = Path("/app/data/memory/shared/lessons.jsonl")
+        lessons_file.parent.mkdir(parents=True, exist_ok=True)
+        for lesson in score_data.get("lessons", []):
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "lesson": lesson,
+                "source": "auto_eod",
+                "confidence": 0.7,
+                "originated_in": TRADING_MODE,
+            }
+            with open(lessons_file, "a") as f:
+                f.write(json.dumps(record) + "\n")
+
+        if score < 90 and score_data.get("rule_suggestions"):
+            log.warning(f"Score {score} < 90 — rule suggestions generated")
+
+    log.info(f"EOD scoring complete for {today}")
 
 
 # ---------------------------------------------------------------------------
@@ -333,11 +496,7 @@ async def health_check():
                 checks["guard_engine"] = "healthy" if resp.status == 200 else "unhealthy"
     except Exception:
         checks["guard_engine"] = "unreachable"
-    checks.update({
-        "orchestrator": "healthy", "trading_mode": TRADING_MODE,
-        "halted": SYSTEM_STATE["halted"], "errors": SYSTEM_STATE["errors_today"],
-    })
-    SYSTEM_STATE["last_health_check"] = checks
+    checks.update({"orchestrator": "healthy", "mode": TRADING_MODE, "halted": SYSTEM_STATE["halted"]})
     return checks
 
 
@@ -351,9 +510,8 @@ async def scheduled_morning_brief():
     except Exception as e:
         log.error(f"Brief failed: {e}", exc_info=True)
         SYSTEM_STATE["errors_today"] += 1
-        await post_to_discord(WEBHOOK_SYSTEM, [
-            make_embed("❌ Morning Brief Failed", str(e)[:500], color=0xE74C3C)
-        ])
+        await post_to_discord(WEBHOOK_SYSTEM, [make_embed("❌ Brief Failed", str(e)[:500], color=0xE74C3C)])
+
 
 async def scheduled_eod_scoring():
     log.info("=== Scheduled EOD ===")
@@ -362,6 +520,7 @@ async def scheduled_eod_scoring():
     except Exception as e:
         log.error(f"EOD failed: {e}", exc_info=True)
         SYSTEM_STATE["errors_today"] += 1
+
 
 async def scheduled_health_check():
     await health_check()
@@ -373,19 +532,22 @@ async def scheduled_health_check():
 async def main():
     log.info("Orchestrator starting...")
     log.info(f"  Mode: {TRADING_MODE}")
-    log.info(f"  Research webhook: {'✅' if WEBHOOK_RESEARCH else '❌ NOT SET'}")
-    log.info(f"  Alpha Vantage: {'✅' if ALPHA_VANTAGE_KEY else '❌ NOT SET'}")
-    log.info(f"  Anthropic: {'✅' if ANTHROPIC_API_KEY else '❌ NOT SET'}")
+    log.info(f"  Research webhook: {'✅' if WEBHOOK_RESEARCH else '❌'}")
+    log.info(f"  Proposals webhook: {'✅' if WEBHOOK_PROPOSALS else '❌'}")
+    log.info(f"  System webhook: {'✅' if WEBHOOK_SYSTEM else '❌'}")
+    log.info(f"  Alpha Vantage: {'✅' if ALPHA_VANTAGE_KEY else '❌'}")
+    log.info(f"  Anthropic: {'✅' if ANTHROPIC_API_KEY else '❌'}")
+    log.info(f"  Auto-propose threshold: {AUTO_PROPOSE_THRESHOLD}/10")
 
     scheduler = AsyncIOScheduler(timezone="US/Eastern")
 
     scheduler.add_job(scheduled_morning_brief,
         CronTrigger(hour=6, minute=30, day_of_week="mon-fri"),
-        id="morning_brief", name="Morning Brief")
+        id="morning_brief", name="Morning Brief + Auto-Proposals")
 
     scheduler.add_job(scheduled_eod_scoring,
         CronTrigger(hour=16, minute=30, day_of_week="mon-fri"),
-        id="eod_scoring", name="EOD Scoring")
+        id="eod_scoring", name="EOD Scoring + Lessons")
 
     scheduler.add_job(scheduled_health_check,
         CronTrigger(minute="*/5", hour="9-16", day_of_week="mon-fri"),
@@ -396,9 +558,8 @@ async def main():
     for job in scheduler.get_jobs():
         log.info(f"  → {job.name}: {job.trigger}")
 
-    # Test mode: run brief immediately
     if os.getenv("RUN_BRIEF_NOW", "").lower() == "true":
-        log.info("RUN_BRIEF_NOW — running immediate brief...")
+        log.info("RUN_BRIEF_NOW — running immediate brief with auto-proposals...")
         await run_morning_brief()
 
     try:
