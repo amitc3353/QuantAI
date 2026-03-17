@@ -1,11 +1,10 @@
 {
-  "_comment": "Replace these with your actual Discord channel IDs after creating them",
-  "command": 0,
-  "chat": 0,
-  "research": 0,
-  "trade_proposals": 0,
-  "guard_log": 0,
-  "execution_log": 0,
-  "system_health": 0,
-  "pr_updates": 0
+  "command": 1483234894459965470,
+  "chat": 1483282987306193028,
+  "research": 1483234958486274202,
+  "trade_proposals": 1483235020221976646,
+  "guard_log": 1483235069182083283,
+  "execution_log": 1483235106494873661,
+  "system_health": 1483235134160240770,
+  "pr_updates": 1483235162903806043
 }
