@@ -147,8 +147,8 @@ async def git_checkout_main():
 # Docker operations
 # ---------------------------------------------------------------------------
 async def docker_ps():
-    out, _ = await run_shell("docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'")
-    return out
+    out, _ = await run_shell("docker ps")
+    return out if out.strip() else "No containers found"
 
 
 async def docker_logs(service, lines=30):
