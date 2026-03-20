@@ -298,8 +298,8 @@ class InfraAgent(commands.Cog):
         checks = {}
 
         # Containers
-        ps_out, _ = await run_shell("docker compose ps --format '{{.Name}} {{.Status}}'")
-        checks["containers"] = ps_out.strip()
+        ps_out = await docker_ps()
+        checks["containers"] = ps_out
 
         # Guard engine
         try:
