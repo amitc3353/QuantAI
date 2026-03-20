@@ -147,7 +147,7 @@ async def git_checkout_main():
 # Docker operations
 # ---------------------------------------------------------------------------
 async def docker_ps():
-    out, _ = await run_shell("docker ps")
+    out, _ = await run_shell("docker ps", cwd="/")
     return out if out.strip() else "No containers found"
 
 
@@ -156,9 +156,9 @@ async def docker_logs(service, lines=30):
                 "orchestrator": "trader-orchestrator", "alpaca-mcp": "trader-alpaca"}
     container = name_map.get(service, service)
     if container:
-        out, _ = await run_shell(f"docker logs --tail={lines} {container}")
+        out, _ = await run_shell(f"docker logs --tail={lines} {container}", cwd="/")
     else:
-        out, _ = await run_shell(f"docker logs --tail={lines} trader-discord")
+        out, _ = await run_shell(f"docker logs --tail={lines} trader-discord", cwd="/")
     return out
 
 
@@ -167,9 +167,9 @@ async def docker_restart(service=""):
                 "orchestrator": "trader-orchestrator", "alpaca-mcp": "trader-alpaca"}
     if service:
         container = name_map.get(service, service)
-        out, _ = await run_shell(f"docker restart {container}")
+        out, _ = await run_shell(f"docker restart {container}", cwd="/")
     else:
-        out, _ = await run_shell("docker restart trader-discord trader-guards trader-orchestrator trader-alpaca")
+        out, _ = await run_shell("docker restart trader-discord trader-guards trader-orchestrator trader-alpaca", cwd="/")
     return out
 
 
