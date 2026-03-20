@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ============================================
   # Discord Bot — Command center for all agents
@@ -13,7 +11,9 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
-      - ./configs:/app/configs:ro
+      - ./configs:/app/configs
+      - .:/app/project
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - guard-engine
     networks:
