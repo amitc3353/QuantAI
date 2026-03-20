@@ -147,35 +147,34 @@ async def git_checkout_main():
 # Docker operations
 # ---------------------------------------------------------------------------
 async def docker_ps():
-    out, _ = await run_shell("docker compose ps", cwd=PROJECT_DIR)
+    out, _ = await run_shell("docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'")
     return out
 
 
 async def docker_logs(service, lines=30):
-    out, _ = await run_shell(f"docker compose logs --tail={lines} {service}", cwd=PROJECT_DIR)
+    name_map = {"discord-bot": "trader-discord", "guard-engine": "trader-guards",
+                "orchestrator": "trader-orchestrator", "alpaca-mcp": "trader-alpaca"}
+    container = name_map.get(service, service)
+    if container:
+        out, _ = await run_shell(f"docker logs --tail={lines} {container}")
+    else:
+        out, _ = await run_shell(f"docker logs --tail={lines} trader-discord")
     return out
 
 
 async def docker_restart(service=""):
+    name_map = {"discord-bot": "trader-discord", "guard-engine": "trader-guards",
+                "orchestrator": "trader-orchestrator", "alpaca-mcp": "trader-alpaca"}
     if service:
-        out, _ = await run_shell(f"docker compose restart {service}", cwd=PROJECT_DIR)
+        container = name_map.get(service, service)
+        out, _ = await run_shell(f"docker restart {container}")
     else:
-        out, _ = await run_shell("docker compose restart", cwd=PROJECT_DIR)
+        out, _ = await run_shell("docker restart trader-discord trader-guards trader-orchestrator trader-alpaca")
     return out
 
 
 async def docker_rebuild_and_restart(service=""):
-    if service:
-        out, _ = await run_shell(
-            f"docker compose build {service} && docker compose up -d {service}",
-            cwd=PROJECT_DIR, timeout=120
-        )
-    else:
-        out, _ = await run_shell(
-            "docker compose build && docker compose up -d",
-            cwd=PROJECT_DIR, timeout=180
-        )
-    return out
+    return "Full rebuild requires deploy-trader from Mac. Use /restart for quick restarts."
 
 
 # ---------------------------------------------------------------------------
@@ -418,12 +417,10 @@ class InfraAgent(commands.Cog):
             await channel.send(embed=ops_embed("Commit Result", f"```\n{result}\n```", discord.Color.green()))
 
         elif action["type"] == "deploy":
-            svc = action.get("service", "")
-            await channel.send(embed=ops_embed("Deploying...", f"This may take 30-60 seconds...", discord.Color.blue()))
+            await channel.send(embed=ops_embed("Deploying...", "Pulling latest code...", discord.Color.blue()))
             out, _ = await run_shell("git pull", cwd=PROJECT_DIR)
             await channel.send(embed=ops_embed("Git Pull", f"```\n{out}\n```"))
-            result = await docker_rebuild_and_restart(svc)
-            await channel.send(embed=ops_embed("Deploy Complete", f"```\n{result[:1500]}\n```", discord.Color.green()))
+            await channel.send(embed=ops_embed("Next Step", "Code pulled. Run `deploy-trader` from Mac for full rebuild, or `/restart` for quick restart.", discord.Color.gold()))
 
         elif action["type"] == "restart":
             result = await docker_restart(action.get("service", ""))
