@@ -8,7 +8,7 @@
     "max_bid_ask_spread": 0.15
   },
   "portfolio": {
-    "max_delta": 0.30,
+    "max_delta": 0.3,
     "max_theta_daily": -50.0,
     "max_open_positions": 8,
     "max_sector_concentration": 3,
@@ -37,18 +37,31 @@
       "min_credit_ratio": 0.33
     },
     "iron_condor": {
-      "min_iv_rank": 60,
+      "min_iv_rank": 30,
       "min_sigma_distance": 1.0,
       "max_risk_credit_ratio": 2.0
     },
     "covered_call": {
-      "max_delta": 0.30,
+      "max_delta": 0.25,
       "no_earnings_week": true
     }
   },
   "whitelist": [
-    "SPY", "QQQ", "IWM",
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META"
+    "SPY",
+    "QQQ",
+    "IWM",
+    "NVDA",
+    "PLTR",
+    "TSM",
+    "AMD",
+    "AVGO",
+    "ASML",
+    "MU",
+    "CCJ",
+    "VRT",
+    "AAPL",
+    "MSFT",
+    "GOOGL"
   ],
   "halted": false
 }

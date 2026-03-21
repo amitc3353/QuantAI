@@ -1,15 +1,41 @@
 {
-  "symbols": ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META"],
+  "symbols": [
+    "SPY",
+    "QQQ",
+    "NVDA",
+    "PLTR",
+    "TSM",
+    "AMD",
+    "AVGO",
+    "ASML",
+    "MU",
+    "CCJ",
+    "VRT"
+  ],
   "sectors": {
     "SPY": "index",
     "QQQ": "index",
-    "IWM": "index",
-    "AAPL": "technology",
-    "MSFT": "technology",
     "NVDA": "technology",
-    "GOOGL": "technology",
-    "AMZN": "consumer_discretionary",
-    "TSLA": "consumer_discretionary",
-    "META": "technology"
-  }
+    "PLTR": "technology",
+    "TSM": "technology",
+    "AMD": "technology",
+    "AVGO": "technology",
+    "ASML": "technology",
+    "MU": "technology",
+    "CCJ": "energy",
+    "VRT": "industrials"
+  },
+  "agent1_symbols": [
+    "SPY",
+    "QQQ"
+  ],
+  "agent2_symbols": [
+    "PLTR",
+    "TSM",
+    "MU",
+    "AMD",
+    "AVGO",
+    "ASML"
+  ],
+  "_note": "agent1=iron condor on indices, agent2=covered calls on portfolio holdings"
 }

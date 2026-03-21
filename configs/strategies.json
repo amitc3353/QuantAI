@@ -5,10 +5,16 @@
       "enabled": true,
       "mode": "advisory",
       "description": "Buy deep ITM LEAPS, sell OTM short calls against it",
-      "allowed_symbols": ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"],
+      "allowed_symbols": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "MSFT",
+        "NVDA"
+      ],
       "parameters": {
-        "leaps_delta_target": 0.80,
-        "short_call_delta_target": 0.20,
+        "leaps_delta_target": 0.8,
+        "short_call_delta_target": 0.2,
         "min_leaps_dte": 120,
         "roll_trigger_dte": 21
       }
@@ -18,7 +24,11 @@
       "enabled": true,
       "mode": "advisory",
       "description": "Sell put spread below support when IV is elevated",
-      "allowed_symbols": ["SPY", "QQQ", "IWM"],
+      "allowed_symbols": [
+        "SPY",
+        "QQQ",
+        "IWM"
+      ],
       "parameters": {
         "target_iv_rank": 55,
         "target_credit_ratio": 0.33,
@@ -29,9 +39,13 @@
     "iron_condor": {
       "name": "Iron Condor",
       "enabled": true,
-      "mode": "advisory",
+      "mode": "autonomous",
       "description": "Sell both sides when IV is high, range-bound thesis",
-      "allowed_symbols": ["SPY", "QQQ", "IWM"],
+      "allowed_symbols": [
+        "SPY",
+        "QQQ",
+        "IWM"
+      ],
       "parameters": {
         "target_iv_rank": 65,
         "short_strike_sigma": 1.0,
@@ -42,9 +56,16 @@
     "covered_call": {
       "name": "Covered Call",
       "enabled": true,
-      "mode": "advisory",
+      "mode": "autonomous",
       "description": "Sell calls against existing shares",
-      "allowed_symbols": ["*"],
+      "allowed_symbols": [
+        "PLTR",
+        "TSM",
+        "MU",
+        "AMD",
+        "AVGO",
+        "ASML"
+      ],
       "parameters": {
         "target_delta": 0.25,
         "target_dte": 30,
@@ -56,5 +77,37 @@
     "advisory": "System proposes, you always approve",
     "copilot": "System proposes, you approve via Discord reaction",
     "autonomous": "Guards approve automatically within rules"
+  },
+  "agents": {
+    "agent1": {
+      "name": "Iron Condor Bot",
+      "strategy": "iron_condor",
+      "symbols": [
+        "SPY",
+        "QQQ"
+      ],
+      "capital": 40000,
+      "mode": "autonomous",
+      "params_file": "configs/agent1_params.json",
+      "journal": "data/memory/paper/agent1_journal.jsonl",
+      "schedule": "9:50 AM + 11:30 AM ET weekdays"
+    },
+    "agent2": {
+      "name": "Covered Call Bot",
+      "strategy": "covered_call",
+      "symbols": [
+        "PLTR",
+        "TSM",
+        "MU",
+        "AMD",
+        "AVGO",
+        "ASML"
+      ],
+      "capital": 30000,
+      "mode": "autonomous",
+      "params_file": "configs/agent2_params.json",
+      "journal": "data/memory/paper/agent2_journal.jsonl",
+      "schedule": "Monday 10:00 AM ET scan"
+    }
   }
 }

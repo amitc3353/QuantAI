@@ -20,13 +20,13 @@ Dev agents build, enhance, integrate. Runs 24/7 without you.
 - [x] Greeks engine (py_vollib)
 - [x] Options analysis commands (/greeks, /bull_put, /iron_condor)
 - [x] Morning brief automation
-- [ ] **PRIORITY: Autonomous income bot** — auto-trades 2 SPY iron condors/day
-  - [ ] Market data scanner (SPY price, VIX, options chain from Alpaca)
-  - [ ] Strike selection engine (delta-based, 0.08-0.12 range)
-  - [ ] Auto-entry at 9:50 AM and 11:30 AM ET
-  - [ ] Monitoring: 50% profit close, 2x credit stop-loss, 3:30 PM hard close
-  - [ ] Trade card posted to #trade-proposals with full reasoning
-  - [ ] EOD trade review posted to #system-health
+- [x] **Autonomous income bot** — Agent 1 auto-trades 2 SPY iron condors/day ✅ Mar 21, 2026
+  - [x] Market data scanner (SPY price, VIX, options chain from Alpaca) ✅ Mar 21, 2026
+  - [x] Strike selection engine (delta-based, 0.08-0.12 range) ✅ Mar 21, 2026
+  - [x] Auto-entry at 9:50 AM and 11:30 AM ET ✅ Mar 21, 2026
+  - [x] Monitoring: 50% profit close, 2x credit stop-loss, 3:30 PM hard close ✅ Mar 21, 2026
+  - [x] Trade card posted to #trade-proposals with full reasoning ✅ Mar 21, 2026
+  - [x] EOD trade review posted to #system-health ✅ Mar 21, 2026
 - [ ] Set Alpaca paper account to $10k starting capital
 - [ ] First live paper trade (Monday)
 - [ ] End of Week 1 review — what worked, what didn't
@@ -74,12 +74,12 @@ Dev agents build, enhance, integrate. Runs 24/7 without you.
 ### Priority 1: Live Data Infrastructure (CRITICAL — needed for trading)
 **Goal:** Agents have comprehensive, real-time market awareness.
 
-- [ ] **Alpaca options chain integration** — pull live SPY options with Greeks, IV
-- [ ] **yfinance integration** — VIX level, market breadth, sector ETFs
+- [x] **Alpaca options chain integration** — pull live SPY options with Greeks, IV ✅ Mar 21, 2026
+- [x] **yfinance integration** — VIX level, IV rank, market context ✅ Mar 21, 2026
 - [ ] **Finnhub free tier** — news sentiment, economic calendar, earnings dates
 - [ ] **FRED API** — Fed funds rate, CPI, unemployment (free)
-- [ ] Cache layer — store data locally, only fetch what's changed
-- [ ] Market context builder — assemble all data into a compact context for Claude
+- [x] Cache layer — store data locally, only fetch what's changed ✅ Mar 21, 2026
+- [x] Market context builder — assemble all data into a compact context for Claude ✅ Mar 21, 2026
 
 ### Priority 2: Discord → Code → Deploy Pipeline
 **Goal:** Talk in #chat, agents make code changes, PRs get created.
@@ -255,3 +255,67 @@ P3 ALWAYS  Code quality, test coverage, documentation
 - Scoring performance
 - Generating improvements
 - Keeping the system healthy
+
+---
+
+## Completed This Session — Mar 21, 2026
+
+### Data Layer (`services/market_data.py`)
+- [x] VIX fetch via yfinance with regime classification (13 zones: normal/elevated/high/danger/halt)
+- [x] Options chain fetch via Alpaca with Greeks, bid/ask, OI
+- [x] IV Rank calculation (52-week HV percentile proxy, no API cost)
+- [x] Strike finder by delta (`find_strikes_by_delta`)
+- [x] Iron condor builder (`build_iron_condor_strikes`)
+- [x] 15-min local cache (avoids redundant API calls)
+- [x] Full market context snapshot (`get_market_context`)
+
+### Agent 1 (`orchestrator/agent1_iron_condor.py`)
+- [x] Fully autonomous SPY/QQQ 0DTE iron condor bot
+- [x] Entry 1 at 9:50 AM, Entry 2 at 11:30 AM (conditional on 40% profit)
+- [x] VIX gate (13–30 tradeable range)
+- [x] Guard check before every entry
+- [x] 50% profit target, 2x stop loss, 3:30 PM hard close
+- [x] Per-agent strategy params (`configs/agent1_params.json`) — self-improve can tweak
+- [x] Per-agent JSONL journal (`data/memory/paper/agent1_journal.jsonl`)
+- [x] Per-agent EOD scoring with param suggestions
+- [x] Discord trade cards to #trade-proposals, closes to #execution-log
+
+### Agent 2 (`orchestrator/agent2_covered_call.py`)
+- [x] Fully autonomous covered call bot on PLTR/TSM/MU/AMD/AVGO/ASML
+- [x] Monday 10 AM weekly scan with earnings blackout check
+- [x] IV rank gate (min 30), delta 0.20, 21-35 DTE
+- [x] 50% profit target, 2 DTE hard close
+- [x] Per-agent params (`configs/agent2_params.json`)
+- [x] Per-agent JSONL journal (`data/memory/paper/agent2_journal.jsonl`)
+- [x] Friday weekly scoring with kill signal detection
+
+### Orchestrator Updates (`orchestrator/scheduler.py`)
+- [x] `AUTO_MODE=true` flag — no human approval in paper mode
+- [x] Agent 1 jobs: entry1, entry2, monitor (every 5 min), EOD score
+- [x] Agent 2 jobs: Monday weekly scan, Friday weekly score
+- [x] `call_claude_for_agent()` shared helper for agent scoring
+
+### Configs Updated
+- [x] `configs/watchlist.json` — updated to portfolio tickers (SPY/QQQ/NVDA/PLTR/TSM/AMD/AVGO/ASML/MU/CCJ/VRT)
+- [x] `configs/guard_config.json` — expanded whitelist, tuned iron condor IV rank for 0DTE
+- [x] `configs/strategies.json` — agents defined with autonomous mode, capital allocation
+- [x] `configs/agent1_params.json` — Agent 1 v1 baseline params
+- [x] `configs/agent2_params.json` — Agent 2 v1 baseline params
+- [x] `orchestrator/requirements.txt` — added yfinance, alpaca-py
+- [x] `.env.example` — added AUTO_MODE, DISCORD_WEBHOOK_EXECUTION
+
+### Capital Allocation Plan
+| Agent | Strategy | Capital | Risk/trade |
+|---|---|---|---|
+| Agent 1 | SPY/QQQ 0DTE Iron Condors | $40,000 | ~$500 max |
+| Agent 2 | Covered Calls (portfolio tickers) | $30,000 | Capped by underlying |
+| Reserve | Cash-Secured Puts (Week 3+) | $30,000 | Held in reserve |
+
+### Success Benchmarks
+| Milestone | Target | Kill Signal |
+|---|---|---|
+| Week 2 | Agent 1 win rate > 60% | < 45% after 20 trades |
+| Month 1 | Both agents net positive | Either agent down > 5% |
+| Month 2 | Agent 1 > 3%/mo, Agent 2 > 1%/mo | Consistent underperformance |
+| Month 3 | Combined > 5%/mo on $100k paper | Kill weakest, double down on winner |
+

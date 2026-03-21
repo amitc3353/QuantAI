@@ -40,15 +40,29 @@ WEBHOOK_RESEARCH = os.getenv("DISCORD_WEBHOOK_RESEARCH", "")
 WEBHOOK_SYSTEM = os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
 WEBHOOK_PROPOSALS = os.getenv("DISCORD_WEBHOOK_PROPOSALS", "")
 
+# AUTO_MODE: paper trading runs fully autonomous — no human approval gate
+# Set AUTO_MODE=false in .env to revert to co-pilot (reaction-based approval)
+AUTO_MODE = os.getenv("AUTO_MODE", "true").lower() == "true"
+
 # Auto-proposal threshold: only propose trades when conviction >= this
 AUTO_PROPOSE_THRESHOLD = int(os.getenv("AUTO_PROPOSE_THRESHOLD", "7"))
 
 SYSTEM_STATE = {
     "halted": False,
     "trading_mode": TRADING_MODE,
+    "auto_mode": AUTO_MODE,
     "last_brief": None,
     "errors_today": 0,
 }
+
+
+# ---------------------------------------------------------------------------
+# Shared Claude helper — passed into agents for scoring
+# ---------------------------------------------------------------------------
+async def call_claude_for_agent(prompt: str, model: str = "haiku") -> str:
+    """Thin wrapper so agents can call Claude without importing the full scheduler."""
+    actual_model = HAIKU_MODEL if model == "haiku" else SONNET_MODEL
+    return await call_claude(prompt, model=actual_model, max_tokens=1000)
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +555,147 @@ async def scheduled_health_check():
 
 
 # ---------------------------------------------------------------------------
+# Agent 1 — SPY/QQQ 0DTE Iron Condor (fully autonomous)
+# ---------------------------------------------------------------------------
+async def scheduled_agent1_entry1():
+    """9:50 AM ET — Agent 1 first iron condor entry."""
+    if SYSTEM_STATE.get("halted"):
+        log.info("System halted — skipping Agent 1 entry 1")
+        return
+    log.info("=== Agent 1: Entry 1 (9:50 AM) ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent1_iron_condor import run_entry
+        await run_entry(entry_number=1)
+    except Exception as e:
+        log.error(f"Agent 1 entry 1 failed: {e}", exc_info=True)
+        SYSTEM_STATE["errors_today"] += 1
+        await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+            "\u274c Agent 1 Entry 1 Failed", str(e)[:500], color=0xE74C3C,
+            footer="QuantAI Agent 1"
+        )])
+
+
+async def scheduled_agent1_entry2():
+    """11:30 AM ET — Agent 1 second entry (conditional)."""
+    if SYSTEM_STATE.get("halted"):
+        return
+    log.info("=== Agent 1: Entry 2 (11:30 AM) ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent1_iron_condor import run_entry
+        await run_entry(entry_number=2)
+    except Exception as e:
+        log.error(f"Agent 1 entry 2 failed: {e}", exc_info=True)
+
+
+async def scheduled_agent1_monitor():
+    """Every 5 min during market hours — monitor Agent 1 positions."""
+    if SYSTEM_STATE.get("halted"):
+        return
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent1_iron_condor import monitor_positions
+        await monitor_positions()
+    except Exception as e:
+        log.error(f"Agent 1 monitor failed: {e}", exc_info=True)
+
+
+async def scheduled_agent1_eod():
+    """4:30 PM ET — Agent 1 EOD scoring."""
+    log.info("=== Agent 1: EOD Score ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent1_iron_condor import run_eod_score
+        score_data = await run_eod_score(call_claude_for_agent)
+        if score_data and score_data.get("score"):
+            score = score_data["score"]
+            color = 0x2ECC71 if score >= 70 else (0xF39C12 if score >= 50 else 0xE74C3C)
+            fields = []
+            if score_data.get("lessons"):
+                fields.append({
+                    "name": "Lessons",
+                    "value": "\n".join(f"\u2022 {l}" for l in score_data["lessons"][:3]),
+                    "inline": False
+                })
+            if score_data.get("param_suggestions"):
+                fields.append({
+                    "name": "Param Suggestions",
+                    "value": "\n".join(
+                        f"\u2022 `{s['param']}`: {s['current']} \u2192 {s['suggested']} ({s['reason']})"
+                        for s in score_data["param_suggestions"][:2]
+                    ),
+                    "inline": False
+                })
+            await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+                f"\U0001f916 Agent 1 EOD: {score}/100",
+                score_data.get("summary", ""),
+                color=color, fields=fields,
+                footer="QuantAI Agent 1 \u00b7 Iron Condor"
+            )])
+    except Exception as e:
+        log.error(f"Agent 1 EOD score failed: {e}", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Agent 2 — Covered Call Bot (Monday weekly scan)
+# ---------------------------------------------------------------------------
+async def scheduled_agent2_weekly():
+    """Monday 10:00 AM ET — Agent 2 weekly covered call scan."""
+    if SYSTEM_STATE.get("halted"):
+        return
+    log.info("=== Agent 2: Weekly Covered Call Scan ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent2_covered_call import run_weekly_scan
+        new_trades = await run_weekly_scan()
+        if new_trades:
+            await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+                f"\U0001f7e3 Agent 2: {len(new_trades)} Covered Call(s) Entered",
+                "\n".join(
+                    f"**{t['symbol']}** ${t['strike']:.0f}C | ${t['premium']:.2f} premium | "
+                    f"{t['dte']} DTE | {t['monthly_yield_pct']:.2f}% yield"
+                    for t in new_trades
+                ),
+                color=0x9B59B6, footer="QuantAI Agent 2 \u00b7 Covered Call"
+            )])
+    except Exception as e:
+        log.error(f"Agent 2 weekly scan failed: {e}", exc_info=True)
+        SYSTEM_STATE["errors_today"] += 1
+
+
+async def scheduled_agent2_friday_score():
+    """Friday 4:45 PM ET — Agent 2 weekly scoring."""
+    log.info("=== Agent 2: Weekly Score ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from agent2_covered_call import run_weekly_score
+        score_data = await run_weekly_score(call_claude_for_agent)
+        if score_data and score_data.get("score"):
+            score = score_data["score"]
+            color = 0x9B59B6 if score >= 70 else (0xF39C12 if score >= 50 else 0xE74C3C)
+            await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+                f"\U0001f7e3 Agent 2 Weekly Score: {score}/100",
+                score_data.get("summary", ""),
+                color=color,
+                fields=[
+                    {"name": "Best Ticker", "value": score_data.get("best_ticker", "?"), "inline": True},
+                    {"name": "Kill Signal", "value": str(score_data.get("kill_signal", False)), "inline": True},
+                ],
+                footer="QuantAI Agent 2 \u00b7 Covered Call"
+            )])
+    except Exception as e:
+        log.error(f"Agent 2 Friday score failed: {e}", exc_info=True)
+
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def main():
@@ -552,6 +707,7 @@ async def main():
     log.info(f"  Alpha Vantage: {'✅' if ALPHA_VANTAGE_KEY else '❌'}")
     log.info(f"  Anthropic: {'✅' if ANTHROPIC_API_KEY else '❌'}")
     log.info(f"  Auto-propose threshold: {AUTO_PROPOSE_THRESHOLD}/10")
+    log.info(f"  Auto-mode: {'AUTONOMOUS' if AUTO_MODE else 'Co-pilot (approval required)'}")
 
     scheduler = AsyncIOScheduler(timezone="US/Eastern")
 
@@ -570,6 +726,32 @@ async def main():
     scheduler.add_job(scheduled_health_check,
         CronTrigger(minute="*/5", hour="9-16", day_of_week="mon-fri"),
         id="health_check", name="Health Check")
+
+    # --- Agent 1: SPY/QQQ 0DTE Iron Condor ---
+    scheduler.add_job(scheduled_agent1_entry1,
+        CronTrigger(hour=9, minute=50, day_of_week="mon-fri"),
+        id="agent1_entry1", name="Agent 1: Iron Condor Entry 1")
+
+    scheduler.add_job(scheduled_agent1_entry2,
+        CronTrigger(hour=11, minute=30, day_of_week="mon-fri"),
+        id="agent1_entry2", name="Agent 1: Iron Condor Entry 2")
+
+    scheduler.add_job(scheduled_agent1_monitor,
+        CronTrigger(minute="*/5", hour="9-16", day_of_week="mon-fri"),
+        id="agent1_monitor", name="Agent 1: Position Monitor")
+
+    scheduler.add_job(scheduled_agent1_eod,
+        CronTrigger(hour=16, minute=30, day_of_week="mon-fri"),
+        id="agent1_eod", name="Agent 1: EOD Score")
+
+    # --- Agent 2: Covered Call ---
+    scheduler.add_job(scheduled_agent2_weekly,
+        CronTrigger(hour=10, minute=0, day_of_week="mon"),
+        id="agent2_weekly", name="Agent 2: Weekly CC Scan")
+
+    scheduler.add_job(scheduled_agent2_friday_score,
+        CronTrigger(hour=16, minute=45, day_of_week="fri"),
+        id="agent2_friday", name="Agent 2: Weekly Score (Friday)")
 
     scheduler.start()
     log.info(f"Scheduler: {len(scheduler.get_jobs())} jobs")

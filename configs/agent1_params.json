@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "primary_symbol": "SPY",
+  "fallback_symbol": "QQQ",
+  "short_delta": 0.1,
+  "wing_width": 5.0,
+  "min_credit": 0.5,
+  "profit_target_pct": 0.5,
+  "stop_loss_mult": 2.0,
+  "hard_close_hour": 15,
+  "hard_close_minute": 30,
+  "entry_1_hour": 9,
+  "entry_1_minute": 50,
+  "entry_2_hour": 11,
+  "entry_2_minute": 30,
+  "entry_2_requires_profit_pct": 0.4,
+  "vix_min": 13.0,
+  "vix_max": 30.0,
+  "max_daily_trades": 2,
+  "position_size_pct": 1.5,
+  "capital_allocation": 40000,
+  "_note": "v1 baseline. Self-improve engine may propose tweaks when EOD score < 90."
+}
