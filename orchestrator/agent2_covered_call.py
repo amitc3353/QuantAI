@@ -61,6 +61,10 @@ DEFAULT_PARAMS = {
     "profit_target_pct": 0.50,
     "roll_trigger_dte": 7,          # Roll when <= 7 DTE remaining
     "hard_close_dte": 2,            # Force close at 2 DTE
+    "roll_trigger_itm_pct": 2.0,    # Roll when stock > strike by this % (ITM)
+    "roll_max_times": 3,            # Max rolls per position before forced close
+    "roll_min_net_credit": 0.05,    # Only roll if we collect net credit ≥ $0.05
+    "roll_dte_extension": 30,       # Roll out by this many days
     "min_premium": 0.30,            # Skip if premium < $0.30
     "earnings_blackout_days": 14,   # No entry within 14 days of earnings
     "simulated_shares_per_symbol": 100,  # Simulate owning 100 shares each
@@ -366,6 +370,147 @@ async def run_weekly_scan(context: dict = None, skip_symbols: list = None):
         log.info("Agent 2: No new covered calls entered this week")
 
     return new_trades
+async def _roll_covered_call(position: dict, chain: dict, params: dict, today: str):
+    """
+    Roll a covered call up and out when the stock has rallied through the short strike.
+
+    Mechanics:
+      1. Buy back current (now ITM) call at the ask
+      2. Find a new call: higher strike (delta ≤ 0.25) + longer DTE (+30 days)
+      3. Only roll if we can collect net credit (new premium > buyback cost)
+      4. Max 3 rolls per position — after that, force close
+
+    This is far better than closing for a loss:
+      - We collect more premium to offset the buyback cost
+      - We stay in the trade with a higher strike
+      - If the stock stabilizes, the new call expires worthless = win
+    """
+    from market_data import get_options_chain, find_strikes_by_delta
+
+    symbol = position["symbol"]
+    entry_premium = position.get("premium", 0)
+    current_strike = position.get("strike", 0)
+    current_expiry = position.get("expiry", "")
+    rolls_done = position.get("roll_count", 0)
+    stock_price = chain.get("underlying_price", 0)
+
+    log.info(f"Rolling {symbol} covered call: stock=${stock_price:.2f} > strike=${current_strike:.2f}")
+
+    # Find current call price to buy back
+    from market_data import _find_contract_by_strike
+    current_call = _find_contract_by_strike(chain.get("calls", []), current_strike)
+    if not current_call:
+        log.warning(f"Could not find current call for {symbol} @ {current_strike} — closing instead")
+        await _close_covered_call(position, "roll_failed_no_contract", entry_premium * 0.5, today)
+        return
+
+    buyback_cost = current_call.get("ask", entry_premium * 2)  # Buy at ask (urgency)
+
+    # Find new call: higher strike, +30 DTE
+    roll_dte_min = params.get("roll_dte_extension", 30)
+    roll_dte_max = roll_dte_min + 14
+    new_chain = get_options_chain(symbol, dte_min=roll_dte_min, dte_max=roll_dte_max)
+
+    if "error" in new_chain or not new_chain.get("calls"):
+        log.warning(f"No chain found for {symbol} roll DTE {roll_dte_min}-{roll_dte_max} — closing")
+        await _close_covered_call(position, "roll_failed_no_chain", buyback_cost, today)
+        return
+
+    # Target: higher strike at same or lower delta (more conservative)
+    new_call = find_strikes_by_delta(
+        new_chain, "call",
+        target_delta=params.get("target_delta", 0.20),
+        tolerance=0.07
+    )
+
+    if not new_call:
+        log.warning(f"No suitable new strike found for {symbol} roll — closing")
+        await _close_covered_call(position, "roll_failed_no_strike", buyback_cost, today)
+        return
+
+    new_strike = new_call.get("strike", 0)
+    new_premium = new_call.get("mid", 0)
+    new_expiry = new_call.get("expiry", "")
+    new_dte = new_call.get("dte", 0)
+
+    # Net credit check: only roll if we collect more than we spend
+    net_credit = new_premium - buyback_cost
+    min_net_credit = params.get("roll_min_net_credit", 0.05)
+
+    if net_credit < min_net_credit:
+        log.info(f"{symbol}: net credit ${net_credit:.2f} < min ${min_net_credit:.2f} — closing instead")
+        await _close_covered_call(position, "roll_credit_insufficient", buyback_cost, today)
+        return
+
+    # Execute the roll
+    roll_pnl_so_far = round(
+        (entry_premium - buyback_cost) * position.get("shares_simulated", 10), 2
+    )
+    total_premium_collected = round(
+        position.get("total_premium_collected", entry_premium * 10) + new_premium * position.get("shares_simulated", 10),
+        2
+    )
+
+    log_trade({
+        "event": "roll",
+        "date": today,
+        "symbol": symbol,
+        "old_strike": current_strike,
+        "new_strike": new_strike,
+        "old_expiry": current_expiry,
+        "new_expiry": new_expiry,
+        "new_dte": new_dte,
+        "buyback_cost": buyback_cost,
+        "new_premium": new_premium,
+        "net_credit": round(net_credit, 2),
+        "roll_number": rolls_done + 1,
+        "stock_price_at_roll": stock_price,
+        "cumulative_premium": total_premium_collected,
+    })
+
+    # Update position in memory
+    active = load_active_positions()
+    for p in active:
+        if (p.get("symbol") == symbol and
+                p.get("strike") == current_strike and
+                p.get("expiry") == current_expiry and
+                p.get("status") == "open"):
+            p["strike"] = new_strike
+            p["expiry"] = new_expiry
+            p["dte"] = new_dte
+            p["premium"] = new_premium
+            p["profit_target"] = round(new_premium * params.get("profit_target_pct", 0.50), 2)
+            p["roll_count"] = rolls_done + 1
+            p["total_premium_collected"] = total_premium_collected
+            p["last_rolled"] = today
+    save_active_positions(active)
+
+    log.info(
+        f"ROLLED {symbol}: ${current_strike:.0f} → ${new_strike:.0f} "
+        f"({current_expiry} → {new_expiry}) | "
+        f"Buyback: ${buyback_cost:.2f} | New premium: ${new_premium:.2f} | "
+        f"Net credit: ${net_credit:.2f} | Roll #{rolls_done + 1}"
+    )
+
+    await post_discord(WEBHOOK_EXECUTION, [make_embed(
+        f"🔄 Agent 2 ROLLED: {symbol} Covered Call",
+        f"Stock rallied through short strike. Rolling up and out for net credit.",
+        color=0x3498DB,
+        fields=[
+            {"name": "Old Strike", "value": f"${current_strike:.0f} (ITM)", "inline": True},
+            {"name": "New Strike", "value": f"${new_strike:.0f}", "inline": True},
+            {"name": "New DTE", "value": str(new_dte), "inline": True},
+            {"name": "Buyback Cost", "value": f"${buyback_cost:.2f}", "inline": True},
+            {"name": "New Premium", "value": f"${new_premium:.2f}", "inline": True},
+            {"name": "Net Credit", "value": f"**${net_credit:.2f}**", "inline": True},
+            {"name": "Roll Number", "value": f"{rolls_done + 1}/{params.get('roll_max_times', 3)}", "inline": True},
+            {"name": "Total Collected", "value": f"${total_premium_collected:.2f}", "inline": True},
+            {"name": "Stock Price", "value": f"${stock_price:.2f}", "inline": True},
+        ],
+        footer="QuantAI Agent 2 · Covered Call Roll"
+    )])
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -414,11 +559,26 @@ async def _review_existing_positions(positions: list, params: dict):
             continue
 
         current_bid = current_call.get("bid", entry_premium)
+        current_ask = current_call.get("ask", current_bid * 1.05)
+        stock_price = chain.get("underlying_price", 0)
+        current_strike = position.get("strike", 0)
         profit_pct = (entry_premium - current_bid) / entry_premium * 100 if entry_premium > 0 else 0
 
         # Close at 50% profit
         if current_bid <= position.get("profit_target", entry_premium * 0.5):
             await _close_covered_call(position, "profit_target_50pct", current_bid, today)
+            continue
+
+        # Roll logic: stock rallied through short strike
+        rolls_done = position.get("roll_count", 0)
+        if (
+            stock_price > 0
+            and current_strike > 0
+            and stock_price > current_strike * (1 + params.get("roll_trigger_itm_pct", 2.0) / 100)
+            and dte_remaining > params.get("roll_trigger_dte", 7)
+            and rolls_done < params.get("roll_max_times", 3)
+        ):
+            await _roll_covered_call(position, chain, params, today)
 
 
 async def _close_covered_call(position: dict, reason: str, close_cost: float, today: str):

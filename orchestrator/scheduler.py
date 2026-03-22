@@ -591,6 +591,22 @@ async def scheduled_weekly_review():
     except Exception as e:
         log.error(f"Weekly review failed: {e}", exc_info=True)
 
+    # Run correlation analysis — does context score predict outcomes?
+    log.info("=== Correlation Analysis ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        import concurrent.futures
+        from correlation_analyzer import run_correlation_analysis, build_correlation_embed
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            corr_result = await loop.run_in_executor(pool, run_correlation_analysis, 28)
+        corr_embed = build_correlation_embed(corr_result)
+        await post_to_discord(WEBHOOK_SYSTEM, [corr_embed])
+        log.info(f"Correlation analysis complete: {corr_result.get('status')}")
+    except Exception as e:
+        log.error(f"Correlation analysis failed: {e}", exc_info=True)
+
 
 async def scheduled_health_check():
     await health_check()
