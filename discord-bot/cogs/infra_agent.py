@@ -475,8 +475,8 @@ class InfraAgent(commands.Cog):
 
             # Step 2: docker compose build
             await channel.send(embed=ops_embed("Building...", "Step 2/3: Rebuilding containers (this takes ~60s)...", discord.Color.blue()))
-            build_cmd = f"docker compose build {service}" if service else "docker compose build"
-            # docker compose needs to run from project root, not /app/project inside container
+            # Use -p to set project name matching the VPS deployment
+            build_cmd = f"docker compose -p quantai build {service}" if service else "docker compose -p quantai build"
             build_out, build_rc = await run_shell(build_cmd, cwd=PROJECT_DIR, timeout=300)
             build_status = "✅ Build complete" if build_rc == 0 else f"❌ Build failed (rc={build_rc})"
             # Trim build output — it's very verbose
@@ -490,8 +490,8 @@ class InfraAgent(commands.Cog):
 
             # Step 3: docker compose up
             await channel.send(embed=ops_embed("Starting...", "Step 3/3: Restarting services...", discord.Color.blue()))
-            up_cmd = f"docker compose up -d {service}" if service else "docker compose up -d"
-            up_out, up_rc = await run_shell(up_cmd, cwd=PROJECT_DIR, timeout=60)
+            up_cmd = f"docker compose -p quantai up -d --remove-orphans {service}" if service else "docker compose -p quantai up -d --remove-orphans"
+            up_out, up_rc = await run_shell(up_cmd, cwd=PROJECT_DIR, timeout=120)
             up_status = "✅ Services restarted" if up_rc == 0 else f"❌ docker up failed (rc={up_rc})"
             await channel.send(embed=ops_embed("Docker Up", f"```\n{up_out[:600]}\n```\n{up_status}", discord.Color.green() if up_rc == 0 else discord.Color.red()))
 
