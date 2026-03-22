@@ -217,6 +217,21 @@ async def run_weekly_scan(context: dict = None, skip_symbols: list = None):
     active_symbols = {p["symbol"] for p in active_positions if p.get("status") == "open"}
 
     log.info(f"=== Agent 2: Weekly Covered Call Scan ===")
+
+    # Load relevant lessons before the weekly scan
+    try:
+        import sys
+        sys.path.insert(0, "/app/discord-bot")
+        from memory import search_lessons
+        cc_lessons = search_lessons("covered call")
+        iv_lessons = search_lessons("iv rank")
+        weekly_lessons = (cc_lessons + iv_lessons)[-5:]
+        if weekly_lessons:
+            log.info(f"Weekly scan: loaded {len(weekly_lessons)} lessons")
+            for l in weekly_lessons:
+                log.info(f"  Lesson: {l.get('lesson', '')[:80]}")
+    except Exception as le:
+        log.debug(f"Could not load lessons: {le}")
     log.info(f"Active positions: {active_symbols}")
 
     new_trades = []
@@ -328,6 +343,9 @@ async def run_weekly_scan(context: dict = None, skip_symbols: list = None):
             "params_version": params.get("version", 1),
             "mode": "paper_simulated",
             "status": "open",
+            "context_score": context.get("score") if context else None,
+            "context_decision": context.get("decision") if context else None,
+            "market_regime": context.get("vix_data", {}).get("regime") if context else None,
         }
 
         log_trade(trade)

@@ -399,8 +399,263 @@ class TradingCog(commands.Cog):
             await exec_channel.send(embed=embed)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Journal & Performance Commands
+# ---------------------------------------------------------------------------
+
+    @app_commands.command(name="journal", description="Today's trade journal — what happened, why, outcomes")
+    async def cmd_journal(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        import sys
+        sys.path.insert(0, "/app/discord-bot")
+        sys.path.insert(0, "/app/services")
+
+        from pathlib import Path
+        import json
+        from datetime import date
+
+        today = date.today().isoformat()
+        fields = []
+        total_pnl = 0
+        trade_count = 0
+
+        # Read agent journals
+        journals = {
+            "Agent 1 (Condor)": Path("/app/data/memory/paper/agent1_journal.jsonl"),
+            "Agent 2 (CC)":     Path("/app/data/memory/paper/agent2_journal.jsonl"),
+        }
+
+        for agent_name, journal_path in journals.items():
+            if not journal_path.exists():
+                continue
+            records = []
+            with open(journal_path) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            r = json.loads(line)
+                            if r.get("date") == today or r.get("timestamp", "").startswith(today):
+                                records.append(r)
+                        except Exception:
+                            continue
+
+            if not records:
+                fields.append({"name": agent_name, "value": "No activity today", "inline": True})
+                continue
+
+            entries = [r for r in records if r.get("event") == "entry"]
+            exits = [r for r in records if r.get("event") == "exit"]
+            skips = [r for r in records if r.get("event") == "skip"]
+            rolls = [r for r in records if r.get("event") == "roll"]
+            errors = [r for r in records if r.get("event") == "error"]
+
+            day_pnl = sum(r.get("pnl_per_contract", 0) or r.get("pnl", 0) for r in exits)
+            total_pnl += day_pnl
+            trade_count += len(entries)
+
+            summary_parts = []
+            if entries:
+                ctx_scores = [r.get("context_score") for r in entries if r.get("context_score")]
+                ctx_str = f" (ctx: {', '.join(str(s) for s in ctx_scores)})" if ctx_scores else ""
+                summary_parts.append(f"{len(entries)} entr{'y' if len(entries)==1 else 'ies'}{ctx_str}")
+            if exits:
+                wins = sum(1 for r in exits if r.get("outcome") == "win")
+                summary_parts.append(f"{len(exits)} closed ({wins}W/{len(exits)-wins}L) P&L: ${day_pnl:.2f}")
+            if rolls:
+                summary_parts.append(f"{len(rolls)} roll(s)")
+            if skips:
+                skip_reasons = list(set(r.get("reason", "?") for r in skips))
+                summary_parts.append(f"{len(skips)} skip(s): {', '.join(skip_reasons[:2])}")
+            if errors:
+                summary_parts.append(f"⚠️ {len(errors)} error(s)")
+
+            fields.append({
+                "name": agent_name,
+                "value": "\n".join(summary_parts) or "Idle",
+                "inline": False,
+            })
+
+        # Add lessons from today's scoring if available
+        from pathlib import Path as P
+        lessons_file = P("/app/data/memory/paper/agent1_lessons.jsonl")
+        todays_lessons = []
+        if lessons_file.exists():
+            with open(lessons_file) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            r = json.loads(line)
+                            if r.get("date") == today:
+                                todays_lessons.append(r.get("lesson", ""))
+                        except Exception:
+                            continue
+
+        if todays_lessons:
+            fields.append({
+                "name": "📝 Lessons extracted today",
+                "value": "\n".join(f"• {l[:80]}" for l in todays_lessons[:3]),
+                "inline": False,
+            })
+
+        color = 0x2ECC71 if total_pnl > 0 else (0xE74C3C if total_pnl < 0 else 0x3498DB)
+        embed = discord.Embed(
+            title=f"📓 Journal — {today}",
+            description=f"**{trade_count}** trade(s) | Net P&L: **${total_pnl:.2f}**" if trade_count else "No trades today",
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        for field in fields:
+            embed.add_field(name=field["name"], value=field["value"], inline=field.get("inline", False))
+        embed.set_footer(text=f"QuantAI Journal · {TRADING_MODE}")
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="performance", description="Win rates, P&L, and stats across all agents")
+    @app_commands.describe(days="Number of days to analyze (default 30)")
+    async def cmd_performance(self, interaction: discord.Interaction, days: int = 30):
+        await interaction.response.defer()
+        import sys
+        sys.path.insert(0, "/app/discord-bot")
+        from pathlib import Path
+        import json
+        from datetime import date, timedelta
+
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        fields = []
+
+        agents = {
+            "Agent 1 — Iron Condor": "/app/data/memory/paper/agent1_journal.jsonl",
+            "Agent 2 — Covered Call": "/app/data/memory/paper/agent2_journal.jsonl",
+        }
+
+        combined_wins = 0
+        combined_trades = 0
+        combined_pnl = 0.0
+
+        for agent_name, journal_path in agents.items():
+            p = Path(journal_path)
+            if not p.exists():
+                fields.append({"name": agent_name, "value": "No data yet", "inline": False})
+                continue
+
+            exits = []
+            entries = []
+            skips = []
+            with open(p) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            r = json.loads(line)
+                            d = r.get("date", r.get("timestamp", "")[:10])
+                            if d >= cutoff:
+                                ev = r.get("event", "")
+                                if ev == "exit": exits.append(r)
+                                elif ev == "entry": entries.append(r)
+                                elif ev == "skip": skips.append(r)
+                        except Exception:
+                            continue
+
+            if not exits and not entries:
+                fields.append({"name": agent_name, "value": f"No activity in last {days} days", "inline": False})
+                continue
+
+            wins = [r for r in exits if r.get("outcome") == "win"]
+            losses = [r for r in exits if r.get("outcome") == "loss"]
+            total_pnl = sum(r.get("pnl_per_contract", 0) or r.get("pnl", 0) for r in exits)
+            win_rate = len(wins) / len(exits) * 100 if exits else 0
+
+            combined_wins += len(wins)
+            combined_trades += len(exits)
+            combined_pnl += total_pnl
+
+            # Context score correlation (did high-score entries win more?)
+            high_ctx = [r for r in exits if (r.get("context_score") or 0) >= 60]
+            low_ctx = [r for r in exits if 0 < (r.get("context_score") or 0) < 60]
+            ctx_str = ""
+            if high_ctx and low_ctx:
+                high_wr = sum(1 for r in high_ctx if r.get("outcome")=="win") / len(high_ctx) * 100
+                low_wr = sum(1 for r in low_ctx if r.get("outcome")=="win") / len(low_ctx) * 100
+                ctx_str = f"\nContext ≥60: {high_wr:.0f}% WR | <60: {low_wr:.0f}% WR"
+
+            # Skip analysis
+            skip_summary = ""
+            if skips:
+                skip_reasons = {}
+                for s in skips:
+                    r = s.get("reason", "unknown")
+                    skip_reasons[r] = skip_reasons.get(r, 0) + 1
+                top_skips = sorted(skip_reasons.items(), key=lambda x: x[1], reverse=True)[:3]
+                skip_summary = f"\nSkips: " + ", ".join(f"{r}({n})" for r, n in top_skips)
+
+            fields.append({
+                "name": agent_name,
+                "value": (
+                    f"**{len(exits)}** closed | **{win_rate:.0f}%** WR | P&L: **${total_pnl:.2f}**\n"
+                    f"{len(wins)}W / {len(losses)}L | {len(entries)} entries"
+                    f"{ctx_str}{skip_summary}"
+                ),
+                "inline": False,
+            })
+
+        overall_wr = combined_wins / combined_trades * 100 if combined_trades else 0
+        color = 0x2ECC71 if combined_pnl > 0 else (0xE74C3C if combined_pnl < 0 else 0x3498DB)
+
+        embed = discord.Embed(
+            title=f"📊 Performance — Last {days} Days",
+            description=f"**{combined_trades}** closed | **{overall_wr:.0f}%** overall WR | Net P&L: **${combined_pnl:.2f}**",
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        for field in fields:
+            embed.add_field(name=field["name"], value=field["value"], inline=False)
+        embed.set_footer(text=f"QuantAI Performance · {TRADING_MODE} · {days}d")
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="lessons", description="View and search lessons learned by the system")
+    @app_commands.describe(query="Search term (optional — leave blank for most recent)")
+    async def cmd_lessons(self, interaction: discord.Interaction, query: str = ""):
+        await interaction.response.defer()
+        import sys
+        sys.path.insert(0, "/app/discord-bot")
+        from memory import search_lessons, get_lessons
+
+        if query:
+            lessons = search_lessons(query)
+            title = f"🔍 Lessons matching \"{query}\""
+        else:
+            lessons = get_lessons(15)
+            title = "📚 Recent Lessons Learned"
+
+        if not lessons:
+            await interaction.followup.send(embed=discord.Embed(
+                title=title,
+                description="No lessons yet — they accumulate as the system trades and scores.",
+                color=0x95A5A6,
+            ))
+            return
+
+        lines = []
+        for l in lessons[-12:]:
+            source = l.get("source", "?")
+            conf = l.get("confidence", 1.0)
+            conf_bar = "●" * int(conf * 3) + "○" * (3 - int(conf * 3))
+            ts = l.get("timestamp", "")[:10]
+            lines.append(f"`{conf_bar}` **{ts}** [{source}]\n{l.get('lesson', '')[:120]}")
+
+        # Split into chunks if needed (Discord 1024 char field limit)
+        chunk = "\n\n".join(lines[:6])
+        embed = discord.Embed(title=title, description=chunk[:2000], color=0x9B59B6,
+                              timestamp=datetime.now(timezone.utc))
+        if len(lines) > 6:
+            embed.add_field(name="More lessons", value="\n\n".join(lines[6:12])[:1024], inline=False)
+        embed.set_footer(text=f"QuantAI Lessons · {len(lessons)} total · confidence: ●●●=high ○○○=low")
+        await interaction.followup.send(embed=embed)
+
+
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 async def setup(bot: commands.Bot):
     await bot.add_cog(TradingCog(bot))
+

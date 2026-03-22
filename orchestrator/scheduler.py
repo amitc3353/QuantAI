@@ -808,6 +808,132 @@ async def scheduled_agent2_friday_score():
 
 
 
+
+async def scheduled_daily_digest():
+    """
+    8:00 AM ET — Daily journal digest before market open.
+    Posts yesterday's outcomes + today's readiness to #system-health.
+    Gives you a crisp summary before the 9:50 AM entry.
+    """
+    import sys
+    sys.path.insert(0, "/app/services")
+    from pathlib import Path
+    import json
+    from datetime import date, timedelta
+
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    # Read yesterday's results from both agent journals
+    summary = {"agent1": {}, "agent2": {}, "lessons": [], "total_pnl": 0.0}
+
+    for agent, journal_name in [("agent1", "agent1_journal"), ("agent2", "agent2_journal")]:
+        journal_path = Path(f"/app/data/memory/{TRADING_MODE}/{journal_name}.jsonl")
+        if not journal_path.exists():
+            continue
+        exits = []
+        entries = []
+        with open(journal_path) as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        r = json.loads(line)
+                        d = r.get("date", r.get("timestamp", "")[:10])
+                        if d == yesterday:
+                            if r.get("event") == "exit": exits.append(r)
+                            if r.get("event") == "entry": entries.append(r)
+                    except Exception:
+                        continue
+        pnl = sum(r.get("pnl_per_contract", 0) or r.get("pnl", 0) for r in exits)
+        wins = sum(1 for r in exits if r.get("outcome") == "win")
+        summary[agent] = {
+            "entries": len(entries), "exits": len(exits),
+            "wins": wins, "pnl": pnl
+        }
+        summary["total_pnl"] += pnl
+
+    # Load recent lessons
+    lessons_path = Path(f"/app/data/memory/paper/agent1_lessons.jsonl")
+    recent_lessons = []
+    if lessons_path.exists():
+        with open(lessons_path) as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        r = json.loads(line)
+                        if r.get("date", "") >= yesterday:
+                            recent_lessons.append(r.get("lesson", ""))
+                    except Exception:
+                        continue
+    summary["lessons"] = recent_lessons[:3]
+
+    # Load today's context for readiness
+    context_ready = False
+    try:
+        from context_builder import build_context
+        morning_ctx = await build_context("SPY")
+        context_ready = True
+        ctx_score = morning_ctx.get("score", 0)
+        ctx_decision = morning_ctx.get("decision_label", "?")
+    except Exception:
+        ctx_score = None
+        ctx_decision = "not yet built"
+
+    a1 = summary["agent1"]
+    a2 = summary["agent2"]
+    total_pnl = summary["total_pnl"]
+    color = 0x2ECC71 if total_pnl > 0 else (0xE74C3C if total_pnl < 0 else 0x3498DB)
+    if not a1 and not a2:
+        color = 0x3498DB  # No trades yesterday = info color
+
+    fields = []
+    if a1.get("exits") or a1.get("entries"):
+        fields.append({
+            "name": "Agent 1 — Iron Condor (yesterday)",
+            "value": f"{a1.get('entries',0)} entries | {a1.get('exits',0)} closed | "
+                     f"{a1.get('wins',0)}W/{a1.get('exits',0)-a1.get('wins',0)}L | "
+                     f"P&L: ${a1.get('pnl',0):.2f}",
+            "inline": False,
+        })
+    if a2.get("exits") or a2.get("entries"):
+        fields.append({
+            "name": "Agent 2 — Covered Call (yesterday)",
+            "value": f"{a2.get('entries',0)} entries | {a2.get('exits',0)} closed | "
+                     f"P&L: ${a2.get('pnl',0):.2f}",
+            "inline": False,
+        })
+    if summary["lessons"]:
+        fields.append({
+            "name": "📝 Lessons from yesterday",
+            "value": "\n".join(f"• {l[:100]}" for l in summary["lessons"]),
+            "inline": False,
+        })
+    fields.append({
+        "name": "Today's Context",
+        "value": f"Score: **{ctx_score}/100** — {ctx_decision}" if ctx_score else "Building at 6:30 AM...",
+        "inline": False,
+    })
+    fields.append({
+        "name": "Market opens in",
+        "value": "~90 minutes | Agent 1 entry at **9:50 AM ET**",
+        "inline": True,
+    })
+
+    no_trades = not a1.get("exits") and not a1.get("entries") and not a2.get("exits")
+    description = (
+        f"No trades yesterday — system idle." if no_trades
+        else f"Yesterday net P&L: **${total_pnl:+.2f}**"
+    )
+
+    await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+        f"🌅 Daily Digest — {today}",
+        description,
+        color=color,
+        fields=fields,
+        footer=f"QuantAI Daily Digest · {TRADING_MODE}",
+    )])
+    log.info(f"Daily digest posted: P&L={total_pnl:.2f}, lessons={len(summary['lessons'])}")
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -839,6 +965,10 @@ async def main():
     scheduler.add_job(scheduled_health_check,
         CronTrigger(minute="*/5", hour="9-16", day_of_week="mon-fri"),
         id="health_check", name="Health Check")
+
+    scheduler.add_job(scheduled_daily_digest,
+        CronTrigger(hour=8, minute=0, day_of_week="mon-fri"),
+        id="daily_digest", name="Daily Digest (8 AM)")
 
     # --- Agent 1: SPY/QQQ 0DTE Iron Condor ---
     scheduler.add_job(scheduled_agent1_entry1,

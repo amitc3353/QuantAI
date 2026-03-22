@@ -181,6 +181,24 @@ async def run_entry(entry_number: int = 1, context: dict = None):
 
     log.info(f"=== Agent 1: Iron Condor Entry {entry_number} ===")
 
+    # Load relevant lessons from memory — the journal teaches the agent
+    relevant_lessons = []
+    try:
+        import sys
+        sys.path.insert(0, "/app/discord-bot")
+        from memory import search_lessons, get_lessons
+        # Search for lessons relevant to current conditions
+        vix_lessons = search_lessons("vix") if True else []
+        condor_lessons = search_lessons("condor")
+        credit_lessons = search_lessons("credit")
+        relevant_lessons = (vix_lessons + condor_lessons + credit_lessons)[-5:]
+        if relevant_lessons:
+            log.info(f"Loaded {len(relevant_lessons)} relevant lessons for entry decision")
+            for l in relevant_lessons:
+                log.debug(f"  Lesson: {l.get('lesson', '')[:80]}")
+    except Exception as le:
+        log.debug(f"Could not load lessons: {le}")
+
     # Apply context-adjusted parameters if context was provided
     if context and context.get("agent1_params"):
         ctx_params = context["agent1_params"]
@@ -325,6 +343,15 @@ async def run_entry(entry_number: int = 1, context: dict = None):
         "params_version": params.get("version", 1),
         "mode": "paper_simulated",
         "status": "open",
+        "lessons_applied": [l.get("lesson", "")[:80] for l in relevant_lessons],
+        # Context snapshot at entry — used by correlation_analyzer and backtester
+        "context_score": context.get("score") if context else None,
+        "context_decision": context.get("decision") if context else None,
+        "context_components": {
+            k: v.get("score") for k, v in
+            (context.get("components", {}) if context else {}).items()
+        } if context else {},
+        "market_regime": context.get("vix_data", {}).get("regime") if context else None,
     }
 
     log_trade(trade_record)
