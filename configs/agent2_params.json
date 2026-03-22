@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "symbols": [
     "PLTR",
     "TSM",
@@ -19,7 +19,12 @@
   "hard_close_dte": 2,
   "min_premium": 0.3,
   "earnings_blackout_days": 14,
-  "simulated_shares_per_symbol": 100,
-  "capital_allocation": 30000,
-  "_note": "v1 baseline. Weekly scoring on Fridays. Self-improve adjusts tickers/delta/DTE."
+  "simulated_shares_per_symbol": 10,
+  "capital_allocation": 10000,
+  "_note": "v2: capital structure defined. $10k account, 10 shares/ticker, 1%/month target.",
+  "max_active_positions": 6,
+  "max_capital_deployed_pct": 80,
+  "target_monthly_yield_pct": 1.0,
+  "kill_threshold_yield_pct": 0.3,
+  "_capital_note": "Account: $10,000 | 10 simulated shares per ticker | 6 tickers max = ~$8,000 notional deployed | $2,000 cash reserve | Target: $100+/month premium = 1%+ monthly yield"
 }

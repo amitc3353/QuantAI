@@ -1,7 +1,7 @@
 {
   "position": {
     "max_position_pct": 5.0,
-    "max_loss_pct": 2.0,
+    "max_loss_pct": 5.0,
     "max_contracts": 10,
     "min_dte": 21,
     "min_open_interest": 100,
@@ -10,7 +10,7 @@
   "portfolio": {
     "max_delta": 0.3,
     "max_theta_daily": -50.0,
-    "max_open_positions": 8,
+    "max_open_positions": 4,
     "max_sector_concentration": 3,
     "max_daily_loss_pct": 3.0
   },
@@ -63,5 +63,13 @@
     "MSFT",
     "GOOGL"
   ],
-  "halted": false
+  "halted": false,
+  "_capital_structure": {
+    "total_paper_account": 20000,
+    "agent1_allocation": 10000,
+    "agent2_allocation": 10000,
+    "agent1_max_risk_per_trade": 500,
+    "agent2_shares_per_ticker": 10,
+    "last_updated": "2026-03-21"
+  }
 }
