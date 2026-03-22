@@ -435,10 +435,50 @@ class InfraAgent(commands.Cog):
             await channel.send(embed=ops_embed("Commit Result", f"```\n{result}\n```", discord.Color.green()))
 
         elif action["type"] == "deploy":
-            await channel.send(embed=ops_embed("Deploying...", "Pulling latest code...", discord.Color.blue()))
-            out, _ = await run_shell("git pull", cwd=PROJECT_DIR)
-            await channel.send(embed=ops_embed("Git Pull", f"```\n{out}\n```"))
-            await channel.send(embed=ops_embed("Next Step", "Code pulled. Run `deploy-trader` from Mac for full rebuild, or `/restart` for quick restart.", discord.Color.gold()))
+            service = action.get("service", "")
+            await channel.send(embed=ops_embed("🚀 Deploying...", "Step 1/3: Pulling latest code from GitHub...", discord.Color.blue()))
+
+            # Step 1: git pull
+            pull_out, pull_rc = await run_shell("git pull", cwd=PROJECT_DIR)
+            pull_status = "✅ Up to date" if pull_rc == 0 else f"❌ git pull failed (rc={pull_rc})"
+            await channel.send(embed=ops_embed("Git Pull", f"```\n{pull_out[:800]}\n```\n{pull_status}", discord.Color.green() if pull_rc == 0 else discord.Color.red()))
+
+            if pull_rc != 0:
+                await channel.send(embed=ops_embed("❌ Deploy Aborted", "git pull failed. Check GitHub token or network.", discord.Color.red()))
+                return
+
+            # Step 2: docker compose build
+            await channel.send(embed=ops_embed("Building...", "Step 2/3: Rebuilding containers (this takes ~60s)...", discord.Color.blue()))
+            build_cmd = f"docker compose build {service}" if service else "docker compose build"
+            build_out, build_rc = await run_shell(build_cmd, cwd=PROJECT_DIR, timeout=180)
+            build_status = "✅ Build complete" if build_rc == 0 else f"❌ Build failed (rc={build_rc})"
+            # Trim build output — it's very verbose
+            build_lines = build_out.strip().split("\n")
+            build_summary = "\n".join(build_lines[-15:]) if len(build_lines) > 15 else build_out
+            await channel.send(embed=ops_embed("Docker Build", f"```\n{build_summary[:800]}\n```\n{build_status}", discord.Color.green() if build_rc == 0 else discord.Color.red()))
+
+            if build_rc != 0:
+                await channel.send(embed=ops_embed("❌ Deploy Aborted", "docker build failed. Check logs for errors.", discord.Color.red()))
+                return
+
+            # Step 3: docker compose up
+            await channel.send(embed=ops_embed("Starting...", "Step 3/3: Restarting services...", discord.Color.blue()))
+            up_cmd = f"docker compose up -d {service}" if service else "docker compose up -d"
+            up_out, up_rc = await run_shell(up_cmd, cwd=PROJECT_DIR, timeout=60)
+            up_status = "✅ Services restarted" if up_rc == 0 else f"❌ docker up failed (rc={up_rc})"
+            await channel.send(embed=ops_embed("Docker Up", f"```\n{up_out[:600]}\n```\n{up_status}", discord.Color.green() if up_rc == 0 else discord.Color.red()))
+
+            # Final status
+            if up_rc == 0:
+                await asyncio.sleep(5)  # Give containers a moment to start
+                ps_out = await docker_ps()
+                await channel.send(embed=ops_embed(
+                    "✅ Deploy Complete",
+                    f"All steps succeeded. Running containers:\n```\n{ps_out[:600]}\n```",
+                    discord.Color.green()
+                ))
+            else:
+                await channel.send(embed=ops_embed("❌ Deploy Failed", "docker compose up failed. Use `/logs orchestrator` to diagnose.", discord.Color.red()))
 
         elif action["type"] == "restart":
             result = await docker_restart(action.get("service", ""))
