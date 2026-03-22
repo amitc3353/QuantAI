@@ -76,8 +76,8 @@ Dev agents build, enhance, integrate. Runs 24/7 without you.
 
 - [x] **Alpaca options chain integration** — pull live SPY options with Greeks, IV ✅ Mar 21, 2026
 - [x] **yfinance integration** — VIX level, IV rank, market context ✅ Mar 21, 2026
-- [ ] **Finnhub free tier** — news sentiment, economic calendar, earnings dates
-- [ ] **FRED API** — Fed funds rate, CPI, unemployment (free)
+- [ ] **Finnhub free tier** — news sentiment, economic calendar, earnings dates ⏳ building now
+- [ ] **FRED API** — Fed funds rate, CPI, unemployment (free) ⏳ building now
 - [x] Cache layer — store data locally, only fetch what's changed ✅ Mar 21, 2026
 - [x] Market context builder — assemble all data into a compact context for Claude ✅ Mar 21, 2026
 
@@ -258,7 +258,55 @@ P3 ALWAYS  Code quality, test coverage, documentation
 
 ---
 
+## Pre-Live Trading Checklist
+**These must all be ✅ before switching TRADING_MODE=live**
+
+### Data & Intelligence
+- [ ] context_builder.py live and scoring every trading day
+- [ ] macro_data.py: FRED + Finnhub feeding FOMC/CPI event calendar correctly
+- [ ] sentiment_data.py: put/call ratio + Fear & Greed + VIX term structure running
+- [ ] flow_detector.py: Vol/OI unusual activity detector validated on paper trades
+- [ ] Dark pool proxy (10x equity volume spike) generating alerts in #guard-log
+- [ ] All context scores logged and correlated against trade P&L for ≥ 4 weeks
+
+### Paid Flow Upgrades (before live, not before paper)
+- [ ] **Polygon.io** ($29/mo) — real options flow with Greeks on every contract,
+      dark pool prints for SPY/QQQ. Add when paper trading shows consistent results.
+      _Why: our Vol/OI proxy is free but 15-min delayed. Live trading deserves real-time._
+- [ ] **Unusual Whales** ($30/mo) — options sweep alerts in real time.
+      Add when transitioning to live. MCP server available → wire directly into Claude.
+      _Why: sweep detection pre-entry could prevent the worst live losses._
+- [ ] Both paid sources integrated into context_builder.py, replacing free proxies
+- [ ] Context score accuracy verified: score ≥ 60 days should show higher win rate than score < 60 days
+
+### Strategy Validation
+- [ ] Agent 1 paper win rate ≥ 60% over minimum 40 trades
+- [ ] Agent 1 context score correlation confirmed (≥60 score days outperform <60 days)
+- [ ] Agent 2 monthly yield ≥ 1% average over 8 weeks
+- [ ] No single week drawdown > $500 on paper in last 4 weeks
+- [ ] Guard engine tested: emergency stop, daily loss halt, weekly loss halt all verified
+- [ ] Self-improve engine has run ≥ 4 weeks and params have been tuned at least once
+
+### Infrastructure
+- [ ] VPS monitored: disk, memory, container restarts all healthy for 30+ days
+- [ ] GitHub PAT rotated (current one exposed in chat — rotate immediately)
+- [ ] Separate live Alpaca API keys created and stored in .env (never same as paper)
+- [ ] Live account funded with initial allocation ($5k max per blueprint)
+- [ ] Emergency stop tested end-to-end on paper before going live
+
+---
+
+
+---
+
 ## Completed This Session — Mar 21, 2026
+
+### Intelligence Layer — building now
+- [ ] `services/macro_data.py` — FRED + Finnhub macro/event data
+- [ ] `services/sentiment_data.py` — put/call ratio, Fear & Greed, VIX term structure
+- [ ] `services/flow_detector.py` — Vol/OI unusual activity (free Unusual Whales proxy) + dark pool volume proxy
+- [ ] `services/context_builder.py` — pre-trade score 0-100 gating all agent entries
+- [ ] `orchestrator/scheduler.py` — context score wired into Agent 1 + Agent 2 entry logic
 
 ### Data Layer (`services/market_data.py`)
 - [x] VIX fetch via yfinance with regime classification (13 zones: normal/elevated/high/danger/halt)
