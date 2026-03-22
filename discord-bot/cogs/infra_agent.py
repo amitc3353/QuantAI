@@ -292,44 +292,62 @@ class InfraAgent(commands.Cog):
         out = await docker_logs(service, lines)
         await interaction.followup.send(embed=ops_embed(f"Logs: {service or 'all'}", f"```\n{out}\n```"))
 
-    @app_commands.command(name="health", description="Full system health check")
+    @app_commands.command(name="health", description="Full system health — all checks including data, agents, configs")
     async def cmd_health(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        checks = {}
 
-        # Containers
-        ps_out = await docker_ps()
-        checks["containers"] = ps_out
+        # Run full health monitor
+        import sys
+        sys.path.insert(0, "/app/services")
+        sys.path.insert(0, "/app/project/services")
 
-        # Guard engine
+        report = None
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{GUARD_URL}/health", timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                    gdata = await resp.json()
-                    checks["guard"] = "healthy" if resp.status == 200 else "unhealthy"
-                    checks["halted"] = "YES" if gdata.get("halted") else "No"
-        except Exception:
-            checks["guard"] = "unreachable"
-            checks["halted"] = "unknown"
-
-        # System resources
-        mem, _ = await run_shell("free -h | head -2")
-        disk, _ = await run_shell("df -h / | tail -1")
-
-        # Git status
-        git_st = await git_status()
-
-        embed = ops_embed(
-            "System Health",
-            f"**Guard Engine**: {checks.get('guard')}\n"
-            f"**Halted**: {checks.get('halted')}\n\n"
-            f"**Containers**:\n```\n{checks.get('containers', '?')}\n```\n"
-            f"**Memory**:\n```\n{mem}\n```\n"
-            f"**Disk**:\n```\n{disk}\n```\n"
-            f"**Git**:\n```\n{git_st}\n```",
-            discord.Color.green(),
-        )
-        await interaction.followup.send(embed=embed)
+            from health_monitor import run_full_health_check, build_health_embeds
+            report = await run_full_health_check()
+            embeds = build_health_embeds(report)
+            # Add container/system info as extra embed
+            ps_out = await docker_ps()
+            mem, _ = await run_shell("free -h | head -2")
+            disk, _ = await run_shell("df -h / | tail -1")
+            git_st = await git_status()
+            system_embed = ops_embed(
+                "System Resources",
+                f"**Containers**:\n```\n{ps_out[:500]}\n```\n"
+                f"**Memory**:\n```\n{mem}\n```\n"
+                f"**Disk**:\n```\n{disk}\n```\n"
+                f"**Git**:\n```\n{git_st}\n```",
+                discord.Color.blue(),
+            )
+            await interaction.followup.send(embeds=embeds[:4])
+            await interaction.followup.send(embed=system_embed)
+        except ImportError:
+            # Fallback if health_monitor not accessible from discord-bot container
+            ps_out = await docker_ps()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{GUARD_URL}/health", timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                        gdata = await resp.json()
+                        guard_status = "healthy" if resp.status == 200 else "unhealthy"
+                        halted = "YES ⛔" if gdata.get("halted") else "No"
+            except Exception:
+                guard_status = "unreachable ❌"
+                halted = "unknown"
+            mem, _ = await run_shell("free -h | head -2")
+            disk, _ = await run_shell("df -h / | tail -1")
+            git_st = await git_status()
+            embed = ops_embed(
+                "System Health (Basic)",
+                f"**Guard Engine**: {guard_status}\n"
+                f"**Halted**: {halted}\n\n"
+                f"**Containers**:\n```\n{ps_out[:400]}\n```\n"
+                f"**Memory**:\n```\n{mem}\n```\n"
+                f"**Disk**:\n```\n{disk}\n```\n"
+                f"**Git**:\n```\n{git_st}\n```\n"
+                f"\n_Run full check from orchestrator for data/agent/config status_",
+                discord.Color.orange(),
+            )
+            await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="restart", description="Restart a service (requires approval)")
     @app_commands.describe(service="Service name or 'all'")

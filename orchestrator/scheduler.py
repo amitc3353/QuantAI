@@ -527,15 +527,38 @@ async def run_eod_scoring():
 # Health check
 # ---------------------------------------------------------------------------
 async def health_check():
-    checks = {}
+    """Full health check using health_monitor service."""
+    import sys
+    sys.path.insert(0, "/app/services")
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{GUARD_URL}/health", timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                checks["guard_engine"] = "healthy" if resp.status == 200 else "unhealthy"
-    except Exception:
-        checks["guard_engine"] = "unreachable"
-    checks.update({"orchestrator": "healthy", "mode": TRADING_MODE, "halted": SYSTEM_STATE["halted"]})
-    return checks
+        from health_monitor import run_full_health_check, build_health_embeds, should_alert
+        report = await run_full_health_check()
+
+        # Only post to Discord if critical or first run of the hour
+        now = datetime.now(timezone.utc)
+        is_first_of_hour = now.minute < 5
+        is_critical = report.get("overall") == "critical"
+
+        if is_critical and should_alert(report):
+            embeds = build_health_embeds(report)
+            await post_to_discord(WEBHOOK_SYSTEM, embeds)
+            log.warning(f"CRITICAL health alert posted to Discord: {report['issue_count']} issue(s)")
+        elif is_first_of_hour and report.get("overall") != "healthy":
+            embeds = build_health_embeds(report)
+            await post_to_discord(WEBHOOK_SYSTEM, embeds)
+
+        return report
+    except Exception as e:
+        log.error(f"Health check failed: {e}", exc_info=True)
+        # Fallback to simple check
+        checks = {}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{GUARD_URL}/health", timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    checks["guard_engine"] = "healthy" if resp.status == 200 else "unhealthy"
+        except Exception:
+            checks["guard_engine"] = "unreachable"
+        return {"overall": "unknown", "checks": checks, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +854,19 @@ async def main():
     log.info(f"Scheduler: {len(scheduler.get_jobs())} jobs")
     for job in scheduler.get_jobs():
         log.info(f"  → {job.name}: {job.trigger}")
+
+    # Run startup health check and post to Discord
+    log.info("Running startup health check...")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from health_monitor import run_full_health_check, build_startup_embed
+        startup_report = await run_full_health_check()
+        startup_embed = build_startup_embed(startup_report)
+        await post_to_discord(WEBHOOK_SYSTEM, [startup_embed])
+        log.info(f"Startup health: {startup_report['overall']} ({startup_report['issue_count']} issues)")
+    except Exception as e:
+        log.error(f"Startup health check failed: {e}")
 
     if os.getenv("RUN_BRIEF_NOW", "").lower() == "true":
         log.info("RUN_BRIEF_NOW — running immediate brief with auto-proposals...")

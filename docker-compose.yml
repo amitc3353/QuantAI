@@ -61,11 +61,18 @@ services:
     volumes:
       - ./data:/app/data
       - ./configs:/app/configs:ro
+      - ./services:/app/services:ro
     depends_on:
       - discord-bot
       - guard-engine
     networks:
       - trader-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import scheduler; print('ok')", "||", "exit", "1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ============================================
   # Alpaca MCP Server — Broker bridge
