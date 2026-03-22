@@ -179,25 +179,114 @@ async def run_entry(entry_number: int = 1, context: dict = None):
     params = load_params()
     today = date.today().isoformat()
 
+    import os as _os
     log.info(f"=== Agent 1: Iron Condor Entry {entry_number} ===")
 
-    # Load relevant lessons from memory — the journal teaches the agent
+    # Load lessons and ask Claude (Haiku) whether to proceed given past experience
     relevant_lessons = []
+    journal_veto = None  # Can be set to "skip" or "caution" with a reason
     try:
         import sys
         sys.path.insert(0, "/app/discord-bot")
-        from memory import search_lessons, get_lessons
-        # Search for lessons relevant to current conditions
-        vix_lessons = search_lessons("vix") if True else []
+        from memory import search_lessons, get_recent_trades
+        from pathlib import Path as _Path
+        import aiohttp as _aiohttp
+
+        # Load lessons relevant to current conditions
+        vix_val = vix_data.get("vix", 20) if "vix_data" in dir() else 20
+        regime = vix_data.get("regime", "normal") if "vix_data" in dir() else "normal"
+
         condor_lessons = search_lessons("condor")
+        vix_lessons = search_lessons("vix")
         credit_lessons = search_lessons("credit")
-        relevant_lessons = (vix_lessons + condor_lessons + credit_lessons)[-5:]
-        if relevant_lessons:
-            log.info(f"Loaded {len(relevant_lessons)} relevant lessons for entry decision")
-            for l in relevant_lessons:
-                log.debug(f"  Lesson: {l.get('lesson', '')[:80]}")
+        stop_lessons = search_lessons("stop loss")
+        relevant_lessons = (condor_lessons + vix_lessons + credit_lessons + stop_lessons)[-8:]
+
+        # Only run the journal check if we have meaningful lessons (3+)
+        if len(relevant_lessons) >= 3:
+            lesson_text = "\n".join(f"- {l.get('lesson','')}" for l in relevant_lessons)
+
+            # Get recent trade outcomes for pattern context
+            recent = get_recent_trades(10)
+            recent_outcomes = []
+            for t in recent[-5:]:
+                sym = t.get("symbol","?")
+                pnl = t.get("pnl", t.get("pnl_per_contract", 0))
+                reason = t.get("close_reason","?")
+                recent_outcomes.append(f"{sym}: {'win' if pnl and pnl>0 else 'loss'} ({reason})")
+
+            anthropic_key = _os.getenv("ANTHROPIC_API_KEY", "")
+            haiku_model = _os.getenv("CLAUDE_HAIKU_MODEL", "claude-haiku-4-5-20251001")
+
+            if anthropic_key:
+                prompt = f"""You are reviewing an iron condor entry decision based on past trading lessons.
+
+CURRENT CONDITIONS:
+- Symbol: {params.get('primary_symbol','SPY')}
+- VIX: {vix_val:.1f} ({regime})
+- Context score: {context.get('score','?') if context else 'unknown'}/100
+- Wing width: ${params.get('wing_width',5):.0f} | Short delta: {params.get('short_delta',0.10):.2f}
+
+LESSONS LEARNED FROM PAST TRADES:
+{lesson_text}
+
+RECENT OUTCOMES (last 5 trades):
+{chr(10).join(recent_outcomes) if recent_outcomes else 'No recent trades yet'}
+
+Based ONLY on these lessons and current conditions, reply with ONE of:
+- "proceed" — conditions match past successful setups
+- "caution: [one sentence reason]" — proceed but something warrants care
+- "skip: [one sentence reason]" — a lesson clearly contradicts this entry
+
+Be decisive. If lessons are not clearly relevant, say "proceed".
+Reply with only the verdict, nothing else."""
+
+                async with _aiohttp.ClientSession() as _sess:
+                    async with _sess.post(
+                        "https://api.anthropic.com/v1/messages",
+                        json={"model": haiku_model, "max_tokens": 60,
+                              "messages": [{"role": "user", "content": prompt}]},
+                        headers={"Content-Type": "application/json",
+                                 "x-api-key": anthropic_key,
+                                 "anthropic-version": "2023-06-01"},
+                        timeout=_aiohttp.ClientTimeout(total=8),
+                    ) as _resp:
+                        if _resp.status == 200:
+                            _data = await _resp.json()
+                            verdict = "".join(
+                                b["text"] for b in _data.get("content", [])
+                                if b.get("type") == "text"
+                            ).strip().lower()
+
+                            if verdict.startswith("skip"):
+                                journal_veto = {"action": "skip", "reason": verdict}
+                                log.info(f"Journal veto: {verdict}")
+                            elif verdict.startswith("caution"):
+                                journal_veto = {"action": "caution", "reason": verdict}
+                                log.info(f"Journal caution: {verdict}")
+                            else:
+                                log.info(f"Journal check: proceed ({len(relevant_lessons)} lessons reviewed)")
+
     except Exception as le:
-        log.debug(f"Could not load lessons: {le}")
+        log.debug(f"Journal check failed (non-blocking): {le}")
+
+    # Act on journal veto if set
+    if journal_veto and journal_veto["action"] == "skip":
+        reason = journal_veto["reason"]
+        log.info(f"SKIPPED by journal: {reason}")
+        log_trade({"event": "skip", "reason": "journal_veto", "details": reason, "date": today})
+        await post_discord(WEBHOOK_PROPOSALS, [make_embed(
+            "📓 Agent 1 Skipped: Journal Veto",
+            f"Past lessons say skip this entry.\n**Reason:** {reason}",
+            color=0xF39C12,
+            footer="QuantAI Journal · learning from history"
+        )])
+        return
+
+    if journal_veto and journal_veto["action"] == "caution":
+        # Caution: widen wings by $2 as extra protection
+        params["wing_width"] = params.get("wing_width", 5.0) + 2.0
+        log.info(f"Journal caution applied: wing_width widened to {params['wing_width']}")
 
     # Apply context-adjusted parameters if context was provided
     if context and context.get("agent1_params"):
@@ -568,11 +657,26 @@ TRADES:
 SUMMARY: {len(entries)} entries, {len(exits)} exits, {len(wins)} wins, total P&L: ${total_pnl:.2f}
 
 Score 0-100. Output ONLY valid JSON, no markdown:
-{{"score": 0-100, "summary": "brief", "wins": ["what worked"], "losses": ["what didn't"],
-"lessons": ["actionable lessons"], "param_suggestions": [{{"param": "name", "current": val, "suggested": val, "reason": "why"}}]}}
+{{
+  "score": 0-100,
+  "summary": "2 sentence summary",
+  "wins": ["what worked"],
+  "losses": ["what didn't work"],
+  "lessons": [
+    "LESSON: [specific searchable lesson]. WHEN: [exact condition]. ACTION: [what to do].",
+    "Example: LESSON: Stop loss hit when VIX spiked mid-day. WHEN: VIX rises >15% intraday after entry. ACTION: Close position proactively, do not wait for 2x stop."
+  ],
+  "param_suggestions": [{{"param": "name", "current": val, "suggested": val, "reason": "why"}}]
+}}
 
-param_suggestions should ONLY suggest changes if the data clearly supports it (3+ trades minimum).
-Be conservative — suggest nothing if uncertain."""
+LESSON FORMAT RULES (critical for the system to learn):
+- Each lesson must be searchable by keyword (include: vix, condor, credit, stop, delta, etc.)
+- Each lesson must have a WHEN condition (not vague — specific VIX levels, times, conditions)
+- Each lesson must have an ACTION (what the agent should do differently)
+- Bad lesson: "Be careful when VIX is high"
+- Good lesson: "LESSON: Iron condor stopped out when VIX spiked >25 after 11 AM. WHEN: VIX >22 at second entry time (11:30 AM). ACTION: Skip entry 2 when VIX elevated at 11:25 AM check."
+- Only write lessons supported by today's actual data
+- param_suggestions: only if 3+ trades support the change"""
 
     result = await call_claude_fn(prompt, model="haiku")
 

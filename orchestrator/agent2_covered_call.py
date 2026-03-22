@@ -218,20 +218,88 @@ async def run_weekly_scan(context: dict = None, skip_symbols: list = None):
 
     log.info(f"=== Agent 2: Weekly Covered Call Scan ===")
 
-    # Load relevant lessons before the weekly scan
+    # Journal consultation — ask Claude whether macro conditions match past successes
+    import os as _os
     try:
         import sys
         sys.path.insert(0, "/app/discord-bot")
-        from memory import search_lessons
+        from memory import search_lessons, get_recent_trades
+        import aiohttp as _aiohttp
+
         cc_lessons = search_lessons("covered call")
         iv_lessons = search_lessons("iv rank")
-        weekly_lessons = (cc_lessons + iv_lessons)[-5:]
-        if weekly_lessons:
-            log.info(f"Weekly scan: loaded {len(weekly_lessons)} lessons")
-            for l in weekly_lessons:
-                log.info(f"  Lesson: {l.get('lesson', '')[:80]}")
+        roll_lessons = search_lessons("roll")
+        earnings_lessons = search_lessons("earnings")
+        weekly_lessons = (cc_lessons + iv_lessons + roll_lessons + earnings_lessons)[-8:]
+
+        if len(weekly_lessons) >= 3:
+            lesson_text = "\n".join(f"- {l.get('lesson','')}" for l in weekly_lessons)
+            recent = get_recent_trades(10)
+            recent_cc = [t for t in recent if "covered" in t.get("strategy","").lower()]
+            recent_text = "\n".join(
+                f"{t.get('symbol','?')}: {'win' if (t.get('pnl',0) or 0)>0 else 'loss'} "
+                f"(delta={t.get('delta','?')}, yield={t.get('monthly_yield_pct','?')}%)"
+                for t in recent_cc[-5:]
+            ) or "No recent covered calls"
+
+            anthropic_key = _os.getenv("ANTHROPIC_API_KEY","")
+            haiku_model = _os.getenv("CLAUDE_HAIKU_MODEL","claude-haiku-4-5-20251001")
+
+            if anthropic_key:
+                prompt = f"""Reviewing weekly covered call scan based on past lessons.
+
+LESSONS FROM PAST TRADES:
+{lesson_text}
+
+RECENT COVERED CALL OUTCOMES:
+{recent_text}
+
+Reply with ONE of:
+- "proceed" — conditions look fine
+- "caution: [one sentence]" — something to watch  
+- "skip_symbols: TICKER1,TICKER2: [reason]" — specific tickers to avoid this week
+
+Be concise. Only flag if a lesson clearly applies."""
+
+                async with _aiohttp.ClientSession() as _sess:
+                    async with _sess.post(
+                        "https://api.anthropic.com/v1/messages",
+                        json={"model": haiku_model, "max_tokens": 80,
+                              "messages": [{"role": "user", "content": prompt}]},
+                        headers={"Content-Type": "application/json",
+                                 "x-api-key": anthropic_key,
+                                 "anthropic-version": "2023-06-01"},
+                        timeout=_aiohttp.ClientTimeout(total=8),
+                    ) as _resp:
+                        if _resp.status == 200:
+                            _data = await _resp.json()
+                            verdict = "".join(
+                                b["text"] for b in _data.get("content",[])
+                                if b.get("type")=="text"
+                            ).strip().lower()
+
+                            if verdict.startswith("skip_symbols:"):
+                                # Parse: "skip_symbols: PLTR,AMD: earnings too close"
+                                parts = verdict.replace("skip_symbols:","").strip()
+                                sym_part = parts.split(":")[0].strip()
+                                reason_part = parts.split(":",1)[1].strip() if ":" in parts else "journal veto"
+                                extra_skips = [s.strip().upper() for s in sym_part.split(",")]
+                                if skip_symbols is None:
+                                    skip_symbols = extra_skips
+                                else:
+                                    skip_symbols = list(set(skip_symbols + extra_skips))
+                                log.info(f"Journal vetoed symbols: {extra_skips} — {reason_part}")
+                            elif verdict.startswith("caution"):
+                                log.info(f"Journal caution for CC scan: {verdict}")
+                                await post_discord(WEBHOOK_SYSTEM, [make_embed(
+                                    "📓 Agent 2: Journal Caution",
+                                    verdict, color=0xF39C12,
+                                    footer="QuantAI Journal"
+                                )])
+                            else:
+                                log.info(f"Journal check: proceed ({len(weekly_lessons)} lessons reviewed)")
     except Exception as le:
-        log.debug(f"Could not load lessons: {le}")
+        log.debug(f"Agent 2 journal check failed (non-blocking): {le}")
     log.info(f"Active positions: {active_symbols}")
 
     new_trades = []
