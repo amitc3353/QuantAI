@@ -488,24 +488,41 @@ class InfraAgent(commands.Cog):
                 await channel.send(embed=ops_embed("❌ Deploy Aborted", "docker build failed. Check logs for errors.", discord.Color.red()))
                 return
 
-            # Step 3: docker compose up
+            # Step 3: restart services (excluding discord-bot to avoid self-deadlock)
             await channel.send(embed=ops_embed("Starting...", "Step 3/3: Restarting services...", discord.Color.blue()))
-            up_cmd = f"docker compose -p quantai up -d --remove-orphans {service}" if service else "docker compose -p quantai up -d --remove-orphans"
-            up_out, up_rc = await run_shell(up_cmd, cwd=PROJECT_DIR, timeout=120)
-            up_status = "✅ Services restarted" if up_rc == 0 else f"❌ docker up failed (rc={up_rc})"
-            await channel.send(embed=ops_embed("Docker Up", f"```\n{up_out[:600]}\n```\n{up_status}", discord.Color.green() if up_rc == 0 else discord.Color.red()))
 
-            # Final status
-            if up_rc == 0:
-                await asyncio.sleep(5)  # Give containers a moment to start
-                ps_out = await docker_ps()
-                await channel.send(embed=ops_embed(
-                    "✅ Deploy Complete",
-                    f"All steps succeeded. Running containers:\n```\n{ps_out[:600]}\n```",
-                    discord.Color.green()
-                ))
+            # Restart each service individually using docker restart
+            # Never restart discord-bot from within itself — it kills the connection
+            if service and service != "discord-bot":
+                containers = [f"trader-{service}"]
             else:
-                await channel.send(embed=ops_embed("❌ Deploy Failed", "docker compose up failed. Use `/logs orchestrator` to diagnose.", discord.Color.red()))
+                containers = ["trader-guards", "trader-orchestrator", "trader-alpaca"]
+
+            restart_lines = []
+            all_ok = True
+            for container in containers:
+                r_out, r_rc = await run_shell(f"docker restart {container}", cwd="/", timeout=30)
+                status = "✅" if r_rc == 0 else "❌"
+                restart_lines.append(f"{status} {container}")
+                if r_rc != 0:
+                    all_ok = False
+
+            up_status = "\n".join(restart_lines)
+            await channel.send(embed=ops_embed(
+                "Services Restarted",
+                f"```\n{up_status}\n```",
+                discord.Color.green() if all_ok else discord.Color.orange()
+            ))
+
+            # discord-bot restarts itself last via a delayed shell command
+            await channel.send(embed=ops_embed(
+                "✅ Deploy Complete",
+                "All services restarted.\n⚠️ discord-bot will self-restart in 3 seconds.",
+                discord.Color.green()
+            ))
+            await asyncio.sleep(1)
+            # Fire-and-forget restart of self — connection will drop briefly then recover
+            asyncio.create_task(run_shell("sleep 3 && docker restart trader-discord", cwd="/", timeout=15))
 
         elif action["type"] == "restart":
             result = await docker_restart(action.get("service", ""))
