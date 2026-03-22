@@ -128,7 +128,16 @@ async def git_commit_and_push(message):
     results.append(f"commit: {out.strip()}")
     if rc != 0:
         return "\n".join(results) + "\nCommit failed — nothing to commit?"
-    out, rc = await run_shell("git push")
+    import os as _os
+    _token = _os.getenv("GITHUB_TOKEN", "")
+    _repo = _os.getenv("GITHUB_REPO", "amitc3353/QuantAI")
+    if _token:
+        push_cmd = f"git push https://{_token}@github.com/{_repo}.git main"
+    else:
+        push_cmd = "git push"
+    out, rc = await run_shell(push_cmd)
+    if _token:
+        out = out.replace(_token, "***")
     results.append(f"push: {out.strip()}")
     return "\n".join(results)
 
@@ -436,6 +445,19 @@ class InfraAgent(commands.Cog):
 
         elif action["type"] == "deploy":
             service = action.get("service", "")
+
+            # Pre-flight: check GITHUB_TOKEN is configured
+            import os as _os
+            if not _os.getenv("GITHUB_TOKEN", ""):
+                await channel.send(embed=ops_embed(
+                    "❌ Deploy Failed — Missing GITHUB_TOKEN",
+                    "Add `GITHUB_TOKEN=your_pat` to `/home/trader/QuantAI/.env` on the VPS, then restart the bot.\n"
+                    "Generate a PAT at: github.com → Settings → Developer Settings → Tokens\n"
+                    "Needs `repo` scope (read + write).",
+                    discord.Color.red()
+                ))
+                return
+
             await channel.send(embed=ops_embed("🚀 Deploying...", "Step 1/3: Pulling latest code from GitHub...", discord.Color.blue()))
 
             # Step 1: git pull
@@ -450,7 +472,8 @@ class InfraAgent(commands.Cog):
             # Step 2: docker compose build
             await channel.send(embed=ops_embed("Building...", "Step 2/3: Rebuilding containers (this takes ~60s)...", discord.Color.blue()))
             build_cmd = f"docker compose build {service}" if service else "docker compose build"
-            build_out, build_rc = await run_shell(build_cmd, cwd=PROJECT_DIR, timeout=180)
+            # docker compose needs to run from project root, not /app/project inside container
+            build_out, build_rc = await run_shell(build_cmd, cwd=PROJECT_DIR, timeout=300)
             build_status = "✅ Build complete" if build_rc == 0 else f"❌ Build failed (rc={build_rc})"
             # Trim build output — it's very verbose
             build_lines = build_out.strip().split("\n")
