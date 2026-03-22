@@ -12,7 +12,15 @@
     "max_theta_daily": -50.0,
     "max_open_positions": 4,
     "max_sector_concentration": 3,
-    "max_daily_loss_pct": 3.0
+    "max_daily_loss_pct": 3.0,
+    "total_account_size": 20000,
+    "max_total_at_risk_pct": 10.0,
+    "max_total_at_risk_dollars": 2000,
+    "max_daily_loss_total_pct": 5.0,
+    "max_daily_loss_total_dollars": 1000,
+    "max_weekly_loss_pct": 10.0,
+    "max_weekly_loss_dollars": 2000,
+    "max_drawdown_pct": 20.0
   },
   "timing": {
     "no_trade_open_minutes": 15,
@@ -70,6 +78,10 @@
     "agent2_allocation": 10000,
     "agent1_max_risk_per_trade": 500,
     "agent2_shares_per_ticker": 10,
-    "last_updated": "2026-03-21"
+    "last_updated": "2026-03-21",
+    "max_total_at_risk": 2000,
+    "max_daily_loss_all_agents": 1000,
+    "max_weekly_loss": 2000,
+    "max_drawdown_before_pause": 4000
   }
 }
