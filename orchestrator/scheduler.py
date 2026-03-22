@@ -591,6 +591,31 @@ async def scheduled_weekly_review():
     except Exception as e:
         log.error(f"Weekly review failed: {e}", exc_info=True)
 
+    # CTO Report — runs after weekly review, same Friday slot
+    log.info("=== CTO Report ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from cto_report import generate_cto_report, build_cto_embeds
+        report = await generate_cto_report()
+        embeds = build_cto_embeds(report)
+
+        # Convert dicts to discord-compatible format for webhook
+        for embed in embeds:
+            await post_to_discord(WEBHOOK_SYSTEM, [embed])
+
+        readiness = report.get("monday_readiness", "UNKNOWN")
+        score = report.get("reliability_score", "?")
+        log.info(f"CTO report posted: reliability={score}/100 monday={readiness}")
+    except Exception as e:
+        log.error(f"CTO report failed: {e}", exc_info=True)
+        await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+            "⚠️ CTO Report Failed",
+            f"Weekly CTO analysis could not run: {str(e)[:200]}",
+            color=0xF39C12,
+            footer="QuantAI CTO Report"
+        )])
+
     # Run correlation analysis — does context score predict outcomes?
     log.info("=== Correlation Analysis ===")
     try:
