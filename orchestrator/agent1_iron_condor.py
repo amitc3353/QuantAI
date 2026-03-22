@@ -169,7 +169,7 @@ _today_trades = []
 _active_positions = []  # {symbol, entry_credit, current_value, leg_details}
 
 
-async def run_entry(entry_number: int = 1):
+async def run_entry(entry_number: int = 1, context: dict = None):
     """
     Main entry function. Called by scheduler at 9:50 AM (entry 1) and 11:30 AM (entry 2).
     Fully autonomous — executes without human approval in paper mode.
@@ -180,6 +180,16 @@ async def run_entry(entry_number: int = 1):
     today = date.today().isoformat()
 
     log.info(f"=== Agent 1: Iron Condor Entry {entry_number} ===")
+
+    # Apply context-adjusted parameters if context was provided
+    if context and context.get("agent1_params"):
+        ctx_params = context["agent1_params"]
+        if ctx_params.get("wing_width"):
+            params["wing_width"] = ctx_params["wing_width"]
+            log.info(f"Context adjusted wing_width: {params['wing_width']} (context score: {context.get('score')})")
+        if ctx_params.get("short_delta"):
+            params["short_delta"] = ctx_params["short_delta"]
+            log.info(f"Context adjusted short_delta: {params['short_delta']}")
 
     # ── Pre-flight checks ──────────────────────────────────────────────────
 

@@ -4,3 +4,4 @@ python-dotenv>=1.0.0
 tzdata
 yfinance>=0.2.40
 alpaca-py>=0.30.0
+finnhub-python>=2.4.0

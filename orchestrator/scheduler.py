@@ -201,6 +201,16 @@ async def run_morning_brief():
     symbols = load_watchlist()
     log.info(f"=== Morning Brief: {', '.join(symbols)} ===")
 
+    # Build morning context — enriches brief with all intelligence signals
+    import sys
+    sys.path.insert(0, "/app/services")
+    morning_context = None
+    try:
+        from context_builder import build_context, build_context_embed
+        morning_context = await build_context("SPY")
+        log.info(f"Morning context: {morning_context['score']}/100 — {morning_context['decision_label']}")
+    except Exception as ctx_err:
+        log.warning(f"Morning context build failed: {ctx_err}")
     # Fetch market data
     quotes = await fetch_all_quotes(symbols[:10])
     market_data = []
@@ -254,6 +264,15 @@ Rules for proposed_trade:
     # Post brief to #research
     if brief_data and isinstance(brief_data, list):
         await post_brief_embeds(brief_data)
+
+        # Post context score card to #research
+        if morning_context:
+            try:
+                from context_builder import build_context_embed
+                context_embed = build_context_embed(morning_context)
+                await post_to_discord(WEBHOOK_RESEARCH, [context_embed])
+            except Exception as ce:
+                log.warning(f"Context embed post failed: {ce}")
         # Auto-propose high-conviction trades
         await auto_propose_trades(brief_data, quotes)
     else:
@@ -566,8 +585,24 @@ async def scheduled_agent1_entry1():
     try:
         import sys
         sys.path.insert(0, "/app/services")
+        sys.path.insert(0, "/app/services")
+        from context_builder import build_context
         from agent1_iron_condor import run_entry
-        await run_entry(entry_number=1)
+
+        context = await build_context("SPY")
+        log.info(f"Agent 1 Entry 1 context: {context['score']}/100 — {context['decision_label']}")
+
+        if context.get("decision") == "skip" or context.get("hard_skip"):
+            reason = context.get("hard_skip_reason") or context.get("summary", "Context score too low")[:200]
+            log.info(f"Agent 1 Entry 1 SKIPPED: {reason}")
+            await post_to_discord(WEBHOOK_PROPOSALS, [make_embed(
+                "⏸️ Agent 1: Entry 1 Skipped",
+                f"Context: **{context['score']}/100 — {context['decision_label']}**\n{reason}",
+                color=0xF39C12, footer="QuantAI Context Engine"
+            )])
+            return
+
+        await run_entry(entry_number=1, context=context)
     except Exception as e:
         log.error(f"Agent 1 entry 1 failed: {e}", exc_info=True)
         SYSTEM_STATE["errors_today"] += 1
@@ -585,8 +620,16 @@ async def scheduled_agent1_entry2():
     try:
         import sys
         sys.path.insert(0, "/app/services")
+        sys.path.insert(0, "/app/services")
+        from context_builder import build_context
         from agent1_iron_condor import run_entry
-        await run_entry(entry_number=2)
+
+        context = await build_context("SPY")
+        if context.get("decision") == "skip" or context.get("hard_skip"):
+            log.info(f"Agent 1 Entry 2 SKIPPED: {context.get('decision_label')}")
+            return
+
+        await run_entry(entry_number=2, context=context)
     except Exception as e:
         log.error(f"Agent 1 entry 2 failed: {e}", exc_info=True)
 
@@ -652,8 +695,39 @@ async def scheduled_agent2_weekly():
     try:
         import sys
         sys.path.insert(0, "/app/services")
+        sys.path.insert(0, "/app/services")
+        from context_builder import build_context
         from agent2_covered_call import run_weekly_scan
-        new_trades = await run_weekly_scan()
+        from flow_detector import scan_watchlist_flow
+        import concurrent.futures
+
+        context = await build_context("SPY")
+        log.info(f"Agent 2 weekly context: {context['score']}/100 — {context['decision_label']}")
+
+        if context.get("decision") == "skip" or context.get("hard_skip"):
+            reason = context.get("hard_skip_reason") or "Context score too low"
+            log.info(f"Agent 2 weekly SKIPPED: {reason}")
+            await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+                "⏸️ Agent 2: Weekly Scan Skipped",
+                f"Context: **{context['score']}/100**\n{reason}",
+                color=0xF39C12, footer="QuantAI Context Engine"
+            )])
+            return
+
+        watchlist = ["PLTR", "TSM", "MU", "AMD", "AVGO", "ASML"]
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            flow_scan = await loop.run_in_executor(pool, scan_watchlist_flow, watchlist)
+        flagged = flow_scan.get("flagged_symbols", [])
+        if flagged:
+            log.warning(f"Dark pool signals on: {flagged}")
+            await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+                "⚠️ Agent 2: Dark Pool Signals",
+                f"Unusual volume detected: **{', '.join(flagged)}**\nThese symbols will be skipped.",
+                color=0xF39C12, footer="QuantAI Flow Detector"
+            )])
+
+        new_trades = await run_weekly_scan(context=context, skip_symbols=flagged)
         if new_trades:
             await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
                 f"\U0001f7e3 Agent 2: {len(new_trades)} Covered Call(s) Entered",

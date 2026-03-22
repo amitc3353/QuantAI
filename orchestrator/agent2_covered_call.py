@@ -194,7 +194,7 @@ def _is_near_earnings(symbol: str, blackout_days: int) -> bool:
 # WEEKLY SCAN — Runs Monday 9:50 AM
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def run_weekly_scan():
+async def run_weekly_scan(context: dict = None, skip_symbols: list = None):
     """
     Scan all 6 symbols. For each without an active covered call,
     evaluate and potentially sell a new covered call.
@@ -217,12 +217,30 @@ async def run_weekly_scan():
 
     new_trades = []
 
+    if skip_symbols is None:
+        skip_symbols = []
+
+    # Apply context-adjusted parameters
+    if context and context.get("agent2_params"):
+        ctx_params = context["agent2_params"]
+        if ctx_params.get("min_delta"):
+            params["target_delta"] = max(params["target_delta"], ctx_params["min_delta"])
+            log.info(f"Context adjusted min delta: {params['target_delta']} (context score: {context.get('score')})")
+        if ctx_params.get("skip_symbols"):
+            skip_symbols = list(set(skip_symbols + ctx_params["skip_symbols"]))
+
     for symbol in params["symbols"]:
         if symbol in active_symbols:
             log.info(f"{symbol}: already has active covered call, skipping")
             continue
 
         log.info(f"Scanning {symbol}...")
+
+        # Dark pool / flow skip
+        if symbol in skip_symbols:
+            log.info(f"{symbol}: skipped due to unusual flow/dark pool activity")
+            log_trade({"event": "skip", "reason": "flow_detector_flag", "symbol": symbol, "date": today})
+            continue
 
         # Earnings blackout
         if _is_near_earnings(symbol, params["earnings_blackout_days"]):
