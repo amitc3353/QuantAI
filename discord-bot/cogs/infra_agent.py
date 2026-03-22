@@ -314,8 +314,22 @@ class InfraAgent(commands.Cog):
         try:
             from health_monitor import run_full_health_check, build_health_embeds
             report = await run_full_health_check()
-            embeds = build_health_embeds(report)
-            # Add container/system info as extra embed
+            raw_embeds = build_health_embeds(report)
+            # Convert dicts to discord.Embed objects
+            discord_embeds = []
+            for e in raw_embeds[:4]:
+                em = discord.Embed(
+                    title=e.get("title", "Health"),
+                    description=e.get("description", ""),
+                    color=e.get("color", 0x3498DB),
+                )
+                for f in e.get("fields", []):
+                    em.add_field(name=f["name"], value=f["value"], inline=f.get("inline", True))
+                if e.get("footer"):
+                    em.set_footer(text=e["footer"].get("text", ""))
+                discord_embeds.append(em)
+
+            # Add container/system info
             ps_out = await docker_ps()
             mem, _ = await run_shell("free -h | head -2")
             disk, _ = await run_shell("df -h / | tail -1")
@@ -328,7 +342,7 @@ class InfraAgent(commands.Cog):
                 f"**Git**:\n```\n{git_st}\n```",
                 discord.Color.blue(),
             )
-            await interaction.followup.send(embeds=embeds[:4])
+            await interaction.followup.send(embeds=discord_embeds)
             await interaction.followup.send(embed=system_embed)
         except ImportError:
             # Fallback if health_monitor not accessible from discord-bot container
