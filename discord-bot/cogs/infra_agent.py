@@ -460,10 +460,14 @@ class InfraAgent(commands.Cog):
 
             await channel.send(embed=ops_embed("🚀 Deploying...", "Step 1/3: Pulling latest code from GitHub...", discord.Color.blue()))
 
-            # Step 1: git pull
-            pull_out, pull_rc = await run_shell("git pull", cwd=PROJECT_DIR)
+            # Step 1: git pull — use GITHUB_TOKEN for auth (private repo)
+            github_token = _os.getenv("GITHUB_TOKEN", "")
+            github_repo = _os.getenv("GITHUB_REPO", "amitc3353/QuantAI")
+            pull_cmd = f"git pull https://{github_token}@github.com/{github_repo}.git main"
+            pull_out, pull_rc = await run_shell(pull_cmd, cwd=PROJECT_DIR)
+            pull_out_safe = pull_out.replace(github_token, "***") if github_token else pull_out
             pull_status = "✅ Up to date" if pull_rc == 0 else f"❌ git pull failed (rc={pull_rc})"
-            await channel.send(embed=ops_embed("Git Pull", f"```\n{pull_out[:800]}\n```\n{pull_status}", discord.Color.green() if pull_rc == 0 else discord.Color.red()))
+            await channel.send(embed=ops_embed("Git Pull", f"```\n{pull_out_safe[:800]}\n```\n{pull_status}", discord.Color.green() if pull_rc == 0 else discord.Color.red()))
 
             if pull_rc != 0:
                 await channel.send(embed=ops_embed("❌ Deploy Aborted", "git pull failed. Check GitHub token or network.", discord.Color.red()))
