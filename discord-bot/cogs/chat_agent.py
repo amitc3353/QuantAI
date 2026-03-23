@@ -413,13 +413,7 @@ class ChatAgent(commands.Cog):
         record = log_lesson(lesson, source="manual")
         await ctx.send(f"✅ Lesson saved: *{lesson[:100]}*")
 
-    @commands.hybrid_command(name="lessons", description="Show lessons learned")
-    async def cmd_lessons(self, ctx: commands.Context, query: str = ""):
-        await handle_lessons(ctx.channel, query)
-
-    @commands.hybrid_command(name="stats", description="Show trade statistics")
-    async def cmd_stats(self, ctx: commands.Context):
-        await handle_stats(ctx.channel)
+    # lessons and stats commands are in trading.py
 
     @commands.hybrid_command(name="decide", description="Log a decision with reasoning")
     async def cmd_decide(
