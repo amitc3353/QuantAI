@@ -551,5 +551,50 @@ class InfraAgent(commands.Cog):
                 await channel.send(embed=ops_embed("Edit Failed", str(e), discord.Color.red()))
 
 
+
+
+    @app_commands.command(name="cto", description="Ask the CTO agent to investigate, fix, or research anything")
+    @app_commands.describe(task="What to investigate, fix, or research")
+    async def cmd_cto(self, interaction: discord.Interaction, task: str):
+        await interaction.response.defer()
+        import os as _os
+
+        webhook = _os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
+        bridge = "/home/trader/QuantAI/scripts/claude_code_bridge.sh"
+
+        # Check Claude Code is installed
+        claude_check, _ = await run_shell("which claude || echo notfound", cwd="/home/trader")
+        if "notfound" in claude_check or not claude_check.strip():
+            await interaction.followup.send(embed=ops_embed(
+                "⚠️ Claude Code Not Installed",
+                "Run on VPS:\n```\nnpm install -g @anthropic-ai/claude-code\n```",
+                discord.Color.orange()
+            ))
+            return
+
+        # Check bridge script exists
+        bridge_check, _ = await run_shell(f"test -f {bridge} && echo exists || echo missing", cwd="/")
+        if "missing" in bridge_check:
+            await interaction.followup.send(embed=ops_embed(
+                "⚠️ Bridge Script Missing",
+                f"Run `/deploy` first to get the bridge script.",
+                discord.Color.orange()
+            ))
+            return
+
+        await interaction.followup.send(embed=ops_embed(
+            "🤖 CTO Agent Started",
+            f"**Task:** {task}\n\nClaude Code is reading the system and working on it.\nResults post here when done (~1-3 minutes).",
+            discord.Color.blue()
+        ))
+
+        # Fire and forget — bridge posts result to Discord directly
+        safe_task = task.replace("'", "").replace('"', '')
+        asyncio.create_task(run_shell(
+            f"bash {bridge} '{safe_task}' '{webhook}'",
+            cwd="/home/trader/QuantAI",
+            timeout=320
+        ))
+
 async def setup(bot):
     await bot.add_cog(InfraAgent(bot))
