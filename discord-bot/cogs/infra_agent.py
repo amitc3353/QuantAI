@@ -471,7 +471,7 @@ class InfraAgent(commands.Cog):
             # Step 2: docker compose build
             await channel.send(embed=ops_embed("Building...", "Step 2/3: Rebuilding containers (this takes ~60s)...", discord.Color.blue()))
             # Use -p to set project name matching the VPS deployment
-            build_cmd = f"docker compose -p quantai build {service}" if service else "docker compose -p quantai build"
+            build_cmd = f"docker compose -p quantai build --no-cache {service}" if service else "docker compose -p quantai build --no-cache"
             build_out, build_rc = await run_shell(build_cmd, cwd=PROJECT_DIR, timeout=300)
             build_status = "✅ Build complete" if build_rc == 0 else f"❌ Build failed (rc={build_rc})"
             # Trim build output — it's very verbose
