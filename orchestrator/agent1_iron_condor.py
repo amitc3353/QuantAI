@@ -329,15 +329,15 @@ Reply with only the verdict, nothing else."""
     symbol = params["primary_symbol"]
     ivr = get_iv_rank(symbol)
 
-    # If primary symbol IV too low, try fallback
-    if ivr.get("iv_rank", 50) < 30:
-        log.info(f"{symbol} IV rank {ivr.get('iv_rank')} too low, trying {params['fallback_symbol']}")
-        symbol = params["fallback_symbol"]
-        ivr = get_iv_rank(symbol)
+    # For 0DTE condors, VIX already gates volatility — don't filter on IV rank
+    # IV rank filters are for longer-dated trades where IV timing matters
+    # Log IV rank for reference but don't use it to switch symbols
+    if ivr.get("iv_rank", 50) < 20:
+        log.info(f"{symbol} IV rank very low ({ivr.get('iv_rank'):.1f}) — noted but proceeding (VIX gates 0DTE)")
 
     # ── Build the trade ────────────────────────────────────────────────────
 
-    # Fetch 0DTE options chain
+    # Fetch 0DTE options chain — try dte_max=2 as fallback if 0DTE returns empty
     chain = get_options_chain(symbol, dte_min=0, dte_max=1)
     if "error" in chain:
         log.error(f"Options chain failed: {chain['error']}")
@@ -345,7 +345,14 @@ Reply with only the verdict, nothing else."""
         return
 
     if not chain.get("calls") or not chain.get("puts"):
-        log.warning(f"Empty options chain for {symbol} — market may be closed")
+        log.info(f"No 0DTE chain for {symbol}, trying 1DTE fallback...")
+        chain = get_options_chain(symbol, dte_min=0, dte_max=2)
+
+    if not chain.get("calls") or not chain.get("puts"):
+        log.warning(f"Empty options chain for {symbol} — no 0-2DTE contracts available")
+        log_trade({"event": "skip", "reason": "empty_options_chain",
+                   "symbol": symbol, "date": today,
+                   "details": "Alpaca returned 0 contracts for 0-2DTE — market closed or data unavailable"})
         return
 
     # Find optimal strikes
