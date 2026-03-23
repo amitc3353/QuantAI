@@ -193,9 +193,6 @@ async def run_entry(entry_number: int = 1, context: dict = None):
         import aiohttp as _aiohttp
 
         # Load lessons relevant to current conditions
-        vix_val = vix_data.get("vix", 20) if "vix_data" in dir() else 20
-        regime = vix_data.get("regime", "normal") if "vix_data" in dir() else "normal"
-
         condor_lessons = search_lessons("condor")
         vix_lessons = search_lessons("vix")
         credit_lessons = search_lessons("credit")
