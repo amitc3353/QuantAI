@@ -85,7 +85,6 @@ After completing:
 
                 timeout 300 claude \
                     --print \
-                    --no-color \
                     "$FULL_PROMPT" \
                     > "$LOG_FILE" 2>&1
 
@@ -97,6 +96,14 @@ After completing:
                     OUTPUT="${OUTPUT:0:1800}..."
                 fi
 
+                # Mark as done FIRST to prevent retry loop
+                python3 -c "
+import json
+data = json.load(open('$QUEUE_FILE'))
+data['status'] = 'done'
+json.dump(data, open('$QUEUE_FILE', 'w'))
+" 2>/dev/null
+
                 if [ $EXIT_CODE -eq 124 ]; then
                     post_discord "$WEBHOOK" "⏰ CTO Timed Out" "Task timed out after 5 minutes." 16711680
                 elif [ $EXIT_CODE -eq 0 ]; then
@@ -104,14 +111,6 @@ After completing:
                 else
                     post_discord "$WEBHOOK" "⚠️ CTO Completed (exit $EXIT_CODE)" "\`\`\`\n$OUTPUT\n\`\`\`" 16776960
                 fi
-
-                # Mark as done
-                python3 -c "
-import json
-data = json.load(open('$QUEUE_FILE'))
-data['status'] = 'done'
-json.dump(data, open('$QUEUE_FILE', 'w'))
-" 2>/dev/null
 
                 echo "$(date): Task complete (exit $EXIT_CODE)"
             fi
