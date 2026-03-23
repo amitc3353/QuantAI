@@ -235,7 +235,8 @@ async def handle_cto_task(channel: discord.TextChannel, task: str):
     from datetime import datetime as _dt
 
     queue_file = "/app/data/cto_queue.json"
-    webhook = _os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
+    # Use chat webhook if available so result posts back to #chat
+    webhook = _os.getenv("DISCORD_WEBHOOK_CHAT") or _os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
 
     desc = f"**Task:** {task}" + "\n\nClaude Code is reading the system. Result posts here in ~2 minutes."
     await channel.send(embed=discord.Embed(
