@@ -558,49 +558,33 @@ class InfraAgent(commands.Cog):
     async def cmd_cto(self, interaction: discord.Interaction, task: str):
         await interaction.response.defer()
         import os as _os
+        import json as _json
+        from datetime import datetime as _dt
 
         webhook = _os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
-        # /app/project is the host QuantAI directory mounted into discord-bot
-        bridge = "/app/project/scripts/claude_code_bridge.sh"
 
-        # Check bridge exists (mounted from host)
-        bridge_check, _ = await run_shell(f"test -f {bridge} && echo exists || echo missing", cwd="/")
-        if "missing" in bridge_check:
+        # Write task to queue file — host-side cto_listener.sh picks it up
+        # The queue file is in /app/data which IS mounted on the host
+        queue_file = "/app/data/cto_queue.json"
+        task_record = {
+            "task": task,
+            "webhook": webhook,
+            "timestamp": _dt.now().isoformat(),
+            "status": "pending"
+        }
+        try:
+            with open(queue_file, "w") as qf:
+                _json.dump(task_record, qf)
             await interaction.followup.send(embed=ops_embed(
-                "Bridge Script Missing",
-                "Check that /app/project is mounted in docker-compose.yml",
-                discord.Color.orange()
+                "🤖 CTO Agent Queued",
+                f"**Task:** {task}\n\nPicked up by host listener in seconds. Results post here when done (~2 minutes).\n\n"
+                f"_Make sure `cto_listener.sh` is running on VPS: `bash scripts/cto_listener.sh &`_",
+                discord.Color.blue()
             ))
-            return
-
-        # Check Claude Code installed on host
-        claude_check, _ = await run_shell(
-            "export PATH=$PATH:/home/trader/.npm-global/bin && which claude || echo notfound",
-            cwd="/"
-        )
-        if "notfound" in claude_check or not claude_check.strip():
+        except Exception as e:
             await interaction.followup.send(embed=ops_embed(
-                "Claude Code Not Found",
-                "Install it:\n```\nnpm install -g @anthropic-ai/claude-code\n```",
-                discord.Color.orange()
+                "❌ Queue Write Failed", str(e)[:300], discord.Color.red()
             ))
-            return
-
-        await interaction.followup.send(embed=ops_embed(
-            "CTO Agent Started",
-            f"**Task:** {task}\n\nClaude Code is working on it. Results post here in ~2 minutes.",
-            discord.Color.blue()
-        ))
-
-        safe_task = task.replace("'", "").replace('"', '').replace('`', '')
-        asyncio.create_task(run_shell(
-            f"export PATH=$PATH:/home/trader/.npm-global/bin && bash {bridge} '{safe_task}' '{webhook}'",
-            cwd="/app/project",
-            timeout=320
-        ))
-
-
-
 
 async def setup(bot):
     await bot.add_cog(InfraAgent(bot))
