@@ -341,6 +341,52 @@ QuantAI/
 
 ---
 
+## Security Rules — Standing Policy
+
+### Open-Source Integration Rules
+Every library proposed by the Tech Intelligence Agent must pass these gates
+before being added to any requirements.txt:
+
+1. **Manual review required** — check GitHub: stars (>500 preferred), last commit
+   (<6 months), maintainer count (>1), open security issues
+2. **Pin versions on install** — never use `>=`, always `==` after vetting
+   e.g. `yfinance==0.2.45` not `yfinance>=0.2.40`
+3. **No auto-install** — Tech Intelligence proposes, Amit approves, Claude installs
+   in a session. Never auto-install from agent suggestions.
+4. **API key audit** — any library requiring external API keys or phone-home
+   behavior requires explicit approval and goes in .env, never hardcoded
+5. **Container isolation** — new integrations go in services/ (read-only mount)
+   Never in orchestrator/ or discord-bot/ without explicit review
+6. **Pre-live audit** — before switching TRADING_MODE=live, run:
+   `pip audit` in each container to check for known CVEs
+
+### Trade Proposal Rules — All Intelligence Agents
+Any trade proposed by any agent (Market Intelligence, Tech Intelligence,
+Pattern Agent, or #chat) MUST:
+
+1. **Pass guard engine** — formatted as TradeProposal, submitted to /check
+   APPROVE → post to #trade-proposals
+   REJECT → discard silently or post to #research with rejection reason
+2. **Include stop-loss** — every proposal must specify max_loss_pct
+   No open-ended risk. Ever.
+3. **Include thesis** — one sentence explaining why this trade, what condition
+   makes it valid, and what would invalidate it
+4. **Paper first** — intelligence agents propose paper trades only until
+   2+ months of validated paper results exist
+5. **No overrides** — intelligence agents cannot suggest bypassing any guard rule
+   If a good trade fails a guard, the right response is "update the rule via PR"
+   not "ignore the rule this time"
+
+### Key Rotation Schedule
+- GitHub PAT: rotate after every session where it appears in chat
+- Alpaca paper keys: rotate monthly
+- Alpaca live keys (future): rotate every 2 weeks, stored in secrets manager
+- Finnhub key: rotate quarterly
+- Never store keys in: code, commit messages, Discord messages, or this file
+
+
+---
+
 ## How to Use This Document
 
 **Starting a new chat in this project:**
