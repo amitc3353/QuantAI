@@ -751,6 +751,28 @@ async def scheduled_agent1_eod():
 # ---------------------------------------------------------------------------
 # Agent 2 — Covered Call Bot (Monday weekly scan)
 # ---------------------------------------------------------------------------
+async def scheduled_cto_scan():
+    """Monday 6:00 AM ET — CTO tech intelligence scan."""
+    log.info("=== CTO: Tech Intelligence Scan ===")
+    try:
+        import sys
+        sys.path.insert(0, "/app/services")
+        from cto_agent import run_cto_scan, build_cto_scan_embeds
+        result = await run_cto_scan()
+        embeds = build_cto_scan_embeds(result)
+        for embed in embeds:
+            await post_to_discord(WEBHOOK_RESEARCH, [embed])
+        proposals = len(result.get("proposals", []))
+        log.info(f"CTO scan posted: {proposals} proposals")
+    except Exception as e:
+        log.error(f"CTO scan failed: {e}", exc_info=True)
+        await post_to_discord(WEBHOOK_SYSTEM, [make_embed(
+            "⚠️ CTO Scan Failed",
+            f"Weekly tech scan could not run: {str(e)[:200]}",
+            color=0xF39C12, footer="QuantAI CTO Agent"
+        )])
+
+
 async def scheduled_agent2_weekly():
     """Monday 10:00 AM ET — Agent 2 weekly covered call scan."""
     if SYSTEM_STATE.get("halted"):
@@ -1013,6 +1035,11 @@ async def main():
         id="agent1_eod", name="Agent 1: EOD Score")
 
     # --- Agent 2: Covered Call ---
+    # CTO Agent — runs BEFORE market open Monday, before morning brief
+    scheduler.add_job(scheduled_cto_scan,
+        CronTrigger(hour=6, minute=0, day_of_week="mon"),
+        id="cto_scan", name="CTO: Tech Intelligence Scan (Monday)")
+
     scheduler.add_job(scheduled_agent2_weekly,
         CronTrigger(hour=10, minute=0, day_of_week="mon"),
         id="agent2_weekly", name="Agent 2: Weekly CC Scan")

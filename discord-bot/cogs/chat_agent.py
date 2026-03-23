@@ -228,6 +228,42 @@ async def handle_lessons(channel: discord.TextChannel, query: str = ""):
     await channel.send(embed=embed)
 
 
+async def handle_cto_scan(channel: discord.TextChannel, topic: str = ""):
+    """On-demand CTO tech intelligence scan."""
+    import sys
+    sys.path.insert(0, "/app/services")
+    sys.path.insert(0, "/app/project/services")
+
+    await channel.send(embed=discord.Embed(
+        title="🔍 CTO Scan Running...",
+        description=f"Scanning GitHub, arXiv, and packages{' for: ' + topic if topic else ''}. This takes ~30 seconds.",
+        color=0x3498DB,
+    ))
+
+    try:
+        from cto_agent import run_cto_scan, build_cto_scan_embeds
+        result = await run_cto_scan(topic=topic if topic else None, days_back=14)
+        embeds = build_cto_scan_embeds(result)
+        for embed_dict in embeds[:4]:
+            em = discord.Embed(
+                title=embed_dict.get("title", "CTO Report"),
+                description=embed_dict.get("description", ""),
+                color=embed_dict.get("color", 0x3498DB),
+            )
+            for f in embed_dict.get("fields", []):
+                em.add_field(name=f["name"], value=f["value"], inline=f.get("inline", False))
+            if embed_dict.get("footer"):
+                em.set_footer(text=embed_dict["footer"].get("text", ""))
+            await channel.send(embed=em)
+    except ImportError:
+        await channel.send(
+            "CTO agent not accessible from this container. "
+            "Results post automatically every Monday 6:00 AM to #research."
+        )
+    except Exception as e:
+        await channel.send(f"CTO scan error: {str(e)[:200]}")
+
+
 async def handle_remember(channel: discord.TextChannel, lesson_text: str):
     """Manually log a lesson."""
     record = log_lesson(lesson_text, source="manual")
@@ -242,6 +278,9 @@ QUICK_PATTERNS = {
     "trade stats": handle_stats,
     "performance": handle_stats,
     "how are we doing": handle_stats,
+    "cto scan": lambda ch: handle_cto_scan(ch),
+    "cto report": lambda ch: handle_cto_scan(ch),
+    "tech scan": lambda ch: handle_cto_scan(ch),
 }
 
 
@@ -295,6 +334,11 @@ class ChatAgent(commands.Cog):
         if content_lower.startswith("lessons"):
             query = content[7:].strip()
             await handle_lessons(message.channel, query)
+            return
+
+        if content_lower.startswith("cto scan") or content_lower.startswith("cto report"):
+            topic = content[8:].strip() if content_lower.startswith("cto scan") else content[10:].strip()
+            await handle_cto_scan(message.channel, topic=topic)
             return
 
         # Full conversational response
