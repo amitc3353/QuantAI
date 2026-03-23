@@ -367,3 +367,148 @@ P3 ALWAYS  Code quality, test coverage, documentation
 | Month 2 | Agent 1 > 3%/mo, Agent 2 > 1%/mo | Consistent underperformance |
 | Month 3 | Combined > 5%/mo on $100k paper | Kill weakest, double down on winner |
 
+
+---
+
+## Phase: Intelligence Agents (This Week)
+
+### Priority: Tech Intelligence Agent FIRST
+Build the tool-finder before building more tools.
+Once running, it evaluates every subsequent build decision.
+
+---
+
+### Agent 3 — Tech Intelligence Agent (Session 1 — Tuesday)
+**Goal:** Weekly scan of GitHub, arXiv, finance blogs, open-source releases.
+Proposes specific integrations ranked by impact/effort/cost.
+Posts to #research every Monday morning before market open.
+
+**What it does:**
+- Scans GitHub trending repos in: algorithmic trading, options, ML finance, data feeds
+- Scans arXiv for new papers on: volatility forecasting, options pricing, market microstructure
+- Reads finance/quant blogs: QuantLib, Quantopian community, Two Sigma blog, AQR research
+- Evaluates against current system (reads SYSTEM_STATE.md as context)
+- Produces structured report: "replace X with Y, saves $Z/mo, effort: low/medium/high"
+- Posts to #research every Monday 6:00 AM (before morning brief)
+
+**Approval flow:** Posts proposals → you review → discuss in #chat → approve → next session builds it
+
+**Cost:** 1 Sonnet call/week (~$0.10). Entirely worth it.
+
+**Files:**
+- `services/tech_intelligence.py` — GitHub/arXiv/blog scanner + evaluator
+- `orchestrator/scheduler.py` — Monday 6:00 AM job
+
+---
+
+### Agent 4 — Market Intelligence Agent (Session 2 — Wednesday)
+**Goal:** Proactive daily market synthesis. Not just data — an opinion.
+Posts unprompted when something significant happens.
+Speaks in #chat when asked about current market conditions.
+
+**What it does:**
+- 6:20 AM daily (before morning brief): synthesizes overnight news, Fed signals,
+  geopolitical developments, futures positioning, sector flows
+- Posts a "market conviction" to #research:
+  "FOMC Thursday — go smaller on condors, widen wings to $7"
+  "Tariff news dropped overnight — SPY gap risk elevated, skip Entry 1 today"
+  "VIX term inverted — something institutional is hedging, reduce size"
+- Monitors RSS feeds continuously: Reuters, AP, Fed announcements, CBOE alerts
+- Responds in #chat with market context when asked
+- Feeds conviction directly into context score as a 6th signal
+
+**Data sources (all free):**
+- Reuters RSS, AP RSS, MarketWatch RSS
+- Fed Reserve press releases (RSS)
+- CBOE volatility alerts
+- Finnhub news (already have key)
+- Web search for breaking geo-political events
+
+**Files:**
+- `services/market_intelligence.py` — news ingestion + synthesis + conviction scoring
+- `orchestrator/scheduler.py` — 6:20 AM daily job + continuous news monitor
+- `services/context_builder.py` — add conviction as 6th signal (weight: 15pts, rebalance others)
+
+---
+
+### Agent 5 — Pattern & Learning Agent (Session 3 — Thursday/Friday)
+**Goal:** Close the loop between trade history and future decisions.
+After 2+ weeks of data, identifies patterns in winning vs losing trades
+and proactively adjusts strategy parameters.
+
+**What it does:**
+- Reads all journal data: context scores, market conditions, outcomes
+- Identifies patterns: "condors entered when PCR > 1.1 win 78% vs 52% overall"
+- Identifies anti-patterns: "entries on Monday open underperform by 15%"
+- Updates context weights automatically (correlation_analyzer already does this partially)
+- Posts weekly pattern report to #research Friday alongside CTO report
+- Feeds discovered patterns back into agent entry decisions via memory
+
+**What makes this different from existing EOD scoring:**
+- EOD scoring looks at today's trades
+- Pattern agent looks across weeks/months for statistically significant patterns
+- Requires minimum 20 trades to start drawing conclusions
+- Uses proper statistical significance testing before acting on a pattern
+
+**Files:**
+- `services/pattern_engine.py` — statistical pattern detection across journal history
+- `orchestrator/scheduler.py` — Friday 4:30 PM job (before correlation analysis)
+
+---
+
+## Intelligence Agent Architecture
+
+```
+                    ┌─────────────────────────────┐
+                    │     INTELLIGENCE LAYER       │
+                    │                              │
+  GitHub/arXiv ──→  │  Tech Intelligence Agent    │──→ #research (Monday)
+  Blogs/Papers      │  (weekly, Monday 6 AM)      │    Proposals → your approval
+                    │                              │
+  News/RSS ──────→  │  Market Intelligence Agent  │──→ #research (daily 6:20 AM)
+  Fed/Geo-pol       │  (daily + continuous)       │    Conviction → context score
+                    │                              │
+  Journal data ──→  │  Pattern & Learning Agent   │──→ #research (Friday)
+  Trade history     │  (weekly + triggered)       │    Patterns → agent params
+                    └─────────────────────────────┘
+                                  │
+                    ┌─────────────▼─────────────┐
+                    │      CONTEXT BUILDER       │
+                    │  Score 0-100 (6 signals)   │
+                    │  + market conviction       │
+                    └─────────────┬─────────────┘
+                                  │
+                    ┌─────────────▼─────────────┐
+                    │    AGENT 1 + AGENT 2       │
+                    │    Better decisions        │
+                    └────────────────────────────┘
+```
+
+## Week Plan
+
+| Day | Session | What gets built |
+|---|---|---|
+| Tuesday | Session 1 | Tech Intelligence Agent — GitHub/arXiv scanner, Monday proposals |
+| Wednesday | Session 2 | Market Intelligence Agent — news synthesis, daily conviction, 6th context signal |
+| Thursday | Session 3 | Pattern & Learning Agent — statistical pattern detection across journals |
+| Friday | Review | Let all 3 agents run, review outputs, tune as needed |
+
+## Success Criteria for Intelligence Agents
+
+| Agent | Ready when... | Kill signal |
+|---|---|---|
+| Tech Intelligence | Posts first Monday report with 3+ actionable proposals | Proposals are vague or irrelevant after 3 weeks |
+| Market Intelligence | Conviction accurately flags 70%+ of high-VIX days in advance | False positives causing too many skips |
+| Pattern & Learning | Identifies first statistically significant pattern (p < 0.05) | No patterns found after 40+ trades (not enough data yet) |
+
+## Long-term Vision: Quant-Grade System
+
+**Month 1-2 (now):** Paper trading, learning loop, intelligence agents
+**Month 3:** Live trading small ($5k), Polygon.io + Unusual Whales added
+**Month 4-6:** Pattern library building, multi-strategy expansion
+**Month 6-12:** Statistical edge validation, position sizing optimization
+**Year 2+:** Institutional-grade: tick data, order flow, ML signal generation
+
+The gap between retail and quant is not tools — it is validated edge.
+Everything we build is working toward that validation.
+
