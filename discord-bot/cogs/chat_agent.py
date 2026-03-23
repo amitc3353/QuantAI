@@ -228,6 +228,35 @@ async def handle_lessons(channel: discord.TextChannel, query: str = ""):
     await channel.send(embed=embed)
 
 
+async def handle_cto_task(channel: discord.TextChannel, task: str):
+    """Queue a CTO Claude Code task and post result inline in #chat."""
+    import json as _json
+    import os as _os
+    from datetime import datetime as _dt
+
+    queue_file = "/app/data/cto_queue.json"
+    webhook = _os.getenv("DISCORD_WEBHOOK_SYSTEM", "")
+
+    desc = f"**Task:** {task}" + "\n\nClaude Code is reading the system. Result posts here in ~2 minutes."
+    await channel.send(embed=discord.Embed(
+        title="CTO Agent Working...",
+        description=desc,
+        color=0x3498DB,
+    ))
+
+    try:
+        task_record = {
+            "task": task,
+            "webhook": webhook,
+            "timestamp": _dt.now().isoformat(),
+            "status": "pending"
+        }
+        with open(queue_file, "w") as qf:
+            _json.dump(task_record, qf)
+    except Exception as e:
+        await channel.send("Could not queue task: " + str(e))
+
+
 async def handle_cto_scan(channel: discord.TextChannel, topic: str = ""):
     """On-demand CTO tech intelligence scan."""
     import sys
@@ -340,6 +369,12 @@ class ChatAgent(commands.Cog):
             topic = content[8:].strip() if content_lower.startswith("cto scan") else content[10:].strip()
             await handle_cto_scan(message.channel, topic=topic)
             return
+
+        if content_lower.startswith("cto:") or content_lower.startswith("cto "):
+            task = content[4:].strip()
+            if task:
+                await handle_cto_task(message.channel, task)
+                return
 
         # Full conversational response
         async with self.typing_lock:
