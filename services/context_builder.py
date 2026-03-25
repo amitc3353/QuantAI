@@ -146,30 +146,30 @@ def score_event_calendar(macro_context: dict) -> tuple:
 
 
 def score_macro(macro_context: dict) -> tuple:
-    """Macro regime score — 20 points max."""
+    """Macro regime score — 15 points max."""
     fred = macro_context.get("fred", {})
     macro_stress = fred.get("macro_stress_score", 50)
     yield_curve = fred.get("yield_curve_regime", "unknown")
     macro_regime = fred.get("macro_regime", "unknown")
 
     if macro_regime == "stressed":
-        pts = 5
+        pts = 3
         note = f"Macro stressed: yield curve={yield_curve}, stress score={macro_stress}"
     elif macro_regime == "cautious":
-        pts = 12
+        pts = 9
         note = f"Macro cautious: yield curve={yield_curve}"
     elif macro_regime == "healthy":
-        pts = 20
+        pts = 15
         note = f"Macro healthy: yield curve={yield_curve}"
     else:
-        pts = 10
+        pts = 7
         note = f"Macro unknown — defaulting to partial score"
 
-    return pts, 20, note
+    return pts, 15, note
 
 
 def score_sentiment(sentiment_context: dict) -> tuple:
-    """Sentiment score — 20 points max."""
+    """Sentiment score — 15 points max."""
     pcr = sentiment_context.get("put_call_ratio", {})
     fg = sentiment_context.get("fear_greed", {})
 
@@ -178,27 +178,27 @@ def score_sentiment(sentiment_context: dict) -> tuple:
     pcr_value = pcr.get("total_pcr") or pcr.get("equity_pcr")
     fg_score = fg.get("score", 50)
 
-    # PCR scoring (10 points)
+    # PCR scoring (8 points)
     if pcr_regime == "neutral":
-        pcr_pts = 10
+        pcr_pts = 8
     elif pcr_regime in ("greed", "fear"):
-        pcr_pts = 7
-    elif pcr_regime in ("extreme_greed", "extreme_fear"):
-        pcr_pts = 3
-    else:
         pcr_pts = 5
-
-    # Fear & Greed scoring (10 points)
-    if fg_regime == "neutral":
-        fg_pts = 10
-    elif fg_regime in ("greed", "fear"):
-        fg_pts = 7
-    elif fg_regime in ("extreme_greed",):
-        fg_pts = 4  # Complacency is dangerous
-    elif fg_regime in ("extreme_fear",):
-        fg_pts = 3  # Panic is very dangerous for condors
+    elif pcr_regime in ("extreme_greed", "extreme_fear"):
+        pcr_pts = 2
     else:
+        pcr_pts = 4
+
+    # Fear & Greed scoring (7 points)
+    if fg_regime == "neutral":
+        fg_pts = 7
+    elif fg_regime in ("greed", "fear"):
         fg_pts = 5
+    elif fg_regime in ("extreme_greed",):
+        fg_pts = 3  # Complacency is dangerous
+    elif fg_regime in ("extreme_fear",):
+        fg_pts = 2  # Panic is very dangerous for condors
+    else:
+        fg_pts = 4
 
     pts = pcr_pts + fg_pts
     note = (
@@ -208,28 +208,60 @@ def score_sentiment(sentiment_context: dict) -> tuple:
         f"PCR=unknown | Fear&Greed={fg_score:.0f} ({fg_regime})"
     )
 
-    return pts, 20, note
+    return pts, 15, note
 
 
 def score_flow(flow_data: dict) -> tuple:
-    """Flow score — 20 points max."""
+    """Flow score — 15 points max."""
     danger = flow_data.get("combined_danger", 0)
     summary = flow_data.get("summary", "")
 
     if danger == 0:
-        pts = 20
+        pts = 15
         note = "No unusual flow detected"
     elif danger == 1:
-        pts = 14
+        pts = 10
         note = f"Low flow concern: {summary}"
     elif danger == 2:
-        pts = 7
+        pts = 5
         note = f"Medium flow concern: {summary}"
     else:  # danger == 3
         pts = 0
         note = f"HIGH FLOW DANGER: {summary}"
 
-    return pts, 20, note
+    return pts, 15, note
+
+
+def score_gex(gex_data: dict) -> tuple:
+    """GEX (Gamma Exposure) score — 15 points max."""
+    if gex_data.get("error") or gex_data.get("gex_regime") == "unknown":
+        return 7, 15, "GEX data unavailable — defaulting to neutral"
+
+    regime = gex_data.get("gex_regime", "neutral")
+    assessment = gex_data.get("condor_assessment", "neutral")
+    flip_pct = gex_data.get("flip_distance_pct")
+    flip_strike = gex_data.get("gex_flip_point")
+
+    if assessment == "favorable":
+        pts = 15
+        note = (
+            f"GEX positive near spot — pinning conditions. "
+            f"Flip {'at $' + f'{flip_strike:.0f} ({flip_pct:.1f}% away)' if flip_strike else 'not detected'}"
+        )
+    elif assessment == "neutral":
+        pts = 8
+        note = gex_data.get("condor_note", "GEX neutral")
+    elif assessment == "unfavorable":
+        pts = 0
+        note = (
+            f"GEX NEGATIVE near spot — whipsaw risk. "
+            f"Dealers hedge same direction as price."
+        )
+    else:
+        pts = 7
+        note = "GEX assessment unknown"
+
+    return pts, 15, note
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +290,7 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
     from macro_data import get_macro_context
     from sentiment_data import get_sentiment_context
     from flow_detector import run_flow_scan
+    from gex_engine import compute_gex
 
     # Fetch all data concurrently where possible
     try:
@@ -297,24 +330,40 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
     vix_data["term_shape"] = vix_term.get("term_shape", "unknown")
     vix_data["term_stress"] = vix_term.get("term_stress", 0)
 
+    # Compute GEX — needs the options chain
+    # If chain wasn't passed in, fetch one for GEX computation
+    gex_data = {"gex_regime": "unknown", "error": "no chain"}
+    try:
+        if chain and chain.get("calls"):
+            gex_data = compute_gex(chain)
+        else:
+            from market_data import get_options_chain
+            gex_chain = get_options_chain(symbol, dte_min=0, dte_max=2)
+            if gex_chain.get("calls"):
+                gex_data = compute_gex(gex_chain)
+    except Exception as ge:
+        log.warning(f"GEX computation failed (non-blocking): {ge}")
+        gex_data = {"gex_regime": "unknown", "error": str(ge)}
+
     # Score each component
     vix_pts, vix_max, vix_note = score_vix(vix_data)
     event_pts, event_max, event_note = score_event_calendar(macro_context)
     macro_pts, macro_max, macro_note = score_macro(macro_context)
     sentiment_pts, sentiment_max, sentiment_note = score_sentiment(sentiment_context)
     flow_pts, flow_max, flow_note = score_flow(flow_data)
+    gex_pts, gex_max, gex_note = score_gex(gex_data)
 
-    total_score = vix_pts + event_pts + macro_pts + sentiment_pts + flow_pts
-    max_score = vix_max + event_max + macro_max + sentiment_max + flow_max
+    total_score = vix_pts + event_pts + macro_pts + sentiment_pts + flow_pts + gex_pts
+    max_score = vix_max + event_max + macro_max + sentiment_max + flow_max + gex_max
 
     # ── Cross-signal sanity checks ──────────────────────────────────────
     cross_signal_notes = []
 
-    # Fix: Macro "healthy" shouldn't contribute full 20 when sentiment is extreme_fear
+    # Fix: Macro "healthy" shouldn't contribute full 15 when sentiment is extreme_fear
     fg_regime = sentiment_context.get("fear_greed", {}).get("regime", "unknown")
-    if macro_pts >= 18 and fg_regime == "extreme_fear":
+    if macro_pts >= 13 and fg_regime == "extreme_fear":
         old_macro = macro_pts
-        macro_pts = min(macro_pts, 10)  # Cap macro at 10 when sentiment is panicking
+        macro_pts = min(macro_pts, 7)  # Cap macro at ~half when sentiment is panicking
         total_score = total_score - old_macro + macro_pts
         cross_signal_notes.append(
             f"Macro capped {old_macro}→{macro_pts}: extreme fear contradicts 'healthy' macro"
@@ -406,6 +455,7 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
             "macro":     {"score": macro_pts,      "max": macro_max,     "note": macro_note},
             "sentiment": {"score": sentiment_pts,  "max": sentiment_max, "note": sentiment_note},
             "flow":      {"score": flow_pts,       "max": flow_max,      "note": flow_note},
+            "gex":       {"score": gex_pts,        "max": gex_max,       "note": gex_note},
         },
         "cross_signal_notes": cross_signal_notes,
         "composite_danger": composite_danger,
@@ -421,11 +471,12 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
         "macro_context": macro_context,
         "sentiment_context": sentiment_context,
         "flow_data": flow_data,
+        "gex_data": gex_data,
 
         # Summary for Discord
         "summary": _build_summary(
             normalized_score, decision_label, vix_note,
-            event_note, macro_note, sentiment_note, flow_note, hard_skip_reason
+            event_note, macro_note, sentiment_note, flow_note, gex_note, hard_skip_reason
         ),
 
         "symbol": symbol,
@@ -437,7 +488,7 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
         f"Context {symbol}: score={normalized_score} decision={decision_label} "
         f"[VIX:{vix_pts}/{vix_max} EVENT:{event_pts}/{event_max} "
         f"MACRO:{macro_pts}/{macro_max} SENT:{sentiment_pts}/{sentiment_max} "
-        f"FLOW:{flow_pts}/{flow_max}]"
+        f"FLOW:{flow_pts}/{flow_max} GEX:{gex_pts}/{gex_max}]"
     )
     return context
 
@@ -502,7 +553,7 @@ def _get_agent2_params(action: str, flow_data: dict) -> dict:
     }
 
 
-def _build_summary(score, label, vix_note, event_note, macro_note, sentiment_note, flow_note, hard_skip) -> str:
+def _build_summary(score, label, vix_note, event_note, macro_note, sentiment_note, flow_note, gex_note, hard_skip) -> str:
     lines = [f"**Context Score: {score}/100 — {label}**"]
     if hard_skip:
         lines.append(f"⛔ Hard skip: {hard_skip}")
@@ -512,6 +563,7 @@ def _build_summary(score, label, vix_note, event_note, macro_note, sentiment_not
         f"• Macro: {macro_note}",
         f"• Sentiment: {sentiment_note}",
         f"• Flow: {flow_note}",
+        f"• GEX: {gex_note}",
     ])
     return "\n".join(lines)
 
