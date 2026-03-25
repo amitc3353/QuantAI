@@ -146,11 +146,50 @@ Dev agents build, enhance, integrate. Runs 24/7 without you.
 - [ ] Trade policy changes (tariffs)
 - [ ] Central bank decisions (global)
 
-#### Institutional Flow
+#### Institutional Flow & Options Intelligence
+**5 layers, from most actionable to most strategic:**
+
+**Layer 1 — Options Flow / Unusual Options Activity (highest priority)**
+- [ ] DIY flow scanner in flow_detector.py (free, build now):
+  - Pull SPY option chain via Alpaca before each Agent 1 entry
+  - Flag strikes where volume > 3x open interest
+  - Detect concentrated put/call flow near short strikes
+  - If heavy put flow near short put → skip entry or widen wings
+- [ ] Unusual Whales integration ($48-50/mo, pre-live):
+  - REST API (100+ endpoints) + official MCP server for Claude
+  - Real sweep alerts, dark pool prints, net premium flow
+  - Discord bot integration available
+  - Replaces free Vol/OI proxy with real-time data
+- [ ] FlowAlgo as alternative evaluation ($50-100/mo)
+
+**Layer 2 — Dark Pool / Block Trade Data**
+- [ ] Free proxy: Alpaca volume spike detection (10x equity volume = dark pool proxy)
+  - Already in flow_detector.py — validate against paper trade outcomes
+- [ ] Dark pool prints at key SPY levels → use as support/resistance for strike placement
+- [ ] Real dark pool data via Unusual Whales or Polygon.io (pre-live)
+
+**Layer 3 — Congressional / Insider Trading (medium-term signals)**
+- [ ] Capitol Trades (free website) — congressional trade disclosures
+- [ ] Quiver Quantitative (free dashboard, paid API) — aggregated political trades
+- [ ] Finnhub congressional trading endpoint (already have key)
+- [ ] SEC EDGAR 13F datasets (free, quarterly) — hedge fund positions
+- [ ] Use for: watchlist conviction + Agent 2 covered call directional bias
+  - Not useful for 0DTE entries (45-day disclosure delay)
+
+**Layer 4 — Gamma Exposure (GEX) / Options Positioning**
+- [ ] SpotGamma daily GEX chart for SPY (free, scrape or manual)
+- [ ] DIY GEX approximation from Alpaca option chain:
+  - volume × delta × open interest across all strikes
+  - Positive gamma at a level = price pins there (good for iron condors)
+  - Negative gamma = wild swings (bad for iron condors)
+- [ ] Wire GEX signal into context_builder.py as entry filter
+- [ ] High positive GEX near current price → tighter wings (high confidence)
+- [ ] Negative GEX flip → skip entry or go advisory-only
+
+**Layer 5 — 13F / Institutional Positioning (quarterly signals)**
 - [ ] 13F filings tracker (what are hedge funds buying/selling)
-- [ ] Dark pool activity on SPY
-- [ ] Options flow — unusual options activity
-- [ ] Insider buying/selling signals
+- [ ] Insider buying/selling signals via Finnhub + SEC EDGAR
+- [ ] Feed into weekly #research report for portfolio-level conviction
 
 #### Weekly Analysis Bot
 - [ ] Automated weekly market analysis posted to #research every Friday
@@ -198,9 +237,12 @@ P1 SMALL   Add economic calendar awareness (FOMC, CPI dates)
 ```
 P1 MEDIUM  Build market context assembler (all data → compact prompt)
 P1 SMALL   Add weekly put spread scanner (Layer 2)
+P1 MEDIUM  DIY flow scanner: volume > 3x OI detection in flow_detector.py, wire into Agent 1 pre-entry
+P1 SMALL   DIY GEX approximation from Alpaca option chain data
 P2 MEDIUM  Evaluate + integrate financial-services-plugins
 P2 MEDIUM  Set up NautilusTrader backtesting for iron condor strategy
 P2 SMALL   Add sector rotation tracker
+P2 SMALL   Add congressional trading data (Finnhub endpoint + Capitol Trades)
 ```
 
 ### Week 3-4
@@ -273,10 +315,14 @@ P3 ALWAYS  Code quality, test coverage, documentation
 - [ ] **Polygon.io** ($29/mo) — real options flow with Greeks on every contract,
       dark pool prints for SPY/QQQ. Add when paper trading shows consistent results.
       _Why: our Vol/OI proxy is free but 15-min delayed. Live trading deserves real-time._
-- [ ] **Unusual Whales** ($30/mo) — options sweep alerts in real time.
-      Add when transitioning to live. MCP server available → wire directly into Claude.
+- [ ] **Unusual Whales** ($48-50/mo) — options sweep alerts in real time.
+      REST API (100+ endpoints) + official MCP server → wire directly into Claude.
+      Also includes: congressional trade tracking, dark pool prints, net premium flow.
+      Add when transitioning to live.
       _Why: sweep detection pre-entry could prevent the worst live losses._
+- [ ] **FlowAlgo** ($50-100/mo) — alternative to Unusual Whales, evaluate if UW insufficient
 - [ ] Both paid sources integrated into context_builder.py, replacing free proxies
+- [ ] DIY GEX approximation validated against paper outcomes before paying for SpotGamma
 - [ ] Context score accuracy verified: score ≥ 60 days should show higher win rate than score < 60 days
 
 ### Strategy Validation
