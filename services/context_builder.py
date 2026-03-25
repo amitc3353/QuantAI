@@ -74,9 +74,15 @@ def _write_cache(key: str, data: dict):
 
 def score_vix(vix_data: dict) -> tuple:
     """VIX regime score — 25 points max."""
-    vix = vix_data.get("vix", 20)
+    vix = vix_data.get("vix", 0)
     regime = vix_data.get("regime", "unknown")
     term = vix_data.get("term_shape", "unknown")
+
+    # SAFETY: if VIX is 0 or missing, data is bad — don't score high
+    if vix <= 0 or vix_data.get("_error"):
+        pts = 0
+        note = f"VIX data unavailable or invalid (vix={vix}) — scoring 0"
+        return pts, 25, note
 
     if regime == "halt" or vix >= 35:
         pts = 0
@@ -300,7 +306,43 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
 
     total_score = vix_pts + event_pts + macro_pts + sentiment_pts + flow_pts
     max_score = vix_max + event_max + macro_max + sentiment_max + flow_max
+
+    # ── Cross-signal sanity checks ──────────────────────────────────────
+    cross_signal_notes = []
+
+    # Fix: Macro "healthy" shouldn't contribute full 20 when sentiment is extreme_fear
+    fg_regime = sentiment_context.get("fear_greed", {}).get("regime", "unknown")
+    if macro_pts >= 18 and fg_regime == "extreme_fear":
+        old_macro = macro_pts
+        macro_pts = min(macro_pts, 10)  # Cap macro at 10 when sentiment is panicking
+        total_score = total_score - old_macro + macro_pts
+        cross_signal_notes.append(
+            f"Macro capped {old_macro}→{macro_pts}: extreme fear contradicts 'healthy' macro"
+        )
+
+    # Fix: Composite danger — VIX backwardation + extreme fear = CAUTION floor
+    vix_term = vix_data.get("term_shape", "unknown")
+    fg_score_val = sentiment_context.get("fear_greed", {}).get("score", 50)
+    vix_val = vix_data.get("vix", 0)
+
+    composite_danger = False
+    if vix_term == "backwardation" and fg_score_val < 20:
+        composite_danger = True
+        cross_signal_notes.append(
+            f"COMPOSITE DANGER: VIX backwardation + Fear&Greed={fg_score_val:.0f} (<20)"
+        )
+    elif vix_val >= 28 and vix_term == "backwardation":
+        composite_danger = True
+        cross_signal_notes.append(
+            f"COMPOSITE DANGER: VIX {vix_val:.1f}≥28 + backwardation"
+        )
+
     normalized_score = round(total_score / max_score * 100)
+
+    # Apply composite danger floor — cap at CAUTION regardless of total score
+    if composite_danger and normalized_score > 55:
+        normalized_score = 55
+        cross_signal_notes.append(f"Score capped at 55 (CAUTION floor) due to composite danger")
 
     # Decision
     if normalized_score >= 60:
@@ -365,6 +407,8 @@ async def build_context(symbol: str = "SPY", chain: dict = None) -> dict:
             "sentiment": {"score": sentiment_pts,  "max": sentiment_max, "note": sentiment_note},
             "flow":      {"score": flow_pts,       "max": flow_max,      "note": flow_note},
         },
+        "cross_signal_notes": cross_signal_notes,
+        "composite_danger": composite_danger,
 
         # Agent recommendations
         "agent1_action": agent1_action,
