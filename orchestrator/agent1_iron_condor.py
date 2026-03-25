@@ -367,6 +367,120 @@ Reply with only the verdict, nothing else."""
         log_trade({"event": "skip", "reason": "no_valid_strikes", "symbol": symbol, "date": today})
         return
 
+    # ── Flow check: unusual activity near our chosen strikes ──────────────
+    # This is a targeted check SEPARATE from the aggregate flow score in context_builder.
+    # It answers: "Is someone making a big directional bet right where we're selling?"
+    flow_action = "proceed"
+    flow_detail = ""
+    try:
+        from flow_detector import detect_unusual_options_activity
+
+        flow_result = detect_unusual_options_activity(chain)
+
+        short_put = condor["put_short_strike"]
+        short_call = condor["call_short_strike"]
+        proximity = 3.0  # Flag activity within $3 of our short strikes
+
+        # Check for unusual puts near our short put
+        near_put_flags = [
+            p for p in flow_result.get("unusual_puts", [])
+            if abs(p["strike"] - short_put) <= proximity
+        ]
+
+        # Check for unusual calls near our short call
+        near_call_flags = [
+            c for c in flow_result.get("unusual_calls", [])
+            if abs(c["strike"] - short_call) <= proximity
+        ]
+
+        # Any highly unusual activity (vol/OI > 10x) near our strikes = skip
+        highly_unusual_near = [
+            f for f in (near_put_flags + near_call_flags)
+            if f.get("intensity") == "highly_unusual"
+        ]
+
+        # Sweep alerts specifically on 0DTE puts near our short put = very dangerous
+        dangerous_sweeps = [
+            s for s in flow_result.get("sweep_alerts", [])
+            if s.get("option_type") == "put"
+            and abs(s["strike"] - short_put) <= proximity
+        ]
+
+        if highly_unusual_near or dangerous_sweeps:
+            # Highly unusual or sweep near our strikes — skip this entry
+            flow_action = "skip"
+            flags_desc = []
+            for f in (highly_unusual_near + dangerous_sweeps)[:3]:
+                flags_desc.append(
+                    f"{f['option_type'].upper()} ${f['strike']} "
+                    f"vol/OI={f['vol_oi_ratio']}x "
+                    f"({f.get('intensity', 'sweep')})"
+                )
+            flow_detail = (
+                f"Highly unusual activity near short strikes: {'; '.join(flags_desc)}"
+            )
+            log.warning(f"FLOW SKIP: {flow_detail}")
+
+        elif near_put_flags:
+            # Moderate unusual put flow near short put — widen wings by $2
+            flow_action = "widen"
+            total_vol = sum(p["volume"] for p in near_put_flags)
+            flow_detail = (
+                f"{len(near_put_flags)} unusual put(s) within ${proximity:.0f} "
+                f"of short put ${short_put:.0f} "
+                f"(total vol: {total_vol:,}, "
+                f"max vol/OI: {max(p['vol_oi_ratio'] for p in near_put_flags):.1f}x)"
+            )
+            log.info(f"FLOW CAUTION: {flow_detail}")
+
+        else:
+            flow_detail = (
+                f"No unusual activity near strikes "
+                f"(put ${short_put:.0f}, call ${short_call:.0f})"
+            )
+            log.info(f"Flow check clear: {flow_detail}")
+
+    except Exception as fe:
+        log.debug(f"Flow check failed (non-blocking): {fe}")
+        flow_detail = f"Flow check unavailable: {fe}"
+
+    # Act on flow check result
+    if flow_action == "skip":
+        log.info(f"SKIPPED by flow check: {flow_detail}")
+        log_trade({
+            "event": "skip", "reason": "flow_unusual_near_strikes",
+            "details": flow_detail, "symbol": symbol, "date": today,
+            "short_put": condor["put_short_strike"],
+            "short_call": condor["call_short_strike"],
+        })
+        await post_discord(WEBHOOK_PROPOSALS, [make_embed(
+            f"🌊 Agent 1 Skipped: Unusual Flow Near Strikes",
+            f"**{symbol} Iron Condor** — entry blocked by flow check.\n\n"
+            f"**Strikes:** P{condor['put_short_strike']}/{condor['put_long_strike']} "
+            f"C{condor['call_short_strike']}/{condor['call_long_strike']}\n"
+            f"**Flow:** {flow_detail}\n\n"
+            f"_Someone is making a big directional bet where we'd be selling. Sitting this one out._",
+            color=0x3498DB,
+            footer="QuantAI Agent 1 · flow detector"
+        )])
+        return
+
+    if flow_action == "widen":
+        old_width = params["wing_width"]
+        params["wing_width"] = old_width + 2.0
+        log.info(f"Flow caution: widening wings {old_width} → {params['wing_width']}")
+        # Rebuild strikes with wider wings
+        condor = build_iron_condor_strikes(
+            chain,
+            short_delta=params["short_delta"],
+            wing_width=params["wing_width"],
+        )
+        if not condor:
+            log.warning(f"Could not rebuild condor with wider wings ({params['wing_width']})")
+            log_trade({"event": "skip", "reason": "no_valid_strikes_after_widen",
+                       "symbol": symbol, "date": today})
+            return
+
     # Credit check
     credit = condor.get("estimated_credit", 0)
     if credit < params["min_credit"]:
@@ -445,6 +559,8 @@ Reply with only the verdict, nothing else."""
             (context.get("components", {}) if context else {}).items()
         } if context else {},
         "market_regime": context.get("vix_data", {}).get("regime") if context else None,
+        "flow_check": flow_action,
+        "flow_detail": flow_detail,
     }
 
     log_trade(trade_record)
@@ -467,6 +583,7 @@ Reply with only the verdict, nothing else."""
         {"name": "Stop Loss", "value": f"At ${credit * params['stop_loss_mult']:.2f} debit", "inline": True},
         {"name": "Profit Target", "value": f"Close at ${credit * params['profit_target_pct']:.2f} debit (50%)", "inline": True},
         {"name": "Hard Close", "value": f"3:30 PM ET", "inline": True},
+        {"name": "Flow Check", "value": f"{'✅ Clear' if flow_action == 'proceed' else '⚠️ Widened wings'} — {flow_detail[:80]}", "inline": False},
         {"name": "Mode", "value": "🤖 AUTO-EXECUTED (paper)", "inline": True},
     ]
 
