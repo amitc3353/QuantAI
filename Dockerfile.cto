@@ -6,10 +6,11 @@
 
 FROM python:3.12-slim
 
-# Install Node.js 20 (for Claude Code CLI) + git
+# Install Node.js 20 (for Claude Code CLI) + git + gosu (privilege drop)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
+    gosu \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -20,11 +21,17 @@ RUN npm install -g @anthropic-ai/claude-code
 # Python deps (just requests for Discord webhooks)
 RUN pip install --no-cache-dir requests
 
-# Mark project dir as safe for git
-RUN git config --global --add safe.directory /app/project
+# Create non-root user for Claude Code (it refuses to run as root)
+RUN useradd -m -s /bin/bash -u 1000 cto \
+    && git config --global --add safe.directory /app/project
 
 WORKDIR /app
 
 COPY scripts/cto_listener.py /app/cto_listener.py
 
-CMD ["python", "-u", "cto_listener.py"]
+# Entrypoint script: runs listener as root (for volume writes)
+# but drops to 'cto' user specifically for claude CLI calls
+COPY scripts/cto_entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]

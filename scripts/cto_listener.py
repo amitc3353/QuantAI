@@ -171,8 +171,8 @@ def run_claude_code(task_text: str) -> tuple[int, str]:
     log_file = LOG_DIR / f"cto_{timestamp}.log"
 
     cmds_to_try = [
-        ["claude", "--print", "--dangerously-skip-permissions", prompt],
-        ["npx", "-y", "@anthropic-ai/claude-code", "--print",
+        ["gosu", "cto", "claude", "--print", "--dangerously-skip-permissions", prompt],
+        ["gosu", "cto", "npx", "-y", "@anthropic-ai/claude-code", "--print",
          "--dangerously-skip-permissions", prompt],
     ]
 
