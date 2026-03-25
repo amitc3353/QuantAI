@@ -95,6 +95,37 @@ services:
       timeout: 10s
       retries: 3
 
+  # ============================================
+  # CTO Listener — Claude Code Task Runner
+  # Replaces scripts/cto_listener.sh (host process)
+  # Watches data/cto_queue.json → runs Claude Code → posts to Discord
+  # ============================================
+  cto-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.cto
+    container_name: trader-cto
+    restart: unless-stopped
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DISCORD_WEBHOOK_CHAT=${DISCORD_WEBHOOK_CHAT}
+      - DISCORD_WEBHOOK_SYSTEM=${DISCORD_WEBHOOK_SYSTEM}
+      - CTO_QUEUE_FILE=/app/data/cto_queue.json
+      - CTO_PROJECT_DIR=/app/project
+      - CTO_POLL_INTERVAL=2
+      - CTO_MAX_TIMEOUT=300
+    volumes:
+      - ./data:/app/data
+      - .:/app/project
+    networks:
+      - trader-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys; sys.exit(0 if os.path.exists('/app/cto_listener.py') else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 networks:
   trader-net:
     driver: bridge

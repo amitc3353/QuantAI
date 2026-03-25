@@ -16,16 +16,12 @@ This is the single source of truth. Start every new chat with: "Read SYSTEM_STAT
 | Trading mode | **PAPER** |
 | Auto mode | **ON** |
 
-**4 running containers:**
+**5 running containers:**
 - `trader-discord` — Discord bot, all slash commands, chat agent, CTO command
 - `trader-guards` — Guard engine FastAPI on port 8100
 - `trader-orchestrator` — APScheduler, all agents, all automation
 - `trader-alpaca` — Alpaca MCP server
-
-**Host-side process:**
-- `cto_listener.sh` — runs on VPS host (PID in /tmp/cto_listener.pid), watches
-  `/home/trader/QuantAI/data/cto_queue.json` for tasks, executes Claude Code,
-  posts results to Discord. Auto-starts via crontab @reboot.
+- `trader-cto` — CTO listener, watches cto_queue.json, runs Claude Code, posts to Discord
 
 ---
 
@@ -274,8 +270,8 @@ guard-engine/
   guards.py               ← 16 rules, 44 tests
 
 scripts/
-  cto_listener.sh         ← HOST process, watches cto_queue.json,
-                             runs Claude Code, posts to Discord
+  cto_listener.py         ← Dockerized CTO task runner (trader-cto container)
+  cto_listener.sh         ← DEPRECATED — replaced by cto_listener.py + Dockerfile.cto
 
 data/
   memory/paper/           ← agent1_journal.jsonl, agent2_journal.jsonl
@@ -348,5 +344,5 @@ include thesis + invalidation condition, paper only until validated.
 
 ---
 
-*Last updated: March 23, 2026 — CTO agent operational, /deploy --no-cache fixed*
+*Last updated: March 24, 2026 — CTO listener containerized (trader-cto), replaces host bash script*
 *Next update: after first week of paper trading data (March 28, 2026)*
