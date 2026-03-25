@@ -95,6 +95,22 @@ services:
       timeout: 10s
       retries: 3
 
+  cto-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.cto
+    container_name: trader-cto
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./CLAUDE.md:/app/CLAUDE.md:ro
+      - ./configs:/app/configs:ro
+      - ./services:/app/services:ro
+      - ./orchestrator:/app/orchestrator:ro
+    networks:
+      - trader-net
+
 networks:
   trader-net:
     driver: bridge
