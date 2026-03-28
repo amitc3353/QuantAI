@@ -1,8 +1,18 @@
+# Secrets
 .env
+
+# Python
 *.pyc
 __pycache__/
 .venv/
+*.egg-info/
+dist/
+build/
+
+# Node
 node_modules/
+
+# v1 data (old system)
 data/logs/*
 data/journal/*
 data/briefs/*
@@ -10,10 +20,19 @@ data/cache/*
 data/memory/paper/*
 data/memory/live/*
 data/memory/shared/*
-!data/**/.gitkeep
-*.egg-info/
-dist/
-build/
+
+# v2 runtime data (not committed — generated on VPS)
+v2/shared-data/cache/sofi_latest.json
+v2/shared-data/cache/sofi_history/*.json
+v2/shared-data/journal/paper/trades.jsonl
+v2/shared-data/journal/real/trades.jsonl
+v2/shared-data/journal/digests/*
+v2/shared-data/logs/*
+
+# Keep directory structure
+!**/.gitkeep
+
+# OS
 .DS_Store
 *.swp
 *.swo

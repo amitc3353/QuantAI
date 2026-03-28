@@ -1,0 +1,89 @@
+{
+  "strategy": "collar",
+  "version": "1.0",
+  "created": "2026-03-28",
+  "status": "paper",
+  
+  "underlying": {
+    "symbol": "SOFI",
+    "entry_price": 15.00,
+    "shares": 200,
+    "contracts": 2,
+    "capital_deployed": 3000
+  },
+  
+  "collar": {
+    "call_strike": 16.00,
+    "call_frequency": "biweekly",
+    "call_premium_target": 1.10,
+    "put_strike": 12.00,
+    "put_frequency": "monthly",
+    "put_cost_target": 0.50,
+    "net_monthly_income_target": 170
+  },
+  
+  "scale_plan": {
+    "phase_1": {"shares": 200, "contracts": 2, "duration": "4 weeks paper"},
+    "phase_2": {"shares": 200, "contracts": 2, "duration": "real money, learn emotions"},
+    "phase_3": {"shares": 500, "contracts": 5, "duration": "month 4+"},
+    "phase_4": {"shares": 1000, "contracts": 10, "target_monthly": 1000}
+  },
+  
+  "risk": {
+    "max_loss_dollars": 600,
+    "max_loss_formula": "(entry_price - put_strike) × shares",
+    "max_loss_per_share": 3.00
+  },
+  
+  "trigger_actions": {
+    "near_call": {
+      "price": 15.70,
+      "action": "MONITOR",
+      "detail": "No action yet, watch for continued move"
+    },
+    "at_call": {
+      "price": 16.00,
+      "action": "ROLL_CALL",
+      "detail": "Roll call to $18, 2 weeks out. Collect net credit."
+    },
+    "called_away": {
+      "price": 16.00,
+      "action": "ACCEPT_OR_ROLL",
+      "detail": "Accept profit. Buy back on next dip. Restart."
+    },
+    "near_put": {
+      "price": 12.50,
+      "action": "MONITOR",
+      "detail": "Assess conviction in SOFI thesis"
+    },
+    "at_put": {
+      "price": 12.00,
+      "action": "EXERCISE_OR_ROLL",
+      "detail": "Still believe? Roll put to $10. Unsure? Exit. Max loss taken."
+    }
+  },
+  
+  "thesis": {
+    "bull_case": "Digital bank growing 35%/yr, 13.7M members, profitable, CEO buying, S&P 500 inclusion pending",
+    "bear_case": "Fintech competition, interest rate sensitivity, regulatory risk",
+    "thesis_invalidators": [
+      "Quarterly loss (return to unprofitability)",
+      "CEO sells significant shares",
+      "S&P 500 inclusion formally rejected",
+      "Member growth declines 2 consecutive quarters"
+    ]
+  },
+  
+  "alerts": {
+    "price_alerts": [
+      {"level": 15.70, "label": "Near call strike", "urgency": "low"},
+      {"level": 16.10, "label": "At call strike — ROLL NOW", "urgency": "high"},
+      {"level": 12.50, "label": "Near put floor", "urgency": "medium"},
+      {"level": 11.90, "label": "At put floor — ACT NOW", "urgency": "critical"}
+    ],
+    "iv_alerts": [
+      {"condition": "iv_rank > 60", "label": "High IV — good time to sell calls", "urgency": "medium"},
+      {"condition": "iv_rank < 20", "label": "Low IV — wait to sell calls", "urgency": "low"}
+    ]
+  }
+}
