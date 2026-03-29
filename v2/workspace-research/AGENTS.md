@@ -131,36 +131,45 @@ Amit is paper trading to learn — multiple positions welcome.
 7. **Has a bull thesis** — company growing, sector tailwind, or catalyst ahead
 
 ### Scan method
-Use Python with yfinance to check a watchlist of candidates:
-```python
-candidates = [
-    "SOFI", "PLTR", "NIO", "RIVN", "LCID", "HOOD", "DNA",
-    "GRAB", "NU", "OPEN", "WISH", "BB", "NOK", "F", "T",
-    "SNAP", "PINS", "ROKU", "CRSP", "PATH", "IONQ", "RGTI",
-    "MVST", "CHPT", "PLUG", "FCEL", "CLF", "AAL", "UAL",
-    "CCL", "NCLH", "RIG", "ET", "MPW", "VALE", "GOLD",
-    "KGC", "AG", "MUX", "BTG", "FUBO", "CLOV", "HIMS"
-]
+Run the criteria-based scanner (no hardcoded list — it filters by conditions):
+```bash
+python3 /root/quantai-v2/v2/shared-data/scripts/scan_collar_candidates.py
 ```
-For each: pull price, volume, IV, check if options chain exists, check bid/ask spreads.
+Then read `/root/quantai-v2/v2/shared-data/cache/collar_candidates.json`
 
-### Collar candidate report format
+The script automatically:
+- Scans stocks by CRITERIA (price, volume, IV, option liquidity)
+- Filters down to those suitable for collars
+- Deep-dives the top 3: technicals, earnings check, exact 2-week and monthly contract pricing
+
+### Collar candidate report format (TOP 3 with full analysis)
 ```
-🔍 Collar Candidates — Week of [date]
+🔍 Collar Candidates — [date]
+Scanned: XX stocks | Passed filters: X
 
-1. [TICKER] — $XX.XX
-   Sector: [sector] | IV: XX% | Vol: XXM
-   Call premium ($XX strike, 2wk): $X.XX/share
-   Put cost ($XX strike, monthly): $X.XX/share
-   Net monthly income (200 shares): +$XXX
-   Max loss (200 shares): $XXX
-   Bull thesis: [1 sentence]
-   ⚠️ Risk: [1 sentence]
+━━ #1 [TICKER] — $XX.XX ━━
+Sector: [sector] | IV: XX% | Vol: XXM
+RSI: XX | MACD: [signal] | From 52w high: -XX%
+Earnings: [date or "not imminent"]
 
-2. [TICKER] — $XX.XX
-   ...
+Collar setup (200 shares):
+  SELL $XX call (exp [date]): bid $X.XX → $XXX/month
+  BUY $XX put (exp [date]): ask $X.XX → -$XXX/month
+  Net income: +$XXX/month | Max loss: $XXX
 
-Top pick: [TICKER] — [1 sentence why]
+Thesis: [1-2 sentences — why this company, what's the growth story]
+Risk: [1 sentence — what could go wrong]
+Entry: [NOW / WAIT — and why]
+
+━━ #2 [TICKER] — $XX.XX ━━
+...
+
+━━ #3 [TICKER] — $XX.XX ━━
+...
+
+Also passed filters: [TICK1], [TICK2], [TICK3]...
+
+Top pick: [TICKER] — [why in 1 sentence]
 ```
 
 ### What makes a GREAT collar candidate (rank by these)
