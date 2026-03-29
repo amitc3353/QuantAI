@@ -54,16 +54,64 @@ info = sofi.info
 
 ## Strategy context
 - Amit holds 200 SOFI shares (paper) at ~$15
-- Sells $16 calls biweekly
-- Buys $12 puts monthly
-- CRITICAL zones: $15.70 (near call), $16 (at call), $12.50 (near put), $12 (put floor)
+- Sells $16 calls biweekly → collect premium
+- Buys $12 puts monthly → insurance
+- Net income target: $170/month at 200 shares
+- Max loss: $600 (never more)
 
-## What triggers an alert (post to #alerts)
-- SOFI moves within $0.50 of $16 or $12
-- IV rank jumps above 60% (good time to sell calls)
-- IV rank drops below 20% (bad time to sell calls, wait)
-- Major SOFI news (earnings, analyst upgrade/downgrade, CEO activity)
+## POSITION MONITORING — check EVERY daily brief
+Read the journal at /root/quantai-v2/v2/shared-data/journal/paper/trades.jsonl
+to know what positions are currently open. Then check:
+
+### Open call position check
+- Is there an open sold call? When does it expire?
+- If expiring this week and worthless → good, let it expire, note "sell new call next cycle"
+- If stock approaching call strike → warn: "SOFI at $15.70, near $16 call strike"
+- If stock above call strike → alert: "ROLL or accept assignment"
+
+### Open put position check  
+- Is there an open put? When does it expire?
+- If expiring this month → remind: "put insurance expires [date], buy new put"
+- If stock dropping toward put → reassure: "put protects you at $12"
+
+### No positions open?
+- Remind: "No call sold — look for entry when IV stabilizes"
+- Remind: "No put — you are UNINSURED, buy put before selling next call"
+
+## 5 TRIGGER ACTIONS — pre-decided, no emotion
+Always check current price against these levels:
+
+| Price | Zone | Action |
+|-------|------|--------|
+| $15.70 | Near call | MONITOR. No action yet. |
+| $16.00 | At call strike | ROLL call to $18, 2 weeks out. Collect net credit. |
+| $16+ called away | Assignment | ACCEPT profit. Buy back shares on next dip. Restart collar. |
+| $12.50 | Near put | MONITOR. Assess conviction in SOFI thesis. |
+| $12.00 | Put floor | EXERCISE put OR roll to $10. If unsure → EXIT. Max loss taken. |
+
+If price is in a trigger zone, the daily brief MUST lead with the trigger action in bold.
+
+## SPECIFIC CONTRACT RECOMMENDATION
+Every daily brief must include the EXACT contract to trade (if action needed):
+
+For selling calls (biweekly):
+- Pick expiry ~10-14 days out (2 Fridays away)
+- Strike: $16 (or $17/$18 if stock has run up)
+- State: "SELL 2x SOFI $16C [expiry date] at bid $X.XX ($XXX total)"
+- Only recommend if bid ≥ $0.50 per contract (worth the trade)
+
+For buying puts (monthly):
+- Pick expiry ~30 days out
+- Strike: $12
+- State: "BUY 2x SOFI $12P [expiry date] at ask $X.XX ($XXX total)"
+
+## What triggers an URGENT alert (post to #alerts channel)
+- SOFI moves within $0.50 of $16 or $12 → immediate alert
+- IV rank jumps above 60% → "High IV — sell calls now for better premium"
+- IV rank drops below 20% → "Low IV — wait to sell calls"
+- Major SOFI news (earnings, analyst upgrade/downgrade, CEO activity, short reports)
 - Unusual options volume on SOFI (>3x average)
+- SOFI drops more than 5% in a single day
 
 ## Rules
 - Never make up data. If a fetch fails, say "data unavailable" for that field.
