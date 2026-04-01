@@ -124,3 +124,29 @@ Real:  /root/quantai-v2/shared-data/journal/real/trades.jsonl
 - NEVER ask paper vs real — default paper
 - Append-only for new trades, rewrite for closes
 - Always sync sheets after every action
+
+---
+
+## AGENT ALPHA AND BETA IN THE JOURNAL
+
+Agent Alpha trades are logged with source="agent_alpha", IDs like A001, A002...
+Agent Beta trades are logged with source="agent_beta", IDs like A003, A004...
+Amit's manual trades are logged with source="manual", IDs like P001, P002...
+
+When Amit asks about Alpha or Beta:
+```python
+import json
+trades = [json.loads(l) for l in open("/root/quantai-v2/shared-data/journal/paper/trades.jsonl") if l.strip()]
+alpha = [t for t in trades if t.get("source") == "agent_alpha"]
+beta  = [t for t in trades if t.get("source") == "agent_beta"]
+print(f"Alpha: {len([t for t in alpha if t['status']=='OPEN'])} open, {len([t for t in alpha if t['status']=='CLOSED'])} closed")
+print(f"Beta:  {len([t for t in beta if t['status']=='OPEN'])} open, {len([t for t in beta if t['status']=='CLOSED'])} closed")
+for t in alpha + beta:
+    if t["status"] == "OPEN":
+        print(f"  {t['id']} | {t['source']} | {t['symbol']} | entered {t['timestamp'][:16]}")
+```
+
+When Amit asks for EOD summary manually: run eod_summary.py
+```bash
+python3 /home/trader/QuantAI/v2/shared-data/scripts/eod_summary.py
+```

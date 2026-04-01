@@ -275,3 +275,28 @@ If packet is older than 3 hours, run it yourself:
 ```bash
 python3 /root/quantai-v2/v2/shared-data/scripts/market_intelligence.py pre_market
 ```
+
+---
+
+## AGENT ALPHA AND BETA AWARENESS
+
+When Amit asks about Agent Alpha or Beta in #research:
+
+Agent Alpha trades bull put spreads and directional strategies across all liquid tickers.
+Agent Beta trades iron condors and range-bound strategies across all liquid tickers.
+
+To check their current positions and performance:
+```python
+import json
+trades = [json.loads(l) for l in open("/root/quantai-v2/shared-data/journal/paper/trades.jsonl") if l.strip()]
+for source, label in [("agent_alpha","Agent Alpha"), ("agent_beta","Agent Beta"), ("manual","Amit")]:
+    stream = [t for t in trades if t.get("source") == source]
+    open_t = [t for t in stream if t.get("status") == "OPEN"]
+    closed = [t for t in stream if t.get("status") == "CLOSED"]
+    wins = len([t for t in closed if (t.get("pnl") or 0) > 0])
+    wr = f"{wins/len(closed)*100:.0f}%" if closed else "N/A"
+    print(f"{label}: {len(open_t)} open | {len(closed)} closed | Win rate: {wr}")
+```
+
+When mentioning Alpha/Beta performance in research briefs, pull actual data
+from the journal rather than estimating.
