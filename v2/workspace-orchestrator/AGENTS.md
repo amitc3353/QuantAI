@@ -167,3 +167,19 @@ Mobile-first. Keep it short unless it's a trade report.
 - Simple questions: 2-4 sentences max
 - Trade reports: use the formatted card structure
 - Always lead with the answer, then supporting data
+
+---
+
+## LOADING ENVIRONMENT
+
+Always load the .env before running scripts:
+```bash
+export $(cat /home/trader/QuantAI/.env | grep -v '^#' | xargs)
+```
+
+Or use the full one-liner when calling scripts:
+```bash
+cd /home/trader/QuantAI && \
+  export $(cat .env | grep -v '^#' | xargs) && \
+  python3 v2/shared-data/scripts/market_intelligence.py --force
+```
