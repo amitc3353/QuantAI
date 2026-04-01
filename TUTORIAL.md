@@ -1,7 +1,7 @@
 # QuantAI — How to Use Your System
 **Updated: April 1, 2026**
 
-Everything runs in Discord. The system has two streams running in parallel — autonomous agent trades and your manual trades. Both log to Google Sheets automatically.
+Everything runs in Discord. Two trading streams run in parallel — autonomous agent trades and your manual trades. Both log to Google Sheets automatically.
 
 ---
 
@@ -11,236 +11,206 @@ Everything runs in Discord. The system has two streams running in parallel — a
 |---|---|
 | **#chat** | Everything — talk to Orchestrator, get analysis, score the day |
 | **#research** | SOFI briefs, credit spread reports, collar scans (auto-posted) |
-| **#infra** | System health, errors, deployments |
+| **#infra** | System health, errors, script runs |
 | **#journal** | Log your manual trades, check stats |
-
-That's it. Four channels. No approval workflows, no slash commands to memorize.
 
 ---
 
 ## The Two Trading Streams
 
-### Stream 1 — Agents Alpha and Beta (fully autonomous)
+### Stream 1 — Agent Alpha and Beta (fully autonomous)
 
-You do nothing. They run on their own every 15 minutes during market hours.
+You do nothing. They run every 15 minutes during market hours via cron.
 
-**Agent Alpha** trades bull put spreads on any liquid ticker when conditions are right.
-**Agent Beta** trades iron condors on SPY/QQQ when VIX is 13-28 and market is range-bound.
+**Agent Alpha** — the opportunist. Trades any defined-risk premium strategy on any liquid ticker (>5M avg volume, >200 OI). Picks the right structure for conditions:
+- Oversold + above EMA200 → bull put spread
+- Overbought + below EMA200 → bear call spread
+- Range-bound + VIX 15-28 → iron condor
+- High IV + strong thesis → jade lizard
+- Low IV → calendar spread
+- Directional view → diagonal spread
 
-When they trade, you get a Discord notification in #chat and the trade appears in your Google Sheet "Agent Trades" tab automatically.
+**Agent Beta** — the range trader. Specializes in iron condors and butterflies on any liquid ticker when range-bound conditions are confirmed (VIX 13-28, RSI 35-65, ADX < 25).
 
-They will NOT trade when:
-- VIX ≥ 35
-- Market regime is halt or risk_off
-- Already 2 trades placed today
-- After 3:00 PM ET (no time to manage)
-- Earnings within 14 days on the ticker
+When they trade you get a Discord notification in #chat and trades appear in Google Sheet "Agent Trades" tab automatically. Trade IDs start with `A` (A001, A002...).
+
+They will NOT trade when: VIX ≥ 35, regime=halt, 2 trades already placed today, after 3 PM ET, earnings within 14 days on target ticker.
 
 At 3:30 PM they automatically close any open same-day positions.
 
 ### Stream 2 — Your Manual Trades (SOFI + learning)
 
-You decide when to trade. You execute on Webull. You log it in #journal. That's it.
-
-The Orchestrator gives you everything you need to decide — you never trade blind.
+You decide, you execute on Webull, you log in #journal. Trade IDs start with `P` (P001, P002...).
 
 ---
 
 ## What You Say in #chat
 
-**To get trade ideas for yourself:**
 ```
-any trades?
-what looks good today?
-run the scan
-```
-Orchestrator runs the intelligence packet + options scanner + debate chamber and gives you 2-3 setups with exact contracts, credits, and reasoning. You decide whether to execute.
-
-**To check SOFI and your collar:**
-```
-SOFI update
-how's my collar?
-SOFI price vs triggers
-```
-Gives you current price, which trigger level you're near, what action to take, and the exact contract to trade if action is needed.
-
-**To check your open positions:**
-```
-how are my positions?
-open positions?
-what do I have open?
+any trades?              → full scan + debate + 2 proposals
+SOFI update              → price, collar status, trigger level action
+how are my positions?    → all open trades (agent + manual)
+how is Alpha doing?      → Agent Alpha stats and open positions
+how is Beta doing?       → Agent Beta stats and open positions
+market conditions?       → current regime, VIX, risk flags
+score today 78/100       → triggers self-evolution analysis
+score today 80/100 --consolidate  → Fridays — weekly pattern analysis
+what did the agents trade today?  → today's Alpha + Beta activity
 ```
 
-**To check what the agents traded:**
-```
-what did alpha trade today?
-agent trades this week
-show me today's agent activity
-```
-
-**To score the day and trigger evolution:**
-```
-score today 72/100
-score today 85/100
-```
-Score is your honest assessment — did trades make sense? Did you follow the plan? Below 90 triggers the self-evolution analysis. Fridays add --consolidate:
-```
-score today 80/100 --consolidate
-```
-
-**To get market context:**
-```
-market conditions?
-what's the regime today?
-is it a good day to trade?
-```
-
-**Anything else:**
-Just ask naturally. "Should I roll my SOFI call?", "What happens if SPY drops 2% today?", "Explain iron condor gamma risk." The Orchestrator answers everything.
+Anything else — just ask naturally. "Should I roll my SOFI call?", "Why did Beta not trade today?", "Explain the jade lizard strategy."
 
 ---
 
 ## What You Say in #journal
 
-**Log a trade (always paper unless you say "real"):**
 ```
-log: sold 2x SOFI $16C Apr 18 for $1.10
-log: bought 2x SOFI $12P May 16 for $0.25
-log: MSTR $115/$110 put spread Apr 10 credit $0.78 x1
-```
-Journal agent logs it immediately, fetches the underlying price automatically, confirms in one message. Never asks questions.
-
-**Close a trade:**
-```
+log: sold 2x SOFI $16C Apr 18 for $1.10    → logs immediately, no questions
+log: MSTR $115/$110 put spread Apr 10 $0.78 x1
 close: P001 expired worthless
 close: P001 bought back at $0.40
+stats                                        → win rate, P&L, open count
+open positions                               → all open trades
 ```
 
-**Check your stats:**
+Journal agent fetches the underlying price automatically. Never asks questions.
+
+---
+
+## What You Say in #infra
+
 ```
-stats
-open positions
-how am I doing?
-weekly stats
+health check             → full system status (15 checks)
+show pipeline log        → last 30 lines of cron execution log
+why didn't alpha trade?  → reads pipeline log, explains
+show today's agent trades → reads journal for today
+```
+
+---
+
+## What You Say in #research
+
+```
+SOFI brief               → full SOFI analysis with exact contract to sell
+collar candidates        → weekly scan for new collar opportunities
+how is Alpha performing? → reads journal and reports win rate
 ```
 
 ---
 
 ## Google Sheet — Your Live Dashboard
 
-Bookmark this on your phone:
-**https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0**
+Bookmark: **https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0**
 
-**Summary tab** — open this every morning:
-- Open positions (agent + manual)
-- Win rate: agent vs manual (tracked separately)
-- Total P&L
-- Last sync time
+| Tab | Contents |
+|---|---|
+| Summary | Win rate + P&L per stream, open count, last updated |
+| Agent Trades | Alpha and Beta only — your benchmark for autonomous performance |
+| Manual Trades | Your SOFI collar and learning trades |
+| All Trades | Everything, color-coded: 🟡 open · 🟢 win · 🔴 loss |
 
-**Agent Trades tab** — Alpha and Beta performance only. This is how you evaluate whether the autonomous system is working.
+---
 
-**Manual Trades tab** — your SOFI collar and anything you trade yourself.
+## EOD Summary (auto-posted at 4:05 PM ET)
 
-**All Trades tab** — everything combined, color-coded:
-- 🟡 Yellow = OPEN position
-- 🟢 Green = closed winner
-- 🔴 Red = closed loser
+Every market day at 4:05 PM, this posts to #chat automatically:
+```
+📊 QuantAI Daily Summary — Apr 2, 2026
 
-Trade IDs: `A001`, `A002`... = agent trades. `P001`, `P002`... = your manual trades.
+🤖 Agent Alpha (Bull put spreads & directional)
+  Traded today: 1
+  A001 MSTR BULL PUT SPREAD | Credit: $0.78 | OPEN
+  All-time: 3 closed | Win rate: 67% | P&L: +$145
+
+🤖 Agent Beta (Iron condors & range-bound)
+  No trades today — VIX 23.9 not range-bound enough
+  All-time: 1 closed | Win rate: 100% | P&L: +$62
+
+👤 Amit (SOFI collar + manual trades)
+  Open: P001 SOFI SELL CALL $16 Apr 18 | $220 premium
+  All-time: 0 closed | Win rate: N/A
+
+Total open: 2 | Combined P&L: +$207
+Score today in #chat: `score today 78/100`
+```
 
 ---
 
 ## SOFI Collar — 5 Rules, No Improvising
 
-| SOFI Price | What you do |
+| SOFI Price | Action |
 |---|---|
-| $15.70 | Nothing. Monitor. |
-| $16.00 | ROLL the call to $18, 2 weeks out. Collect net credit. |
-| Called away | Accept it. Rebuy on next dip. Restart collar. |
-| $12.50 | Assess conviction. Is the thesis still intact? |
-| $12.00 | Exercise put OR roll to $10 OR exit. Max loss accepted. |
+| $15.70 | MONITOR — nothing yet |
+| $16.00 | ROLL call to $18, 2 weeks out |
+| Called away | Accept profit, rebuy on dip, restart |
+| $12.50 | MONITOR — assess conviction |
+| $12.00 | EXERCISE put OR roll to $10 OR exit |
 
-The Orchestrator tells you which level you're near every time you ask "SOFI update." You never need to remember the numbers.
+Ask "SOFI update" and Orchestrator tells you which level you're near and exactly what to do.
 
 ---
 
-## What Happens Each Day (Automatically)
+## System Health Check
 
-| Time (ET) | What happens |
-|---|---|
-| 6:00 AM | Research agent posts SOFI brief to #research |
-| 9:45 AM | Pipeline first check — evaluates if conditions support entry |
-| 9:45 AM–3:00 PM | Pipeline checks every 15 min — enters if conditions warrant |
-| 3:00 PM | Entry cutoff — no new positions after this |
-| 3:30 PM | Hard close — all agent same-day positions closed |
-| 4:05 PM | EOD reminder posted to #chat — prompts you to score the day |
+Run anytime to verify everything is working:
 
-**You don't need to do anything for the agent stream.** Just watch Discord and Google Sheet.
+```bash
+python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
+```
+
+Tests 15 categories, shows pass/fail per check, gives fix instructions for failures. Takes ~2 minutes. Run weekly or after any deployment.
+
+Expected result: **43/43 passed**
+
+If something fails, the test tells you exactly how to fix it. Common fixes:
+- Missing dependency → `pip3 install [pkg] --break-system-packages`
+- Missing file → copy from repo to correct location
+- Cron missing → `crontab -e` and add the two pipeline lines
+- API key missing → check `/home/trader/QuantAI/.env`
 
 ---
 
-## Daily Routine (What Amit Does)
+## Daily Routine (5 min total)
 
-**Morning (5 min):**
-1. Open Google Sheet Summary tab — any overnight changes?
-2. In #chat: "SOFI update" — where are we vs trigger levels?
-3. Watch for agent trade notification in #chat around market open
+**Morning:**
+1. Open Google Sheet Summary tab
+2. "#chat: SOFI update" — which trigger level are we near?
+3. Watch for agent trade notification around 9:45-10 AM
 
-**During market (as needed):**
-4. If you want to paper trade something yourself → execute on Webull → log in #journal
-5. Ask Orchestrator anything you're curious about
-6. Agents handle themselves — you just watch
+**During market:**
+4. Agents run themselves — watch #chat for notifications
+5. If you manual trade → execute on Webull → log in #journal
 
-**End of day (2 min):**
-7. In #chat: "score today [0-100]/100"
-8. Check Google Sheet — P&L for the day
+**End of day:**
+6. EOD summary auto-posts at 4:05 PM — review it
+7. "#chat: score today 78/100" — triggers evolution if needed
 
-**Friday (10 min):**
-9. In #chat: "score today [score]/100 --consolidate"
-10. In #journal: "stats" — full week breakdown
-11. Compare Agent Trades tab vs Manual Trades — who's winning this week?
+**Friday:**
+8. "#chat: score today 80/100 --consolidate"
+9. "#journal: stats" — week breakdown
+10. Compare Agent Trades tab vs Manual Trades
 
 ---
 
 ## What You Never Need to Do
 
-- Approve agent trades — they execute automatically within guardrails
-- SSH into the VPS for normal operations — ask Infra agent in #infra
-- Manually run scripts — Orchestrator runs them when you ask
-- Remember contract specifics — ask Orchestrator for exact contracts
-- Update configs manually — self-evolution handles it with validation
+- Approve agent trades — they execute autonomously
+- SSH for normal operations — ask Infra in #infra
+- Manually run scripts — Orchestrator runs them on request
+- Remember exact contracts — ask Orchestrator for specifics
 
 ---
 
-## If Something Seems Wrong
+## Key Numbers
 
-**Agent not trading when it should:**
-In #infra: "check pipeline log" or "why aren't agents trading?"
-Infra agent reads the log and tells you what happened.
-
-**Trade not showing in Google Sheet:**
-In #journal: "sync sheets" — forces a manual sync.
-Or on VPS: `python3 /home/trader/QuantAI/v2/shared-data/scripts/sheets_sync.py`
-
-**System feels slow or broken:**
-In #infra: "health check" — disk, memory, all processes.
-
-**SOFI hitting a trigger level:**
-In #chat: "SOFI update" — Orchestrator tells you exactly what to do based on the pre-decided actions. Follow the plan. Don't improvise.
-
----
-
-## Key Numbers to Know
-
-| Thing | Value |
+| Parameter | Value |
 |---|---|
-| Paper account size | $20,000 |
-| Max loss per trade | 2% = $400 |
-| Max open positions | 3 simultaneously |
-| Stop loss | 2x credit received |
-| Profit target | 50% of max profit (close early) |
-| SOFI collar max loss | $600 |
-| SOFI income target | $170/month at 200 shares |
-| Agent entry cutoff | 3:00 PM ET |
+| Paper account | $100,040 |
+| Max loss per trade | 2% |
+| Stop loss | 2x credit |
+| Profit target | 50% of max profit |
+| Max agent positions | 3 simultaneously |
+| Entry cutoff | 3:00 PM ET |
 | Hard close | 3:30 PM ET |
-| VIX halt level | 35 (no trades above this) |
+| VIX halt | 35 |
+| Agent win rate targets | Alpha ≥ 60%, Beta ≥ 65% |

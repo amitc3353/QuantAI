@@ -13,29 +13,23 @@ Start every new chat: "Read SYSTEM_STATE.md."
 | OS | Ubuntu 24 |
 | Repo | github.com/amitc3353/QuantAI (main branch) |
 | Repo path on VPS | /home/trader/QuantAI |
-| Runtime | OpenClaw multi-agent framework |
 | OpenClaw gateway | /root/quantai-v2/ |
 | Trading mode | PAPER |
+| Paper account equity | $100,040 |
 
 **Two directory trees — both matter:**
 - `/home/trader/QuantAI/` — git repo, all Python scripts
-- `/root/quantai-v2/` — OpenClaw gateway reads agent workspaces here, all data written here
-
-When updating agent instructions, copy files to BOTH locations.
+- `/root/quantai-v2/` — OpenClaw reads agent workspaces here, all data written here
 
 ---
 
 ## How This System Works
 
-Four Claude model instances (agents) live in Discord. They have Bash tool access and run Python scripts directly. No fixed scheduler built into agents — a VPS cron job triggers the autonomous pipeline every 15 minutes during market hours.
+Four Claude model instances (agents) live in Discord. They have Bash tool access and run Python scripts directly. A VPS cron job triggers the autonomous pipeline every 15 minutes during market hours.
 
-**Two trading streams running in parallel:**
-
-**Stream 1 — Autonomous (Agent Alpha + Beta)**
-Cron fires every 15 min → pipeline evaluates conditions → if regime/VIX/timing passes all gates → debate chamber selects trades → Alpaca paper orders placed → journal logged → Google Sheet synced → Discord notification. No human approval.
-
-**Stream 2 — Manual (Amit)**
-SOFI collar strategy + any learning trades. Ask Orchestrator for analysis → execute on Webull → log in #journal → Google Sheet synced. Amit stays in the loop by choice to learn.
+**Two trading streams:**
+- **Autonomous** — Agent Alpha + Beta execute via cron, no human approval
+- **Manual** — Amit trades SOFI collar + learning trades, logs in #journal
 
 ---
 
@@ -43,105 +37,87 @@ SOFI collar strategy + any learning trades. Ask Orchestrator for analysis → ex
 
 | Agent | Channel | Model | Role |
 |---|---|---|---|
-| Orchestrator | #chat | Claude Sonnet | Primary interface. Runs scans, proposes trades for Amit, monitors positions, answers everything |
-| Research | #research | Claude Sonnet | SOFI daily brief, credit spread report, weekly collar candidate scan |
-| Infra | #infra | Claude Sonnet | System health, files, git, script maintenance, debugging |
-| Journal | #journal | Claude Haiku | Trade logging (paper + real), stats, Google Sheets sync |
+| Orchestrator | #chat | Claude Sonnet | Primary interface, runs scans, monitors positions, answers everything |
+| Research | #research | Claude Sonnet | SOFI brief, credit spreads, collar candidates |
+| Infra | #infra | Claude Sonnet | Health checks, files, git, debugging |
+| Journal | #journal | Claude Haiku | Trade logging, stats, Google Sheets sync |
 
-**Workspace files (what agents read as instructions):**
-- `/root/quantai-v2/workspace-{orchestrator,research,infra,journal}/AGENTS.md + SOUL.md`
-
-OpenClaw reads workspace files fresh on every message — no restart needed after editing.
+All four agents know Agent Alpha and Beta. Ask any channel about their performance.
 
 ---
 
-## Agent Alpha — Bull Put Spreads (Autonomous)
+## Agent Alpha — The Opportunist
 
-Runs via cron. Enters when conditions support a bullish bias on any liquid ticker.
+Trades any defined-risk premium strategy on any liquid ticker.
 
 | Parameter | Value |
 |---|---|
-| Strategy | Bull put spreads |
-| Universe | 100+ liquid tickers (dynamic scan) |
-| Entry condition | RSI < 45, above 200 EMA, IV rank > 30, earnings > 14 days |
-| Spread width | $5–$10 depending on ticker price |
+| Universe | Any ticker: avg volume >5M, options OI >200, bid/ask <$0.15 |
+| Strategies | Bull put spread, bear call spread, iron condor, iron butterfly, jade lizard, calendar spread, diagonal spread |
+| Strategy selection | Picks based on RSI, trend, VIX, IV rank |
 | Min credit | $0.30 |
 | Stop loss | 2x credit |
-| Profit target | 50% of max profit |
-| Max positions | 2 simultaneously (shared with Beta) |
-| Journal source tag | `agent_alpha` |
+| Profit target | 50% |
+| Journal tag | `agent_alpha` · IDs: A001, A002... |
 
----
+## Agent Beta — The Range Trader
 
-## Agent Beta — Iron Condors (Autonomous)
-
-Runs via cron. Only enters when market is range-bound and VIX supports premium selling.
+Specializes in range-bound strategies across all liquid tickers.
 
 | Parameter | Value |
 |---|---|
-| Strategy | Iron condors |
-| Symbols | SPY, QQQ |
-| VIX range | 13–28 (skips if outside) |
+| Universe | Any liquid ticker (same filters as Alpha) |
+| Strategies | Iron condor, iron butterfly (first choice), bull/bear spreads when one side only |
+| Entry conditions | VIX 13-28, RSI 35-65, ADX <25, no event within 2 days |
 | Short delta | 0.08–0.12 |
-| Wing width | $5 (widens to $7 in caution regime) |
+| Wing width | $5 (widens to $7 in caution) |
 | Min credit | $0.50 |
-| Stop loss | 2x credit |
-| Profit target | 50% of max profit |
 | Hard close | 3:30 PM ET |
-| Journal source tag | `agent_beta` |
+| Journal tag | `agent_beta` · IDs: A003, A004... (shared A-series with Alpha) |
 
 ---
 
-## Autonomous Pipeline (Cron-Triggered)
+## Autonomous Pipeline (Cron)
 
-Crontab entry (runs as root):
 ```
-*/15 9-16 * * 1-5  cd /home/trader/QuantAI && python3 v2/shared-data/scripts/run_pipeline.py >> /root/quantai-v2/shared-data/logs/pipeline.log 2>&1
-5 16 * * 1-5  cd /home/trader/QuantAI && python3 v2/shared-data/scripts/run_pipeline.py eod >> /root/quantai-v2/shared-data/logs/pipeline.log 2>&1
+*/15 9-16 * * 1-5   run_pipeline.py          → every 15 min market hours
+5    16  * * 1-5    run_pipeline.py eod      → 4:05 PM ET daily
 ```
 
 **Decision logic every 15 min:**
-1. Market open? (9:30–4:00 PM ET weekdays) → else skip
-2. Opening volatility window? (9:30–9:45) → wait, no entry
-3. Past entry cutoff? (3:00 PM) → monitor only, no new entries
-4. Past hard close? (3:30 PM) → hard close all agent positions
-5. VIX ≥ 35 or regime = halt → no entry
-6. 2 entries already today → monitor only
-7. All clear → run intelligence → scan → debate → execute
+1. Market open (9:30-4 PM ET weekdays)? → else exit
+2. Opening volatility window (9:30-9:45)? → wait, no entry
+3. Past 3 PM? → monitor only, no new entries
+4. Past 3:30 PM? → hard close all agent positions
+5. VIX ≥ 35 or regime=halt? → no entry
+6. 2 entries already today? → monitor only
+7. All clear → intelligence → scan → debate → execute
 
-**Max 2 entries per day.** State tracked in `cache/daily_state.json`.
+Max 2 entries per day. State in `cache/daily_state.json`.
 
 ---
 
 ## Amit's Manual Trading
 
 ### SOFI Collar — paper, 200 shares
-Primary learning strategy. Defined max loss regardless of downside.
 
 | Parameter | Value |
 |---|---|
-| Shares | 200 paper (target: 1,000 long-term) |
-| Entry | ~$15 |
+| Entry | ~$15 paper |
 | Call strike | $16, sell biweekly |
 | Put strike | $12, buy monthly |
 | Net income target | $170/month |
 | Max loss | $600 |
 
-5 pre-decided trigger actions — no improvising:
+5 pre-decided triggers (no improvising):
 
-| SOFI Price | Action |
+| Price | Action |
 |---|---|
 | $15.70 | MONITOR |
 | $16.00 | ROLL call to $18, 2 weeks out |
-| Called away | ACCEPT profit, rebuy on dip |
+| Called away | Accept profit, rebuy on dip |
 | $12.50 | MONITOR, assess conviction |
-| $12.00 | EXERCISE put OR roll to $10 OR exit |
-
-Full params: `/root/quantai-v2/shared-data/strategies/sofi_collar.json`
-
-### Other manual trades
-Amit can trade any strategy himself for learning. Log everything in #journal.
-These appear in "Manual Trades" tab in Google Sheet, tracked separately from agents.
+| $12.00 | EXERCISE OR roll to $10 OR exit |
 
 ---
 
@@ -150,33 +126,50 @@ These appear in "Manual Trades" tab in Google Sheet, tracked separately from age
 | Rule | Value |
 |---|---|
 | Max loss per trade | 2% of account |
-| Earnings blackout | 14 days minimum |
-| VIX ≥ 35 | No new trades — halt |
-| No-trade windows | 9:30–9:45 AM ET, 3:45–4:00 PM ET |
-| Stop loss | 2x credit received |
-| Profit target | Close at 50% of max profit |
-| Max open agent positions | 3 simultaneously |
-| Entry cutoff | 3:00 PM ET — no new entries after |
-| Hard close | 3:30 PM ET — close all 0DTE positions |
+| Earnings blackout | 14 days |
+| VIX ≥ 35 | No new trades |
+| No-trade windows | 9:30-9:45 AM, 3:45-4:00 PM ET |
+| Stop loss | 2x credit |
+| Profit target | 50% of max profit |
+| Max agent positions | 3 simultaneously |
+| Entry cutoff | 3:00 PM ET |
+| Hard close | 3:30 PM ET |
+| Strategy gate | No covered calls/collars/CSPs (require shares) |
 
 ---
 
 ## Scripts
 
 All at `/home/trader/QuantAI/v2/shared-data/scripts/`
-All data reads/writes go to `/root/quantai-v2/shared-data/`
+All data at `/root/quantai-v2/shared-data/`
 
-| Script | What it does |
+| Script | Purpose |
 |---|---|
-| `run_pipeline.py` | Master pipeline — runs every 15 min via cron. Decides entry/monitor/eod based on time and conditions |
-| `market_intelligence.py` | Intelligence packet: VIX, technicals, events, earnings, news, regime. Auto-skips if <30 min old |
-| `debate_chamber.py` | Bull/Bear/Judge debate → top 2 trade proposals for any valid strategy |
-| `autonomous_execution.py` | Places Alpaca paper orders, logs fills as agent_alpha or agent_beta, syncs sheets |
-| `scan_options.py` | Dynamic scanner across 100+ tickers — credit spreads + collar candidates |
-| `self_evolution.py` | EOD config evolution. Pass today's score. 5-gate validation before any change |
-| `sheets_sync.py` | Syncs trades.jsonl to Google Sheet (4 tabs) |
-| `pattern_engine.py` | Statistical pattern detection — needs 20+ closed trades to activate |
+| `run_pipeline.py` | Master cron entry point — conditions → entry/monitor/eod |
+| `market_intelligence.py` | Intelligence packet: VIX, technicals, events, earnings, news |
+| `debate_chamber.py` | Bull/Bear/Judge → top 2 trade proposals (any strategy, any ticker) |
+| `autonomous_execution.py` | Places Alpaca paper orders, logs, syncs sheets |
+| `scan_options.py` | Dynamic scanner: 100+ tickers, credit spreads + collar candidates |
+| `self_evolution.py` | EOD evolution: 6-step, 5-gate validation |
+| `sheets_sync.py` | Syncs journal to Google Sheet (4 tabs) |
+| `eod_summary.py` | Daily summary posted to #chat at 4:05 PM |
+| `pattern_engine.py` | Statistical patterns — needs 20+ closed trades |
 | `fetch_sofi.py` | SOFI data for Research agent |
+| `system_test.py` | **43-check health test — run weekly** |
+
+---
+
+## System Health Check
+
+```bash
+python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
+```
+
+Tests 15 categories, 43 checks. Expected result: **43/43 passed**.
+
+Categories: environment variables, Python dependencies, all script files, all workspace files, cron jobs, Alpaca API, intelligence packet, all major scripts, journal state, Google Sheets, OpenClaw gateway.
+
+Run: after any deployment, weekly, or when something feels off.
 
 ---
 
@@ -186,32 +179,13 @@ URL: https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7
 
 | Tab | Contents |
 |---|---|
-| All Trades | Every trade, color-coded (yellow=open, green=win, red=loss) |
-| Agent Trades | Alpha + Beta autonomous trades only |
-| Manual Trades | Amit's SOFI collar and learning trades only |
-| Summary | Live formulas: win rate, P&L, open count — per stream |
+| All Trades | Every trade, color-coded |
+| Agent Trades | Alpha + Beta only |
+| Manual Trades | Amit's trades only |
+| Summary | Live win rate, P&L, open count per stream |
 
-Trade IDs: `A001`, `A002`... = agent trades. `P001`, `P002`... = manual/paper trades.
-Source field: `agent_alpha`, `agent_beta`, or `manual`.
-
-Auto-syncs after every agent execution and every manual journal entry.
-
----
-
-## Self-Evolution
-
-Triggered when Amit says "score today 78/100" in #chat.
-Orchestrator runs `self_evolution.py 78`.
-
-Pipeline if score < 90:
-1. Observe — reads today's journal
-2. Critique — finds biggest param misalignment
-3. Generate — ONE specific config change with evidence
-4. Validate — 5 gates: constitution, size, drift, safety, regression
-5. Apply — updates sofi_collar.json, posts to #infra
-6. Consolidate (Fridays) — compresses 35 days of observations into principles
-
-Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_credit ≥ $0.30, earnings_blackout ≥ 14d, delta range 0.05-0.20, VIX upper ≤ 30, stop_loss_multiplier ≤ 3x
+Trade IDs: `A001`... = agent trades · `P001`... = manual trades
+Auto-syncs after every execution and every journal entry.
 
 ---
 
@@ -219,15 +193,15 @@ Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_c
 
 | Source | Data | Cost |
 |---|---|---|
-| yfinance | Price, technicals, fundamentals, VIX | Free |
-| Finnhub | Event calendar, earnings, news | Free tier |
-| Alpha Vantage | Earnings surprise history | Free (25 req/day) |
+| yfinance | Price, technicals, VIX, fundamentals | Free |
+| Finnhub | Events, earnings, news | Free tier |
+| Alpha Vantage | Earnings surprises | Free (25/day) |
 | CNN | Fear & Greed (VIX fallback) | Free scrape |
-| Alpaca paper API | Order placement, position data | Free |
+| Alpaca paper API | Order execution, positions | Free |
 | Google Sheets API | Journal sync | Free |
 | Anthropic API | All agent reasoning + debate + evolution | ~$15-25/mo |
-| MarketXLS Advanced | Real-time Greeks, screeners | NOT subscribed — pre-live only ($94/mo) |
-| Unusual Whales | Real sweep detection | NOT subscribed — pre-live only ($48/mo) |
+| MarketXLS Advanced | Real-time Greeks | NOT subscribed — pre-live ($94/mo) |
+| Unusual Whales | Real sweep detection | NOT subscribed — pre-live ($48/mo) |
 
 ---
 
@@ -236,11 +210,11 @@ Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_c
 | Item | Now | At Live |
 |---|---|---|
 | Claude API | ~$15-25 | ~$25-40 |
-| VPS Hetzner CX31 | $12 | $12 |
-| Data sources | $0 | $0 |
+| VPS | $12 | $12 |
+| Data | $0 | $0 |
 | MarketXLS Advanced | — | $94 |
 | Unusual Whales | — | $48 |
-| **Total** | **~$27-37/mo** | **~$179-194/mo** |
+| **Total** | **~$27-37** | **~$179-194** |
 
 ---
 
@@ -249,28 +223,22 @@ Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_c
 ```
 /root/quantai-v2/
   workspace-{orchestrator,research,infra,journal}/
-    SOUL.md      ← Agent personality
-    AGENTS.md    ← Operating manual
+    SOUL.md + AGENTS.md          ← Agent instructions (edit here for live effect)
   shared-data/
     journal/paper/trades.jsonl   ← All paper trades (source of truth)
-    journal/real/trades.jsonl    ← Real trades (future)
     cache/
       market_intelligence.json   ← Intelligence packet
       debate_output.json         ← Last debate results
       daily_state.json           ← Entries today counter
-      credit_spread_scan.json    ← Last scan
-      collar_candidates.json     ← Last collar scan
     logs/
-      pipeline.log               ← All pipeline runs
+      pipeline.log               ← All cron pipeline runs
       debate_log.jsonl           ← All debate sessions
       evolution_log.jsonl        ← All evolution events
-      evolution_observations.jsonl
-    strategies/
-      sofi_collar.json           ← Strategy params (evolution updates this)
+    strategies/sofi_collar.json  ← Strategy params (evolution updates this)
     google_service_account.json  ← Google Sheets auth (never commit to git)
 
 /home/trader/QuantAI/
-  v2/shared-data/scripts/        ← All Python scripts
+  v2/shared-data/scripts/        ← All Python scripts (git-tracked)
   .env                           ← All API keys
 ```
 
@@ -280,22 +248,22 @@ Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_c
 
 - [ ] Agent Alpha win rate ≥ 60% over 40+ closed trades
 - [ ] Agent Beta win rate ≥ 65% over 40+ closed trades
-- [ ] Self-evolution ran ≥ 4 weeks, ≥ 1 validated change applied
-- [ ] No single week drawdown > $500 on paper in last 4 weeks
+- [ ] system_test.py: 43/43 consistently
+- [ ] Self-evolution applied ≥ 1 validated change
+- [ ] No weekly drawdown > $500 in last 4 weeks
 - [ ] Subscribe MarketXLS Advanced ($94/mo)
 - [ ] Subscribe Unusual Whales ($48/mo)
-- [ ] Open IBKR for XSP (Section 1256, 60/40 tax)
+- [ ] Open IBKR for XSP (Section 1256 tax treatment)
 - [ ] Separate live Alpaca API keys
-- [ ] Emergency stop tested end-to-end
+- [ ] pip audit clean
 
 ---
 
 ## Security
 
-- GitHub PAT: create fresh each session, delete immediately after. Never reuse.
-- google_service_account.json: never commit to git (in .gitignore)
+- GitHub PAT: create fresh each session, delete immediately after
+- google_service_account.json: never commit to git
 - All API keys in /home/trader/QuantAI/.env only
-- New open-source tools: >500 stars, manual review, pin versions
 
 ---
 
@@ -303,6 +271,6 @@ Constitution-protected (never changes via evolution): max_loss_pct ≤ 2%, min_c
 
 > "Read SYSTEM_STATE.md. I want to [task]."
 
-After significant changes: update this file → push to GitHub → re-upload to Claude project.
+After changes: update this file → push to GitHub → re-upload to Claude project.
 
-*Last updated: April 1, 2026 — Autonomous execution live. Agent Alpha (bull put spreads) and Agent Beta (iron condors) running via 15-min cron. Google Sheets journal live. Self-evolution pipeline ready.*
+*Last updated: April 1, 2026 — system_test.py added (41/43 passing), aiohttp and service account path fixes pending.*
