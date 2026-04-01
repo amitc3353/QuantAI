@@ -5,85 +5,97 @@
 
 ## What This System Is
 
-Four Claude agents on OpenClaw. Two autonomous trading agents (Alpha + Beta) running on a 15-min cron cycle. One manual stream for Amit's learning trades. Everything logged to Google Sheets automatically.
+Four Claude agents on OpenClaw. Agent Alpha and Beta execute autonomously via 15-min cron. Amit trades SOFI collar and learning trades manually. Everything logs to Google Sheets. System tests itself with 43 checks.
 
-**Current status: Paper trading, fully operational as of April 1, 2026.**
+**Status: Paper trading, fully operational. First live cron runs tomorrow.**
 
 ---
 
 ## What's Built and Live
 
-### OpenClaw Foundation
-- [x] Orchestrator (#chat) — scans, debates, SOFI monitoring, answers everything
-- [x] Research (#research) — SOFI daily brief, credit spreads, collar candidates
-- [x] Infra (#infra) — health checks, files, git, debugging
-- [x] Journal (#journal) — trade logging, stats, Google Sheets sync
+### Foundation
+- [x] Four agents: Orchestrator (#chat), Research (#research), Infra (#infra), Journal (#journal)
+- [x] All agents know Agent Alpha and Beta — ask any channel about their performance
+- [x] SOFI collar strategy active (200 paper shares, 5 trigger actions)
 
 ### Intelligence + Debate
-- [x] market_intelligence.py — on-demand packet: VIX, technicals, events, earnings, news for 11 symbols
-- [x] debate_chamber.py — Bull/Bear/Judge selects top 2 trades from any valid strategy
-- [x] scan_options.py — dynamic scanner across 100+ tickers
+- [x] market_intelligence.py — on-demand packet (VIX, 11 symbols, events, earnings, news)
+- [x] debate_chamber.py — Bull/Bear/Judge selects top 2 trades from full strategy toolkit
+- [x] scan_options.py — 100+ tickers, 5M volume filter, 200 OI gate, 10 strategies evaluated
 
-### Autonomous Execution (Agent Alpha + Beta)
-- [x] autonomous_execution.py — places Alpaca paper orders, logs fills, syncs sheets
-- [x] run_pipeline.py — 15-min cron trigger, condition-gated (VIX, regime, timing, daily count)
-- [x] Agent Alpha: bull put spreads, any liquid ticker, condition-driven
-- [x] Agent Beta: iron condors on SPY/QQQ, only when VIX 13-28 and range-bound
-- [x] Max 2 entries per day, tracked in daily_state.json
-- [x] Hard close at 3:30 PM ET on all agent positions
-- [x] Cron active: every 15 min 9-4 PM ET weekdays + EOD at 4:05 PM
+### Agent Alpha and Beta (autonomous)
+- [x] autonomous_execution.py — Alpaca paper orders, strategy gate, contract verification
+- [x] run_pipeline.py — 15-min cron, condition-gated (VIX, regime, timing, daily count)
+- [x] Agent Alpha: full strategy toolkit, any liquid ticker, condition-driven
+- [x] Agent Beta: condors/butterflies, any liquid ticker, VIX 13-28 entry gate
+- [x] Max 2 entries/day, hard close 3:30 PM, monitor every 15 min
+- [x] Cron active: `*/15 9-16 * * 1-5` + `5 16 * * 1-5` (EOD)
 
 ### Self-Evolution
-- [x] self_evolution.py — 6-step pipeline, 5-gate validation, updates sofi_collar.json
-- [x] pattern_engine.py — statistical detection (needs 20+ closed trades to activate)
+- [x] self_evolution.py — 6-step, 5-gate validation, updates sofi_collar.json
+- [x] pattern_engine.py — statistical detection (activates at 20+ closed trades)
 
 ### Google Sheets Journal
 - [x] 4 tabs: All Trades, Agent Trades, Manual Trades, Summary
-- [x] Live formulas: win rate, P&L, open count per stream
-- [x] Color coded: yellow=open, green=win, red=loss
-- [x] Auto-syncs after every execution and every manual log
-- [x] P001 logged: SELL 2x SOFI $16C Apr 18 @ $1.10 (manual, paper)
+- [x] Auto-syncs after every execution and manual log
+- [x] Agent trades: A-prefix IDs, source=agent_alpha/agent_beta
+- [x] Manual trades: P-prefix IDs, source=manual
 
-### Manual Trading (Amit)
-- [x] SOFI collar strategy: 200 paper shares, 5 trigger actions pre-decided
-- [x] Journal logging: "log: [trade]" in #journal → auto-logged, no questions
-- [x] Completely separate from agent trades in Google Sheet
+### System Health
+- [x] system_test.py — 43-check end-to-end health test
+- [x] eod_summary.py — daily Alpha/Beta/Amit summary posted to #chat at 4:05 PM
+
+### Current test result: 41/43 (2 fixes pending — see below)
+
+---
+
+## Immediate — Fix Before Tomorrow Morning
+
+```
+FIX 1: Install aiohttp
+  pip3 install aiohttp --break-system-packages
+
+FIX 2: Copy google_service_account.json to correct location
+  cp /home/trader/QuantAI/v2/shared-data/google_service_account.json \
+     /root/quantai-v2/shared-data/google_service_account.json
+
+Verify: python3 v2/shared-data/scripts/system_test.py → should show 43/43
+```
 
 ---
 
 ## Track 1: Trading Progress
 
 ### Now — First Active Month
-- [ ] Watch first autonomous agent trades execute tomorrow morning
-- [ ] Log SOFI collar trades as you manage them
-- [ ] Score each trading day: "score today 78/100" in #chat
-- [ ] End of week 1 — compare agent win rate vs manual win rate in Google Sheet
-- [ ] Add 1-2 more collar candidates (HIMS at IV rank 93 is strong candidate)
+- [ ] system_test.py showing 43/43
+- [ ] Watch first Alpha/Beta trades execute tomorrow morning (9:45 AM ET)
+- [ ] Log SOFI trades as you manage the collar
+- [ ] Score each trading day in #chat
+- [ ] Week 1 review: compare agent win rate vs manual in Google Sheet
 
 ### Month 1 Targets
-- [ ] Agent Alpha: 20+ trades, tracking toward 60%+ win rate
-- [ ] Agent Beta: 10+ condors, tracking toward 65%+ win rate
+- [ ] Alpha: 20+ trades, tracking toward 60%+ win rate
+- [ ] Beta: 10+ trades, tracking toward 65%+ win rate
 - [ ] Self-evolution: first validated config change applied
-- [ ] SOFI collar: 2 full cycles completed (sell call, let expire, repeat)
+- [ ] SOFI collar: 2 full cycles (sell, expire, repeat)
 
 ### Month 2-3
 - [ ] Pattern engine activates (20+ closed trades) — first statistical insights
-- [ ] Scale SOFI collar to 500 shares if thesis holding
-- [ ] Evaluate adding XSP iron condors (same as SPY condors but tax-advantaged)
-- [ ] Consider additional collar candidates alongside SOFI
+- [ ] Scale SOFI to 500 shares if thesis holding
+- [ ] Add 1-2 more collar candidates from scanner (HIMS at IV rank 93 is strong)
 
 ### Month 3+ Pre-Live
-- [ ] Subscribe MarketXLS Advanced ($94/mo) for real-time Greeks
-- [ ] Subscribe Unusual Whales ($48/mo) for real sweep detection
-- [ ] Open IBKR account for XSP (Section 1256 = 60/40 long/short tax treatment)
+- [ ] Subscribe MarketXLS Advanced ($94/mo)
+- [ ] Subscribe Unusual Whales ($48/mo)
+- [ ] Open IBKR for XSP (Section 1256 = 60/40 tax)
 - [ ] Complete pre-live checklist in SYSTEM_STATE.md
 - [ ] First live capital: $5k, max 2 positions
 
 ### Month 4+ Scale
 - [ ] Grow live allocation as win rate holds
-- [ ] Migrate SPY/QQQ income strategy to XSP on IBKR for tax efficiency
+- [ ] Migrate SPY/QQQ income to XSP on IBKR for tax efficiency
 - [ ] Scale SOFI collar to 1,000 shares ($1k/month target)
-- [ ] Target: $3-5k/month consistent, building toward $50k+ deployed
+- [ ] Target: $3-5k/month, building to $50k+ deployed
 
 ---
 
@@ -93,82 +105,77 @@ Four Claude agents on OpenClaw. Two autonomous trading agents (Alpha + Beta) run
 ```
 P1  tradingview-mcp (328 stars, free, vetted)
     Adds multi-timeframe RSI, BB squeeze detection
-    Wire as 7th signal input to market_intelligence.py
+    Wire as 7th signal into market_intelligence.py
 
-P1  Proactive position monitoring in Orchestrator
-    Currently: monitor script alerts Discord but Orchestrator doesn't proactively close
-    Target: when alert fires, Orchestrator places close order via Alpaca automatically
+P1  Proactive position closing
+    When monitor detects 50% profit or 2x stop, auto-close via Alpaca
+    Currently: alerts to Discord but doesn't close automatically
 
 P2  Morning intelligence cron (6:30 AM ET)
-    Run market_intelligence.py at 6:30 AM so agents have fresh data when you wake up
-    Add to crontab: 30 6 * * 1-5
+    Fresh packet waiting when Amit wakes up
+    Add to crontab: 30 6 * * 1-5  python3 market_intelligence.py --force
 ```
 
 ### Month 2
 ```
-P2  pattern_engine.py activation — auto-runs Friday when 20+ closed trades exist
-P2  FRED API macro data wired into intelligence packet (free, key exists)
-P2  Market intelligence proactive alerts — post to #research when VIX spikes or news breaks
+P2  pattern_engine.py auto-runs Friday when 20+ closed trades exist
+P2  FRED API macro data in intelligence packet (free, key exists)
+P2  Proactive news alerts from Orchestrator when VIX spikes or FOMC approaches
 ```
 
-### Month 3+ (Pre-Live)
+### Month 3+ Pre-Live
 ```
-P3  MarketXLS Advanced — subscribe at live transition, not before
-P3  Unusual Whales — subscribe at live transition
-P3  IBKR connector — same interface as Alpaca, for XSP trading
-P3  Polygon.io ($29/mo) — evaluate if Alpaca delayed data causes issues
+P3  MarketXLS Advanced ($94/mo) — subscribe at live transition
+P3  Unusual Whales ($48/mo) — subscribe at live transition
+P3  IBKR connector for XSP trading
+P3  Polygon.io ($29/mo) — evaluate need after 4+ weeks paper data
 ```
 
 ---
 
-## What We Are NOT Building
+## Weekly Health Check Routine
 
-- **Manual trade approval flow** — agents execute autonomously. Amit approves nothing for agent trades.
-- **Fixed entry times** — agents enter when conditions are right, not on a clock.
-- **CTO agent** — Infra agent handles all system work.
-- **MarketXLS now** — paper trading doesn't need real-time Greeks. Subscribe at live transition.
-- **Multiple strategies per agent** — Alpha = bull put spreads, Beta = iron condors. Simple, focused, validatable.
+Every Friday:
+```bash
+# Run system test
+python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
+
+# Check pipeline log for the week
+grep -E "entry|executed|approved|skipped" \
+  /root/quantai-v2/shared-data/logs/pipeline.log | tail -30
+
+# Check evolution log
+tail -5 /root/quantai-v2/shared-data/logs/evolution_log.jsonl
+
+# Sync sheets
+python3 /home/trader/QuantAI/v2/shared-data/scripts/sheets_sync.py
+```
+
+In Discord:
+```
+#chat:    score today 80/100 --consolidate
+#journal: stats
+```
 
 ---
 
 ## Success Metrics
 
-### Paper Trading
-| Milestone | Target | If Not Hit |
+| Milestone | Target | Check |
 |---|---|---|
-| Week 2 | First agent trades executed, journal populating | Debug execution pipeline |
-| Week 4 | Agent Alpha win rate > 55% over 15+ trades | Review debate quality |
-| Month 2 | Agent Alpha > 60%, Beta > 65% over 40+ trades | Tune strategy params via evolution |
-| Month 2 | Self-evolution applies first validated change | Check journal data volume |
-| Month 3 | Consistent positive P&L across both streams | Plan live transition |
-
-### Live Trading (Month 4+)
-| Milestone | Target |
-|---|---|
-| Month 4 | Live $5k, agents trading, win rate holds from paper |
-| Month 6 | $15k deployed, SOFI at 500 shares |
-| Month 12 | $50k+ deployed, XSP on IBKR, $3-5k/month |
+| Week 2 | 43/43 system test, agents trading | system_test.py |
+| Week 4 | Alpha >55% win rate over 15+ trades | Google Sheet Agent Trades tab |
+| Month 2 | Alpha >60%, Beta >65% over 40+ trades | Google Sheet + journal stats |
+| Month 2 | Self-evolution first change applied | evolution_log.jsonl |
+| Month 3 | Positive P&L both streams | Google Sheet Summary tab |
+| Month 4 | Live $5k, win rate holds | real/trades.jsonl |
+| Month 12 | $50k+ deployed, $3-5k/month | Full system |
 
 ---
 
-## Daily Routine (Reference)
+## What We Are NOT Building
 
-**Morning:**
-- Open Google Sheet Summary tab — check overnight changes
-- In #chat: "SOFI update" — check collar status vs trigger levels
-- Watch pipeline.log or Discord for agent entry notifications
-
-**During market:**
-- Agents run autonomously — watch #chat for Discord notifications
-- If you want to make a manual trade: execute on Webull → log in #journal
-- Ask Orchestrator anything: "what's SPY doing?", "should I roll my SOFI call?"
-
-**End of day:**
-- In #chat: "score today 78/100" → evolution runs
-- Check Google Sheet for full day P&L
-- Fridays: "score today 80/100 --consolidate" for weekly pattern analysis
-
-**Weekly (Friday):**
-- In #journal: "stats" — full P&L breakdown
-- Compare Agent Trades tab vs Manual Trades tab — who's winning?
-- Read evolution log for any config changes
+- Manual approval for agent trades — they run autonomously within guardrails
+- Fixed entry times — agents enter when conditions are right, not on a clock
+- CTO agent — Infra agent handles all system work
+- MarketXLS now — subscribe at live transition only
