@@ -12,6 +12,21 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import anthropic
 
+# Auto-load .env from repo root
+import pathlib
+_env_file = pathlib.Path(__file__).parent.parent.parent.parent / ".env"
+if not _env_file.exists():
+    _env_file = pathlib.Path(__file__).parent.parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            import os as _os
+            if not _os.environ.get(_k.strip()):
+                _os.environ[_k.strip()] = _v.strip()
+
+
 ET = ZoneInfo("America/New_York")
 HOME = os.environ.get("QUANTAI_HOME", "/root/quantai-v2")
 CACHE = f"{HOME}/v2/shared-data/cache"
@@ -223,7 +238,7 @@ for prop, (bull, bear) in zip(proposals, bull_bear_results):
         continue
     score = score_map.get(pid, {})
     approved_trades.append({
-        "proposal": prop,
+        "proposal": {**prop, "source": "agent"},  # mark as agent-proposed for sheets
         "bull_case": bull,
         "bear_case": bear,
         "judge_score": score.get("net_score", 0),

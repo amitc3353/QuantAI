@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
 QuantAI Google Sheets Journal Sync
-Syncs trades.jsonl to a Google Sheet so Amit can view trades from his phone.
 
-Setup (one-time):
-1. Go to console.cloud.google.com
-2. Create project → Enable Google Sheets API + Google Drive API
-3. Create Service Account → download JSON key
-4. Save key as: /home/trader/QuantAI/v2/shared-data/google_service_account.json
-5. Share your Google Sheet with the service account email (Editor access)
-6. Add GOOGLE_SHEET_ID to /home/trader/QuantAI/.env
+Sheet structure:
+  - All Trades     : every trade (agent + manual), filterable
+  - Agent Trades   : only debate chamber / orchestrator proposals
+  - Manual Trades  : only trades Amit executed himself
+  - Summary        : live P&L dashboard with formulas
+
+Trade source field:
+  - "agent"  : proposed by debate chamber / orchestrator scan
+  - "manual" : Amit entered himself in #journal
 
 Usage:
-  python3 sheets_sync.py              # sync all trades
-  python3 sheets_sync.py --setup      # create sheet structure on first run
+  python3 sheets_sync.py           # sync all trades
+  python3 sheets_sync.py --setup   # first-time sheet structure setup
 """
 import json, os, sys
 from datetime import datetime
@@ -33,212 +34,279 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
 
 ET = ZoneInfo("America/New_York")
 
-SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+SHEET_ID             = os.environ.get("GOOGLE_SHEET_ID", "")
 SERVICE_ACCOUNT_FILE = "/home/trader/QuantAI/v2/shared-data/google_service_account.json"
-JOURNAL_PATH = "/home/trader/QuantAI/v2/shared-data/journal/paper/trades.jsonl"
-REAL_JOURNAL_PATH = "/home/trader/QuantAI/v2/shared-data/journal/real/trades.jsonl"
+PAPER_JOURNAL        = "/home/trader/QuantAI/v2/shared-data/journal/paper/trades.jsonl"
+REAL_JOURNAL         = "/home/trader/QuantAI/v2/shared-data/journal/real/trades.jsonl"
 
-# ── Preflight checks ──────────────────────────────────────────────────
 if not SHEET_ID:
-    print("[sheets_sync] ERROR: GOOGLE_SHEET_ID not set in .env")
-    print("  Add: GOOGLE_SHEET_ID=your_sheet_id_from_url")
-    sys.exit(1)
-
+    print("[sheets_sync] ERROR: GOOGLE_SHEET_ID not in .env"); sys.exit(1)
 if not os.path.exists(SERVICE_ACCOUNT_FILE):
-    print(f"[sheets_sync] ERROR: Service account file not found at {SERVICE_ACCOUNT_FILE}")
-    print("  Setup instructions:")
-    print("  1. console.cloud.google.com → New Project")
-    print("  2. Enable: Google Sheets API, Google Drive API")
-    print("  3. IAM → Service Accounts → Create → Download JSON key")
-    print(f"  4. Save key to: {SERVICE_ACCOUNT_FILE}")
-    print("  5. Share your Google Sheet with the service account email (Editor)")
-    sys.exit(1)
+    print(f"[sheets_sync] ERROR: {SERVICE_ACCOUNT_FILE} not found"); sys.exit(1)
 
 try:
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
 except ImportError:
-    print("[sheets_sync] Installing google-api-python-client...")
     os.system("pip3 install google-api-python-client google-auth --break-system-packages -q")
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-service = build("sheets", "v4", credentials=creds)
-sheets = service.spreadsheets()
+creds  = Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE,
+    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+)
+svc    = build("sheets", "v4", credentials=creds).spreadsheets()
 
-# ── Sheet structure ───────────────────────────────────────────────────
+# ── Column headers ────────────────────────────────────────────────────
 HEADERS = [
-    "ID", "Date", "Mode", "Symbol", "Action", "Strike", "Expiry",
-    "Premium", "Contracts", "Total Premium $", "Underlying Price",
-    "Strategy", "Status", "Close Date", "Close Premium", "P&L $", "P&L %", "Notes"
+    "ID", "Date", "Source", "Mode", "Symbol", "Action",
+    "Strike", "Expiry", "Premium", "Contracts", "Total $",
+    "Underlying", "Strategy", "Status",
+    "Close Date", "Close Premium", "P&L $", "P&L %", "Notes"
 ]
 
-SUMMARY_HEADERS = [
-    ["QuantAI Trade Journal", ""],
-    ["Last updated", ""],
-    ["", ""],
-    ["SUMMARY", ""],
-    ["Total trades", "=COUNTA(Trades!A2:A1000)-1"],
-    ["Open positions", "=COUNTIF(Trades!M2:M1000,\"OPEN\")"],
-    ["Closed trades", "=COUNTIF(Trades!M2:M1000,\"CLOSED\")"],
-    ["Win rate", "=IFERROR(COUNTIF(Trades!P2:P1000,\">0\")/COUNTIF(Trades!M2:M1000,\"CLOSED\"),0)"],
-    ["Total P&L $", "=SUM(Trades!P2:P1000)"],
-    ["Total premium collected", "=SUMIF(Trades!D2:D1000,\"*SELL*\",Trades!J2:J1000)"],
-    ["", ""],
-    ["OPEN POSITIONS", ""],
-]
+# ── Helpers ───────────────────────────────────────────────────────────
+
+def get_sheet_id_by_name(name):
+    meta = svc.get(spreadsheetId=SHEET_ID).execute()
+    for s in meta.get("sheets", []):
+        if s["properties"]["title"] == name:
+            return s["properties"]["sheetId"]
+    return None
 
 
-def setup_sheet():
-    """Create Trades and Summary tabs with headers."""
-    # Get existing sheets
-    meta = sheets.get(spreadsheetId=SHEET_ID).execute()
-    existing = [s["properties"]["title"] for s in meta.get("sheets", [])]
-
+def ensure_sheets(names):
+    meta     = svc.get(spreadsheetId=SHEET_ID).execute()
+    existing = {s["properties"]["title"] for s in meta.get("sheets", [])}
     requests = []
-
-    if "Trades" not in existing:
-        requests.append({"addSheet": {"properties": {"title": "Trades"}}})
-    if "Summary" not in existing:
-        requests.append({"addSheet": {"properties": {"title": "Summary"}}})
-
+    for name in names:
+        if name not in existing:
+            requests.append({"addSheet": {"properties": {"title": name}}})
     if requests:
-        sheets.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": requests}).execute()
-        print("[sheets_sync] Created Trades and Summary tabs")
+        svc.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": requests}).execute()
+        print(f"[sheets_sync] Created tabs: {[r['addSheet']['properties']['title'] for r in requests]}")
 
-    # Write headers to Trades tab
-    sheets.values().update(
+
+def write_tab(tab_name, rows):
+    svc.values().clear(
         spreadsheetId=SHEET_ID,
-        range="Trades!A1:R1",
-        valueInputOption="USER_ENTERED",
-        body={"values": [HEADERS]}
+        range=f"'{tab_name}'!A1:T2000"
     ).execute()
+    if rows:
+        svc.values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"'{tab_name}'!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": rows}
+        ).execute()
 
-    # Write Summary tab
-    sheets.values().update(
-        spreadsheetId=SHEET_ID,
-        range="Summary!A1:B20",
-        valueInputOption="USER_ENTERED",
-        body={"values": SUMMARY_HEADERS}
-    ).execute()
 
-    # Format header row bold
-    requests = [{
+def bold_header(tab_name):
+    sid = get_sheet_id_by_name(tab_name)
+    if sid is None:
+        return
+    svc.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": [{
         "repeatCell": {
-            "range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 1},
-            "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-            "fields": "userEnteredFormat.textFormat.bold"
+            "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1},
+            "cell": {"userEnteredFormat": {
+                "textFormat": {"bold": True},
+                "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2},
+                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+            }},
+            "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)"
         }
-    }]
-    sheets.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": requests}).execute()
-    print("[sheets_sync] Sheet structure ready")
+    }]}).execute()
 
 
-def load_trades():
-    """Load all trades from paper and real journals."""
-    trades = []
-    for path, mode in [(JOURNAL_PATH, "paper"), (REAL_JOURNAL_PATH, "real")]:
-        if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    if line.strip():
-                        try:
-                            t = json.loads(line)
-                            t["_mode"] = mode
-                            trades.append(t)
-                        except:
-                            continue
-    trades.sort(key=lambda t: t.get("timestamp", ""))
-    return trades
+def color_rows_by_status(tab_name, trades_count):
+    """Green for CLOSED wins, red for CLOSED losses, yellow for OPEN."""
+    sid = get_sheet_id_by_name(tab_name)
+    if sid is None or trades_count == 0:
+        return
+    # We'll use conditional formatting rules — simpler than per-row coloring
+    requests = [
+        # OPEN rows → light yellow background
+        {"addConditionalFormatRule": {"rule": {
+            "ranges": [{"sheetId": sid, "startRowIndex": 1, "endRowIndex": trades_count + 1}],
+            "booleanRule": {
+                "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "OPEN"}]},
+                "format": {"backgroundColor": {"red": 1.0, "green": 0.98, "blue": 0.8}}
+            }
+        }, "index": 0}},
+        # CLOSED rows with P&L > 0 → light green
+        {"addConditionalFormatRule": {"rule": {
+            "ranges": [{"sheetId": sid, "startRowIndex": 1, "endRowIndex": trades_count + 1,
+                        "startColumnIndex": 16, "endColumnIndex": 17}],  # P&L $ column
+            "booleanRule": {
+                "condition": {"type": "NUMBER_GREATER", "values": [{"userEnteredValue": "0"}]},
+                "format": {"backgroundColor": {"red": 0.85, "green": 0.95, "blue": 0.85}}
+            }
+        }, "index": 1}},
+        # CLOSED rows with P&L < 0 → light red
+        {"addConditionalFormatRule": {"rule": {
+            "ranges": [{"sheetId": sid, "startRowIndex": 1, "endRowIndex": trades_count + 1,
+                        "startColumnIndex": 16, "endColumnIndex": 17}],
+            "booleanRule": {
+                "condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0"}]},
+                "format": {"backgroundColor": {"red": 0.98, "green": 0.85, "blue": 0.85}}
+            }
+        }, "index": 2}},
+    ]
+    try:
+        svc.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": requests}).execute()
+    except Exception:
+        pass  # conditional format may already exist
 
 
 def trade_to_row(t):
-    """Convert trade dict to sheet row."""
-    # Parse date
     try:
-        ts = datetime.fromisoformat(t.get("timestamp", ""))
-        date_str = ts.strftime("%Y-%m-%d %H:%M")
+        date_str = datetime.fromisoformat(t.get("timestamp","")).strftime("%Y-%m-%d %H:%M")
     except:
-        date_str = t.get("timestamp", "")[:16]
+        date_str = t.get("timestamp","")[:16]
 
     try:
-        close_ts = datetime.fromisoformat(t.get("timestamp_close", ""))
-        close_date = close_ts.strftime("%Y-%m-%d %H:%M")
+        close_date = datetime.fromisoformat(t.get("timestamp_close","")).strftime("%Y-%m-%d %H:%M")
     except:
         close_date = ""
 
-    premium = t.get("premium", 0) or 0
-    contracts = t.get("contracts", 1) or 1
-    total_premium = round(premium * contracts * 100, 2)
-    pnl = t.get("pnl", "")
-    pnl_pct = t.get("pnl_pct", "")
+    premium   = float(t.get("premium", 0) or 0)
+    contracts = int(t.get("contracts", 1) or 1)
+    total     = round(premium * contracts * 100, 2)
 
     return [
         t.get("id", ""),
         date_str,
-        t.get("mode", t.get("_mode", "paper")),
+        t.get("source", "manual"),       # "agent" or "manual"
+        t.get("mode", "paper"),
         t.get("symbol", ""),
         t.get("action", ""),
         t.get("strike", ""),
         t.get("expiry", ""),
         premium,
         contracts,
-        total_premium,
+        total,
         t.get("underlying_price", ""),
         t.get("strategy", ""),
         t.get("status", "OPEN"),
         close_date,
         t.get("close_premium", ""),
-        pnl,
-        pnl_pct,
+        t.get("pnl", ""),
+        t.get("pnl_pct", ""),
         t.get("notes", ""),
     ]
 
 
+def load_trades():
+    trades = []
+    for path in [PAPER_JOURNAL, REAL_JOURNAL]:
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            trades.append(json.loads(line))
+                        except:
+                            continue
+    trades.sort(key=lambda t: t.get("timestamp", ""))
+    return trades
+
+
+# ── Setup ─────────────────────────────────────────────────────────────
+
+def setup():
+    ensure_sheets(["All Trades", "Agent Trades", "Manual Trades", "Summary"])
+
+    # Write headers to trade tabs
+    for tab in ["All Trades", "Agent Trades", "Manual Trades"]:
+        write_tab(tab, [HEADERS])
+        bold_header(tab)
+
+    # Summary tab
+    summary_rows = [
+        ["QuantAI Trade Journal", "", ""],
+        ["Last updated", "", ""],
+        ["Sheet", "https://docs.google.com/spreadsheets/d/" + SHEET_ID, ""],
+        ["", "", ""],
+        ["━━━ ALL TRADES ━━━", "", ""],
+        ["Total trades",     "=COUNTA('All Trades'!A2:A2000)", ""],
+        ["Open positions",   "=COUNTIF('All Trades'!N2:N2000,\"OPEN\")", ""],
+        ["Closed trades",    "=COUNTIF('All Trades'!N2:N2000,\"CLOSED\")", ""],
+        ["Win rate",         "=IFERROR(COUNTIF('All Trades'!Q2:Q2000,\">0\")/COUNTIF('All Trades'!N2:N2000,\"CLOSED\"),\"N/A\")", ""],
+        ["Total P&L $",      "=SUM('All Trades'!Q2:Q2000)", ""],
+        ["Total premium $",  "=SUMIF('All Trades'!F2:F2000,\"SELL*\",'All Trades'!K2:K2000)", ""],
+        ["", "", ""],
+        ["━━━ AGENT TRADES ━━━", "", ""],
+        ["Agent trades",     "=COUNTA('Agent Trades'!A2:A2000)", ""],
+        ["Agent win rate",   "=IFERROR(COUNTIF('Agent Trades'!Q2:Q2000,\">0\")/COUNTIF('Agent Trades'!N2:N2000,\"CLOSED\"),\"N/A\")", ""],
+        ["Agent P&L $",      "=SUM('Agent Trades'!Q2:Q2000)", ""],
+        ["", "", ""],
+        ["━━━ MANUAL TRADES ━━━", "", ""],
+        ["Manual trades",    "=COUNTA('Manual Trades'!A2:A2000)", ""],
+        ["Manual win rate",  "=IFERROR(COUNTIF('Manual Trades'!Q2:Q2000,\">0\")/COUNTIF('Manual Trades'!N2:N2000,\"CLOSED\"),\"N/A\")", ""],
+        ["Manual P&L $",     "=SUM('Manual Trades'!Q2:Q2000)", ""],
+        ["", "", ""],
+        ["━━━ OPEN POSITIONS ━━━", "", ""],
+        ["Symbol", "Strike / Expiry", "Premium"],
+    ]
+    write_tab("Summary", summary_rows)
+
+    # Bold summary headers
+    sid = get_sheet_id_by_name("Summary")
+    if sid:
+        bold_rows = [0, 4, 12, 16, 22]  # rows to bold
+        requests = []
+        for row in bold_rows:
+            requests.append({"repeatCell": {
+                "range": {"sheetId": sid, "startRowIndex": row, "endRowIndex": row + 1},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                "fields": "userEnteredFormat.textFormat.bold"
+            }})
+        svc.batchUpdate(spreadsheetId=SHEET_ID, body={"requests": requests}).execute()
+
+    print("[sheets_sync] ✅ Sheet structure created")
+    print(f"[sheets_sync] Open: https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+
+
+# ── Sync ──────────────────────────────────────────────────────────────
+
 def sync():
-    """Full sync: clear trades tab and rewrite from journal."""
     trades = load_trades()
     if not trades:
         print("[sheets_sync] No trades to sync")
         return
 
-    rows = [HEADERS] + [trade_to_row(t) for t in trades]
+    agent_trades  = [t for t in trades if t.get("source") == "agent"]
+    manual_trades = [t for t in trades if t.get("source") != "agent"]  # default = manual
 
-    # Clear existing data
-    sheets.values().clear(
-        spreadsheetId=SHEET_ID,
-        range="Trades!A1:R1000"
-    ).execute()
+    all_rows    = [HEADERS] + [trade_to_row(t) for t in trades]
+    agent_rows  = [HEADERS] + [trade_to_row(t) for t in agent_trades]
+    manual_rows = [HEADERS] + [trade_to_row(t) for t in manual_trades]
 
-    # Write all rows
-    sheets.values().update(
-        spreadsheetId=SHEET_ID,
-        range=f"Trades!A1:R{len(rows)}",
-        valueInputOption="USER_ENTERED",
-        body={"values": rows}
-    ).execute()
+    write_tab("All Trades",    all_rows)
+    write_tab("Agent Trades",  agent_rows)
+    write_tab("Manual Trades", manual_rows)
 
-    # Update last-updated timestamp in Summary
-    sheets.values().update(
+    # Color coding
+    color_rows_by_status("All Trades",    len(trades))
+    color_rows_by_status("Agent Trades",  len(agent_trades))
+    color_rows_by_status("Manual Trades", len(manual_trades))
+
+    # Update timestamp in Summary
+    svc.values().update(
         spreadsheetId=SHEET_ID,
         range="Summary!B2",
         valueInputOption="USER_ENTERED",
         body={"values": [[datetime.now(ET).strftime("%Y-%m-%d %H:%M ET")]]}
     ).execute()
 
-    open_count = len([t for t in trades if t.get("status") == "OPEN"])
-    closed_count = len([t for t in trades if t.get("status") == "CLOSED"])
-    print(f"[sheets_sync] ✅ Synced {len(trades)} trades ({open_count} open, {closed_count} closed)")
-    print(f"[sheets_sync] Sheet: https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+    print(f"[sheets_sync] ✅ Synced {len(trades)} trades total")
+    print(f"[sheets_sync]    Agent: {len(agent_trades)} | Manual: {len(manual_trades)}")
+    print(f"[sheets_sync]    Open: https://docs.google.com/spreadsheets/d/{SHEET_ID}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────
 if "--setup" in sys.argv:
-    setup_sheet()
-    print("[sheets_sync] Setup complete. Now sync with: python3 sheets_sync.py")
+    setup()
 else:
-    if "--setup-first" in sys.argv or not SHEET_ID:
-        setup_sheet()
     sync()
