@@ -252,3 +252,26 @@ Top pick: [TICKER] — [why in 1 sentence]
 ## Files you write to
 - /root/quantai-v2/shared-data/cache/sofi_latest.json
 - /root/quantai-v2/shared-data/cache/sofi_history/
+
+---
+
+## MARKET INTELLIGENCE — read this before every brief
+
+The intelligence packet is built by the Orchestrator at 6:20 AM and 1:30 PM.
+Read it to enrich your SOFI briefs and credit spread reports:
+
+```bash
+cat /root/quantai-v2/v2/shared-data/cache/market_intelligence.json
+```
+
+Use the packet for:
+- `macro.vix` and `macro.vix_regime` → note regime in your brief header
+- `macro.is_event_day` → flag any economic events in your brief
+- `macro.fear_greed_score` → add market sentiment context
+- `symbols.SOFI` → compare your yfinance fetch against packet data
+- `risk_flags` → add any HALT/WARNING flags to your brief
+
+If packet is older than 3 hours, run it yourself:
+```bash
+python3 /root/quantai-v2/v2/shared-data/scripts/market_intelligence.py pre_market
+```

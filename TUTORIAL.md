@@ -1,4 +1,5 @@
 # QuantAI — System Tutorial
+**Updated: March 31, 2026**
 
 ## How to use your autonomous trading system, every day.
 
@@ -11,302 +12,299 @@ Everything happens in Discord. Here's what each channel is for:
 | Channel | What happens here | Who posts |
 |---|---|---|
 | **#command** | Slash commands — trading, analysis, system ops | You |
-| **#chat** | Talk naturally — ask questions, discuss strategy, brainstorm | You + AI |
-| **#research** | Morning briefs land here at 6:30 AM ET every trading day | Orchestrator (auto) |
-| **#trade-proposals** | Trade cards with analysis. React ✅ to approve, ❌ to reject | Orchestrator + You |
-| **#guard-log** | Guard approvals and rejections | Guard Engine (auto) |
-| **#execution-log** | Filled orders, confirmations | Execution Agent (auto) |
-| **#system-health** | Startup messages, EOD scoring, errors, weekly reviews | System (auto) |
-| **#pr-updates** | Self-improvement PRs when score < 90 | Self-Improve Engine (auto) |
+| **#chat** | Talk naturally — ask questions, discuss strategy, `cto:` tasks | You + AI |
+| **#research** | Morning briefs, CTO scan, intelligence summaries, debate outcomes | Orchestrator (auto) |
+| **#trade-proposals** | Trade cards from Debate Chamber. React ✅ approve · ❌ reject · 🔄 defer | Orchestrator + You |
+| **#execution-log** | Filled orders, confirmations, closes | Execution Agent (auto) |
+| **#guard-log** | Guard approvals and rejections with reason codes | Guard Engine (auto) |
+| **#system-health** | Startup, EOD scores, health checks, evolution events, digests | System (auto) |
+| **#pr-updates** | Self-evolution changes + rejected proposals with gate results | Self-Evolution (auto) |
 
 ---
 
-## Daily Workflow — What Happens When
+## What Actually Happens Each Day
 
-### 6:30 AM ET (Automated — you're probably sleeping)
-The orchestrator wakes up and:
-1. Fetches real market data for your watchlist (SPY, QQQ, NVDA, etc.)
-2. Sends data to Claude for analysis
-3. Posts a morning brief to **#research** with bias, conviction, risks for each symbol
-4. If any symbol hits conviction ≥ 7, auto-generates a trade proposal in **#trade-proposals**
+### 6:00 AM Monday — CTO Intelligence Scan
+The CTO agent scans GitHub, arXiv, and PyPI for new tools and integrations.
+Posts a ranked proposal list to #research before anything else runs.
 
-**What you do:** Check #research when you wake up. Read the brief. See if any proposals landed.
+### 6:20 AM Mon–Fri — Market Intelligence Build
+The intelligence service aggregates everything:
+- VIX + term structure + regime classification
+- RSI, MACD, Bollinger Bands, EMA200 for all 10 watchlist symbols
+- Fear & Greed, yield curve, treasury yields
+- Earnings calendar — flags any tickers within 14 days of earnings
+- News sentiment via Finnhub for each symbol
+- Open positions with live P&L and recommended actions
+- Pre-screened high conviction setups ranked by score
+- Risk flags: HALT / WARNING / CAUTION
 
-### 9:30 AM - 4:00 PM ET (Market Hours)
-This is when you trade, analyze, and learn.
+Saved as `data/cache/market_intelligence_packet.json`.
 
-**What you do:**
-- Review any auto-proposals in #trade-proposals
-- Use `/greeks`, `/bull_put`, `/iron_condor` to analyze trades yourself
-- Use `/buy` or `/sell` to execute (bot checks guards, waits for your ✅)
-- Ask questions in #chat: "Why is SPY down today?" or "Should I close my position?"
+### 6:25 AM Mon–Fri — Debate Chamber (Pre-Market)
+The three-agent debate runs on the intelligence packet:
 
-### 4:30 PM ET (Automated)
-EOD scoring runs:
-1. Scores the day's trades 0-100
-2. Extracts lessons and saves them to memory
-3. If score < 90, generates an improvement PR on GitHub
-4. Posts results to #system-health
+1. **Proposal Agent** reads the packet → generates 3–5 trade candidates with strikes, credits, and thesis
+2. **Bull Agent** argues FOR each trade simultaneously
+3. **Bear Agent** argues AGAINST each trade simultaneously
+4. **Judge Agent** scores the debate → selects TOP 2
+5. **Guard Engine** validates both → posts to #trade-proposals
 
-**What you do:** Review the score in #system-health. Read the lessons. Check GitHub for any auto-PRs.
+Each trade card in #trade-proposals shows:
+- Full trade structure (strikes, expiry, credit, max loss)
+- Bull case (3–5 bullet points)
+- Bear case (3–5 bullet points)
+- Judge score + reasoning
+- Guard result (APPROVED or REJECTED with reason)
 
-### 4:45 PM ET Friday (Automated)
-Weekly review:
-1. Aggregates the entire week's performance
-2. Identifies patterns across all trades
-3. Proposes strategic adjustments
-4. Posts to #system-health
+**React ✅ to execute · ❌ to reject · 🔄 to defer to mid-session**
 
-**What you do:** Read the weekly review. Discuss in #chat if you have questions.
+### 6:30 AM Mon–Fri — Morning Brief
+Standard morning brief with macro context, sector overview, and watchlist summary.
+Posts to #research alongside the debate chamber summary.
+
+### 9:50 AM Mon–Fri — Agent 1: Entry 1
+Autonomous iron condor entry on SPY.
+Pre-entry checks: context score → journal consultation → VIX → flow check → credit → guard.
+Trade card posted to #trade-proposals. Executes automatically in paper mode.
+
+### 10:00 AM Monday — Agent 2: Weekly CC Scan
+Scans PLTR/TSM/MU/AMD/AVGO/ASML for covered call opportunities.
+Earnings blackout (14 days), min IV rank 30, delta 0.20, 21–35 DTE.
+
+### 11:30 AM Mon–Fri — Agent 1: Entry 2 (conditional)
+Only if Entry 1 has hit 40%+ profit. Same pre-entry check sequence.
+
+### 1:30 PM Mon–Fri — Market Intelligence Build (Mid-Session)
+Refreshes the intelligence packet with mid-session data.
+Key additions vs morning: live session P&L on open positions, updated VIX,
+afternoon RSI readings, any news that broke during morning session.
+
+### 1:35 PM Mon–Fri — Debate Chamber (Mid-Session)
+Second debate chamber run of the day. Focuses on:
+- Afternoon setups (different from morning — often covered calls, not condors)
+- Position management recommendations for open trades
+- Any morning proposals that weren't approved and are still valid
+
+### 4:30 PM Mon–Fri — EOD Scoring
+Scores today's trades 0–100. Extracts lessons. Posts to #system-health.
+
+### 4:35 PM Mon–Fri — Self-Evolution Engine
+If EOD score < 90:
+1. Observes today's journal — wins, losses, timing, credits
+2. Critiques: which param caused the biggest misalignment?
+3. Generates ONE targeted change with evidence
+4. Runs 5 validation gates (constitution, size, drift, safety, backtest)
+5. If all pass → applies change, bumps config version, posts diff to #pr-updates
+6. If any gate fails → logs rejection reason, stores observation for future data
+
+### 4:45 PM Friday — Weekly Review + Consolidation
+- Weekly performance review posted to #system-health
+- Strategy consolidation: 4+ weeks of observations compressed into durable principles
+- CTO report on system health and reliability
+- Correlation analysis: does context score predict outcomes?
 
 ---
 
-## Commands Reference — What to Type and When
+## Reading Trade Cards in #trade-proposals
 
-### Trading Commands (use in #command or #trade-proposals)
+Every trade card looks like this:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 TRADE PROPOSAL — SPY IRON CONDOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Legs:
+  SELL PUT $555 0DTE
+  BUY  PUT $550 0DTE
+  SELL CALL $575 0DTE
+  BUY  CALL $580 0DTE
+
+Credit: $0.75 | Max Loss: $4.25 (1.7%)
+Prob of Profit: 68%
+Debate Score: 74/100
+
+Thesis: SPY range-bound at 563, VIX 17 contango. RSI 52 neutral.
+Invalidation: SPY breaks above 572 or below 558 on volume.
+
+🐂 Bull: [3-5 reasons this trade works]
+🐻 Bear: [3-5 reasons to be careful]
+⚖️ Judge: Strong risk/reward. Bear point on gap risk is valid but wings absorb $5 moves.
+
+Guard: ✅ GUARD APPROVED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+React ✅ to execute · ❌ to reject · 🔄 to defer
+```
+
+In autonomous paper mode, approved trades execute automatically.
+In live mode, you must react ✅ to confirm.
+
+---
+
+## Reading #pr-updates (Self-Evolution)
+
+When evolution applies a change:
+```
+🧬 Evolution Applied — Agent 1
+param:     min_credit
+old value: 0.50
+new value: 0.60
+version:   v3
+
+Rationale: 3 of last 5 stop-outs had credit below $0.55.
+Evidence: avg loss -$180 on sub-$0.55 entries vs +$32 on above-$0.55 entries.
+All 5 gates passed ✅ | EOD Score was 72/100
+```
+
+When a proposed change is rejected:
+```
+🔬 Evolution Proposed — REJECTED
+Change: short_delta 0.10 → 0.08
+Failed gates:
+• ❌ Regression: win rate degraded -4.2% over 30-day backtest
+Observation stored for future data accumulation.
+```
+
+You don't need to do anything with these. They're your transparency window into how the system is improving itself.
+
+---
+
+## Commands Reference
+
+### Trading Commands (#command)
 
 | Command | When to use | Example |
 |---|---|---|
-| `/account` | Check your portfolio value, cash, buying power | `/account` |
+| `/account` | Check portfolio value, cash, buying power | `/account` |
 | `/positions` | See all open positions with P&L | `/positions` |
-| `/orders` | See open or recent orders | `/orders status:open` |
 | `/quote SPY` | Get live price, bid/ask, volume | `/quote symbol:SPY` |
-| `/buy` | Buy shares (goes through guards, needs ✅) | `/buy symbol:SPY qty:1` |
-| `/sell` | Sell shares (goes through guards, needs ✅) | `/sell symbol:SPY qty:1` |
-| `/limit_buy` | Buy at specific price | `/limit_buy symbol:SPY qty:1 price:665.00` |
-| `/limit_sell` | Sell at specific price | `/limit_sell symbol:SPY qty:1 price:675.00` |
-| `/close` | Close an entire position | `/close symbol:SPY` |
-| `/cancel` | Cancel an open order | `/cancel order_id:abc123` |
+| `/buy` | Buy shares (through guards, needs ✅ in live mode) | `/buy symbol:SPY qty:1` |
+| `/sell` | Sell shares | `/sell symbol:SPY qty:1` |
+| `/close` | Close entire position | `/close symbol:SPY` |
+| `/emergency_stop` | HALT all new trades immediately | `/emergency_stop` |
+| `/resume` | Resume after halt | `/resume` |
 
 ### Options Analysis Commands
 
 | Command | When to use | Example |
 |---|---|---|
-| `/greeks` | Compute delta/theta/gamma/vega for any option | `/greeks symbol:SPY strike:665 dte:30 option_type:put iv:0.20` |
-| `/bull_put` | Analyze a bull put spread with full P&L | `/bull_put symbol:SPY short_strike:660 long_strike:655 dte:30 iv:0.22` |
-| `/iron_condor` | Analyze an iron condor | `/iron_condor symbol:SPY put_short:655 put_long:650 call_short:685 call_long:690 dte:30 iv:0.20` |
-| `/covered_call` | Analyze a covered call | `/covered_call symbol:SPY strike:680 dte:30 iv:0.18` |
+| `/greeks` | Compute delta/theta/gamma/vega | `/greeks symbol:SPY strike:565 dte:0 option_type:put iv:0.18` |
+| `/iron_condor` | Full iron condor analysis | `/iron_condor symbol:SPY put_short:555 put_long:550 call_short:575 call_long:580 dte:0 iv:0.18` |
+| `/bull_put` | Bull put spread analysis | `/bull_put symbol:SPY short_strike:555 long_strike:550 dte:30 iv:0.22` |
+| `/covered_call` | Covered call analysis | `/covered_call symbol:PLTR strike:32 dte:28 iv:0.55` |
 
-### Guard & Rules Commands
+### Intelligence & Guard Commands
 
 | Command | When to use | Example |
 |---|---|---|
-| `/guard_check` | Test if a trade would pass guards | `/guard_check symbol:SPY position_pct:3 max_loss_pct:1.5 dte:30` |
+| `/guard_check` | Test if a trade would pass guards | `/guard_check symbol:SPY position_pct:2 max_loss_pct:1.7 dte:0` |
 | `/rules` | View current guard rules | `/rules` |
-| `/emergency_stop` | HALT all new trades immediately | `/emergency_stop` |
-| `/resume` | Resume trading after halt | `/resume` |
-| `/watchlist` | View or update your watchlist | `/watchlist action:add symbol:TSLA` |
 | `/status` | Quick system status | `/status` |
+| `/journal` | Today's trades + P&L + lessons | `/journal` |
+| `/performance [days]` | Win rates, P&L, context correlation | `/performance days:14` |
+| `/lessons [query]` | Browse/search lessons | `/lessons iron condor` |
 
-### Dev & Ops Commands (Infra Agent)
-
-| Command | When to use | Example |
-|---|---|---|
-| `/health` | Full system health — containers, memory, disk, git | `/health` |
-| `/logs` | View service logs | `/logs service:guard-engine lines:50` |
-| `/read` | Read any project file | `/read filepath:configs/guard_config.json` |
-| `/ls` | List directory contents | `/ls path:discord-bot/cogs` |
-| `/edit` | Edit a file (needs ✅ approval) | `/edit filepath:configs/watchlist.json find:TSLA replace:AMD` |
-| `/git` | Git operations | `/git action:status` or `/git action:log arg:5` |
-| `/commit` | Commit + push changes (needs ✅) | `/commit message:update watchlist` |
-| `/deploy` | Pull latest code from GitHub | `/deploy` |
-| `/restart` | Restart a service (needs ✅) | `/restart service:guard-engine` |
-| `/run` | Run any shell command | `/run cmd:uptime` |
-| `/config` | View/edit config files | `/config file:guards action:view` |
-
-### Memory & Learning Commands
+### Dev & Ops Commands
 
 | Command | When to use | Example |
 |---|---|---|
-| `remember: [lesson]` | Save a lesson to memory (type in #chat) | `remember: Iron condors work best when VIX is 18-25` |
-| `lessons` | View saved lessons (type in #chat) | `lessons` or `lessons iron condor` |
-| `stats` | View trade statistics (type in #chat) | `stats` |
+| `/health` | Full system health | `/health` |
+| `/deploy` | Pull latest code from GitHub + rebuild | `/deploy` |
+| `/logs` | View service logs | `/logs service:orchestrator lines:50` |
+| `/restart` | Restart a service (needs ✅) | `/restart service:trader-orchestrator` |
+| `/cto [task]` | Ask CTO agent to investigate | `/cto check why Entry 2 keeps stopping out` |
+
+### Memory Commands (#chat)
+
+```
+remember: [lesson]     — save a lesson permanently
+lessons                — view all saved lessons
+lessons [query]        — search lessons
+stats                  — view trade statistics
+cto: [task]            — trigger CTO agent on-demand
+```
 
 ---
 
-## The #chat Channel — Your AI Co-Founder
+## The #chat Channel
 
-This is where you have natural conversations. No slash commands needed — just type.
+Talk naturally. No slash commands needed.
 
-### Learning & Education
+**Learning options:**
 ```
 What is an iron condor in simple terms?
-Explain delta to me like I'm 5
-Why do we sell at delta 0.10?
+Why do we use delta 0.10 for short strikes?
 What happens to our position if SPY drops 2% today?
-Walk me through how theta decay works on a 0DTE option
+Explain why we only change one param at a time in evolution.
 ```
 
-### Strategy Discussion
+**Strategy discussion:**
 ```
 Should we trade iron condors on FOMC days?
-What's a better strike selection — delta 0.08 or 0.15?
-Compare bull put spreads vs iron condors for our account size
-I'm seeing VIX at 28 today — should we be more aggressive or conservative?
+Why did the Debate Chamber reject that QQQ trade?
+What patterns do you see in our losing trades this week?
+The Bear Agent kept flagging gap risk — should we widen wings?
 ```
 
-### Trade Review
+**Intelligence review:**
 ```
-How did our trades do this week?
-Show me our win rate on morning entries vs afternoon entries
-What patterns do you see in our losing trades?
-What should we change about our strategy based on this week's data?
+What was the intelligence packet saying at 6:20 AM today?
+Which symbols have the best setup right now?
+Why is the market regime showing CAUTION?
+How has context score correlated with our win rate so far?
 ```
-
-### System Questions
-```
-What guard rules are currently active?
-Why did the guard reject that SPY trade yesterday?
-What's our current portfolio delta?
-How much buying power do we have left?
-```
-
-The chat agent has memory — it remembers every conversation, every trade, every lesson. The more you talk to it, the smarter it gets about YOUR trading patterns.
 
 ---
 
 ## The Guard Engine — Rules That Never Bend
 
-Every trade must pass ALL guards. No exceptions. Here's what gets checked:
+Every trade from every source (Agent 1, Agent 2, Debate Chamber) must pass ALL guards.
 
-### Position Rules
-- **Max 5% of portfolio** per single trade
-- **Max 2% loss** per trade (defined at entry)
-- **Max 10 contracts** per position
-- **Min 21 days** to expiry (except covered calls)
-- **Min 100 open interest** on the option
-- **Max $0.15 bid-ask spread**
-
-### Portfolio Rules
-- **Max ±0.30 portfolio delta** (prevents directional overexposure)
-- **Max -$50/day portfolio theta** (prevents excessive decay risk)
-- **Max 8 simultaneous positions**
-- **Max 3 positions in same sector**
-- **-3% daily loss triggers auto-pause**
-
-### Timing Rules
-- **No trading 9:30-9:45 AM** (open volatility)
-- **No trading 3:45-4:00 PM** (close volatility)
-- **48-hour earnings blackout** (before AND after)
-- **VIX > 35 = advisory only** (no auto-execution)
-- **24-hour cooldown** after closing a symbol
-
-### Changing Rules
-You can tighten rules anytime. To loosen a rule:
-1. Discuss in #chat why you want to change it
-2. Use `/config guards edit [key] [value]` to update
-3. The change runs on paper for 2 weeks before going live
+**Position rules:** max 5% portfolio/trade · max 2% loss at entry · max 10 contracts · min 21 DTE for CC · min $0.15 bid-ask spread
+**Portfolio rules:** max ±0.30 delta · max -$50/day theta · max 8 positions · max 3 per sector · -3% daily triggers pause
+**Timing rules:** no trading 9:30–9:45 AM · no trading 3:45–4:00 PM · 14-day earnings blackout · VIX > 35 = advisory only · 24h cooldown after closing
 
 ---
 
-## Automated Systems — What Runs Without You
+## Self-Evolution — What It Can and Can't Change
 
-| System | When | What it does |
-|---|---|---|
-| Morning Brief | 6:30 AM ET Mon-Fri | Market analysis → #research |
-| Auto-Proposals | 6:30 AM ET Mon-Fri | High-conviction trades → #trade-proposals |
-| Health Checks | Every 5 min, market hours | Verifies all services healthy |
-| EOD Scoring | 4:30 PM ET Mon-Fri | Score trades, extract lessons, auto-PR if < 90 |
-| Weekly Review | Friday 4:45 PM ET | Week summary, patterns, recommendations |
-| Self-Improvement | After EOD if score < 90 | Creates GitHub PR with suggested fixes |
+**Can tune (with gate approval):**
+- `min_credit` — minimum credit to enter
+- `short_delta` — target delta for short strikes (0.05–0.20 range)
+- `wing_width` — wing width in dollars
+- `profit_target_pct` — % of max profit to close
+- `entry2_profit_threshold` — Entry 2 trigger level
+- Context weight parameters (after 4 weeks of data)
 
----
-
-## Development Workflow — Making Changes
-
-### Small changes (config edits, watchlist updates):
-Do it from Discord:
-```
-/config guards edit position.max_position_pct 3.0
-/watchlist action:add symbol:AMZN
-/restart guard-engine
-```
-
-### Code changes (new features, bug fixes):
-Do it locally with Claude CLI:
-```bash
-cd ~/QuantAI
-# Make changes with Claude CLI or VSCode
-git add . && git commit -m "your change" && git push
-deploy-trader
-```
-
-### Emergency:
-```
-/emergency_stop     — halts all new trades instantly
-/restart all        — restarts all services
-deploy-trader       — full rebuild from your Mac
-```
-
----
-
-## Memory System — How the AI Learns
-
-The system has persistent memory across sessions:
-
-### What gets remembered automatically:
-- Every trade (entry, exit, P&L, reasoning, Greeks at entry)
-- Every conversation in #chat
-- Every decision (rule changes, strategy adjustments)
-- Every lesson from EOD scoring
-- Every system event (deploys, errors, restarts)
-
-### What you should manually save:
-When you learn something important, tell the bot:
-```
-remember: Never trade iron condors on FOMC announcement days — the VIX spike kills both sides
-remember: Our best trades happen when we enter at 10:30 AM instead of 9:50 AM
-remember: $5 wide spreads on SPY give better risk/reward than $3 wide
-```
-
-### How memory improves trading:
-Before every trade, the bot loads relevant memory:
-- "Last time VIX was this high, our iron condors lost money"
-- "This strike delta matches our best-performing trades"
-- "We learned to skip Mondays after long weekends"
-
-The more data it has, the better its decisions get.
+**Can never change (constitution-protected):**
+- `max_loss_pct` (stays ≤ 2%)
+- `hard_close_hour` (stays ≤ 3:30 PM)
+- `vix_upper` (stays ≤ 30)
+- `earnings_blackout_days` (stays ≥ 14)
+- `max_daily_loss` (stays ≤ $1,000)
 
 ---
 
 ## Paper vs Live Trading
 
-Right now everything runs in **paper mode**. Paper trades use fake money through Alpaca's simulator. The experience is identical to live trading except no real money is at risk.
-
-### Current mode: PAPER
-- $10k simulated account
-- All trades are practice
-- Full logging and scoring
-- Perfect for learning
+Currently: **PAPER MODE** — all trades use fake money via Alpaca simulator.
 
 ### Switching to live (future):
-1. Prove consistent results on paper (2+ months, 5%+ monthly)
-2. Change `TRADING_MODE=live` in .env
-3. Add live Alpaca API keys
-4. Start with small allocation ($5k)
-5. All guard rules still apply — guards don't care about paper vs live
-
----
-
-## Quick Start for Monday
-
-1. Wake up, check **#research** for the morning brief
-2. Review any auto-proposals in **#trade-proposals**
-3. In **#command**, run `/account` to see your paper balance
-4. Run `/quote SPY` to see the current price
-5. Try an analysis: `/iron_condor symbol:SPY put_short:660 put_long:655 call_short:685 call_long:690 dte:0 iv:0.20`
-6. If you like the setup, use `/buy` or the autonomous bot (once built) to execute
-7. Monitor positions with `/positions` throughout the day
-8. At EOD, check **#system-health** for the daily score
-9. Ask questions in **#chat** about anything you don't understand
+1. Complete pre-live checklist in SYSTEM_STATE.md
+2. Prove consistent results (40+ trades, 60%+ win rate, 8+ weeks paper)
+3. Add MarketXLS MCP ($94/mo Advanced for real-time Greeks)
+4. Add Unusual Whales ($48/mo for real sweep detection)
+5. Create separate live Alpaca API keys (never reuse paper keys)
+6. Switch `TRADING_MODE=live` in .env
+7. Start at $5k allocation, max 2 simultaneous live positions
 
 ---
 
 ## Key Principles
 
-1. **Never override the guards.** They exist to protect you from yourself.
-2. **Paper first.** Every new strategy runs on paper for 2+ weeks minimum.
-3. **Journal everything.** The system does this automatically — your job is to READ the journals.
-4. **Ask questions.** The #chat agent is there to teach you. No question is too basic.
-5. **One strategy at a time.** Master SPY iron condors before adding anything else.
-6. **The system gets smarter every day.** But only if you engage with it — review trades, save lessons, discuss in chat.
+1. **Never override the guards.** They protect you from compounding losses.
+2. **Paper first, always.** The debate chamber proves ideas before real capital.
+3. **One change at a time.** Evolution moves in small, validated steps.
+4. **Read the debates.** The Bull/Bear transcripts are where the learning happens.
+5. **Watch #pr-updates.** That's the system improving itself — understand each change.
+6. **The morning packet at 6:20 AM is your edge.** Read it before market open.

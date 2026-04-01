@@ -76,3 +76,45 @@ Errors (24h): X
 - OpenClaw process status
 - Disk and memory on VPS
 - GitHub repo state (branch status, pending PRs)
+
+---
+
+## NEW SCRIPTS (added Mar 31, 2026)
+
+Three new scripts now live in `/root/quantai-v2/v2/shared-data/scripts/`:
+
+| Script | Purpose | Run by |
+|--------|---------|--------|
+| `market_intelligence.py` | Twice-daily intelligence packet | Orchestrator (6:20 AM, 1:30 PM) |
+| `debate_chamber.py` | 3-agent Bull/Bear/Judge trade selection | Orchestrator (6:25 AM, 1:35 PM) |
+| `self_evolution.py` | EOD config evolution pipeline | Orchestrator (4:35 PM daily) |
+
+### Health checks to add for these scripts
+
+```bash
+# Check if intelligence packet is fresh (< 3 hours old)
+python3 -c "
+import json,os
+from datetime import datetime
+ET_offset = 0  # adjust for timezone
+p = '/root/quantai-v2/v2/shared-data/cache/market_intelligence.json'
+if os.path.exists(p):
+    d = json.load(open(p))
+    print('Intel packet:', d.get('timestamp','?'), '| Regime:', d.get('market_regime','?'))
+else:
+    print('❌ market_intelligence.json not found')
+"
+
+# Check debate log
+tail -3 /root/quantai-v2/v2/shared-data/logs/debate_log.jsonl 2>/dev/null || echo "No debate log yet"
+
+# Check evolution log
+tail -3 /root/quantai-v2/v2/shared-data/logs/evolution_log.jsonl 2>/dev/null || echo "No evolution log yet"
+```
+
+### If scripts fail
+1. Check Python deps: `python3 -c "import yfinance, anthropic; print('OK')"`
+2. Check ANTHROPIC_API_KEY is set: `echo $ANTHROPIC_API_KEY | head -c 10`
+3. Check FINNHUB_API_KEY is set: `echo $FINNHUB_API_KEY | head -c 10`
+4. Check cache dir exists: `ls /root/quantai-v2/v2/shared-data/cache/`
+5. Run script manually and read stderr for errors

@@ -124,3 +124,66 @@ Keep responses SHORT. Discord is mobile-first.
 - Use bold for key numbers
 - Use code blocks for trade reports
 - The unified trade report can be longer — that's the one exception
+
+---
+
+## DEBATE CHAMBER — run this when proposing trades
+
+Before proposing any trades, run the full intelligence + debate pipeline:
+
+```bash
+# Step 1: Build intelligence packet (6:20 AM and 1:30 PM)
+python3 /root/quantai-v2/v2/shared-data/scripts/market_intelligence.py pre_market
+
+# Step 2: Run debate chamber (generates 2 approved proposals)
+python3 /root/quantai-v2/v2/shared-data/scripts/debate_chamber.py pre_market
+```
+
+The debate chamber will print formatted trade cards directly to stdout.
+Post those cards verbatim to #trade-proposals.
+
+Read the intelligence packet for market context:
+`/root/quantai-v2/v2/shared-data/cache/market_intelligence.json`
+
+Read debate results:
+`/root/quantai-v2/v2/shared-data/cache/debate_output.json`
+
+### When to run the full pipeline
+- 6:20-6:25 AM ET every trading day (pre-market)
+- 1:30-1:35 PM ET every trading day (mid-session)
+- When Amit asks "what trades look good?" or "run the debate"
+
+### Market regime rules
+- regime = "halt" → post "🛑 No trades today — VIX ≥ 35" to #trade-proposals
+- regime = "risk_off" → widen wings by $2, reduce size, note in trade card
+- regime = "caution" → proceed but flag the specific caution reason
+- regime = "normal" → proceed normally
+
+## DAILY SCHEDULE (updated)
+
+| Time | Action |
+|------|--------|
+| 6:20 AM | Run market_intelligence.py pre_market |
+| 6:25 AM | Run debate_chamber.py pre_market → post cards to #trade-proposals |
+| 6:30 AM | SOFI daily brief (as before) + credit spread top 2 |
+| 1:30 PM | Run market_intelligence.py mid_session |
+| 1:35 PM | Run debate_chamber.py mid_session → post cards to #trade-proposals |
+| 4:30 PM | EOD review — score today's trades 0-100 |
+| 4:35 PM | Run self_evolution.py [score] with today's EOD score |
+
+## SELF-EVOLUTION — run after EOD scoring
+
+After scoring today's trades, run:
+```bash
+python3 /root/quantai-v2/v2/shared-data/scripts/self_evolution.py [eod_score]
+
+# Example if score was 72:
+python3 /root/quantai-v2/v2/shared-data/scripts/self_evolution.py 72
+
+# Friday weekly consolidation:
+python3 /root/quantai-v2/v2/shared-data/scripts/self_evolution.py [score] --consolidate
+```
+
+If it prints "✅ APPLIED", post the evolution block to #pr-updates.
+If it prints "❌ REJECTED", post the rejection reason to #pr-updates.
+If score ≥ 90, it exits immediately — no action needed.
