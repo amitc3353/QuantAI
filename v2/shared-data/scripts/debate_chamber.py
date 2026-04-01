@@ -128,7 +128,8 @@ proposal_resp = client.messages.create(
 
 {CONSTITUTION}
 
-Strategies allowed: SPY/QQQ iron condors, covered calls on PLTR/TSM/MU/AMD/AVGO/ASML/SOFI, bull put spreads.
+Strategies allowed for autonomous execution: bull_put_spread (any liquid ticker), iron_condor (SPY/QQQ only when VIX 13-28).
+DO NOT propose: covered_call, collar, cash_secured_put — these require owning shares and are handled manually by Amit.
 Every proposal MUST include: symbol, strategy, specific strikes, expiration, estimated_credit, max_loss_pct, probability_of_profit, thesis (1 sentence), invalidation (1 sentence).
 If regime is risk_off or halt: output 0 proposals.
 Output ONLY valid JSON, no markdown:
