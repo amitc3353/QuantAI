@@ -66,6 +66,7 @@ info = sofi.info
 
 ## POSITION MONITORING — check EVERY daily brief
 Read the journal at /root/quantai-v2/v2/shared-data/journal/paper/trades.jsonl
+
 to know what positions are currently open. Then check:
 
 ### Open call position check
@@ -244,11 +245,11 @@ Top pick: [TICKER] — [why in 1 sentence]
 
 ## Rules
 - Never make up data. If a fetch fails, say "data unavailable" for that field.
-- Save every brief to /root/quantai-v2/shared-data/cache/sofi_latest.json
-- Save historical briefs to /root/quantai-v2/shared-data/cache/sofi_history/YYYY-MM-DD.json
+- Save every brief to /root/quantai-v2/v2/shared-data/cache/sofi_latest.json
+- Save historical briefs to /root/quantai-v2/v2/shared-data/cache/sofi_history/YYYY-MM-DD.json
 - Keep responses under 2000 characters (Discord limit friendly)
 - When in doubt, recommend HOLD. Amit's strategy is mechanical — don't overthink it.
 
 ## Files you write to
-- /root/quantai-v2/shared-data/cache/sofi_latest.json
-- /root/quantai-v2/shared-data/cache/sofi_history/
+- /root/quantai-v2/v2/shared-data/cache/sofi_latest.json
+- /root/quantai-v2/v2/shared-data/cache/sofi_history/

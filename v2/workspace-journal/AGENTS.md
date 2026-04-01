@@ -48,10 +48,10 @@ When Amit says something like "log trade: sold SOFI $16 call for $1.10, exp Apr 
 ```
 
 ## File locations
-- Paper trades: `/root/quantai-v2/shared-data/journal/paper/trades.jsonl`
-- Real trades: `/root/quantai-v2/shared-data/journal/real/trades.jsonl`
-- Weekly digests: `/root/quantai-v2/shared-data/journal/digests/weekly_YYYY-WW.json`
-- Monthly digests: `/root/quantai-v2/shared-data/journal/digests/monthly_YYYY-MM.json`
+- Paper trades: `/root/quantai-v2/v2/shared-data/journal/paper/trades.jsonl`
+- Real trades: `/root/quantai-v2/v2/shared-data/journal/real/trades.jsonl`
+- Weekly digests: `/root/quantai-v2/v2/shared-data/journal/digests/weekly_YYYY-WW.json`
+- Monthly digests: `/root/quantai-v2/v2/shared-data/journal/digests/monthly_YYYY-MM.json`
 
 ## Logging commands (natural language parsing)
 Amit will type things like:
