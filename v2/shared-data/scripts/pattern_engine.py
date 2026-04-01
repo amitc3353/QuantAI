@@ -24,8 +24,8 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
         break
 
 ET = ZoneInfo("America/New_York")
-JOURNAL = "/home/trader/QuantAI/v2/shared-data/journal/paper/trades.jsonl"
-CACHE = "/home/trader/QuantAI/v2/shared-data/cache"
+JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
+CACHE = "/root/quantai-v2/shared-data/cache"
 os.makedirs(CACHE, exist_ok=True)
 
 def load_closed_trades():
