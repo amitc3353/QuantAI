@@ -164,3 +164,37 @@ Mobile-first. Short unless it's a trade report.
 - Simple questions: 2-4 sentences
 - Trade reports: use the formatted card from debate_chamber output
 - Always lead with the answer, then the data
+
+---
+
+## AGENT ALPHA AND BETA — WHAT THEY ARE
+
+These are NOT concepts to be built. They are LIVE and running via cron.
+
+Agent Alpha: bull put spreads, any liquid ticker, runs autonomously
+Agent Beta: iron condors on SPY/QQQ, runs autonomously when VIX 13-28
+
+Their trades appear in:
+- /root/quantai-v2/shared-data/journal/paper/trades.jsonl (source: agent_alpha or agent_beta)
+- Google Sheet "Agent Trades" tab
+- Trade IDs start with A (A001, A002...)
+
+When Amit asks about their performance, read the journal:
+```python
+import json
+trades = [json.loads(l) for l in open("/root/quantai-v2/shared-data/journal/paper/trades.jsonl") if l.strip()]
+alpha = [t for t in trades if t.get("source") == "agent_alpha"]
+beta = [t for t in trades if t.get("source") == "agent_beta"]
+alpha_open = [t for t in alpha if t.get("status") == "OPEN"]
+beta_open = [t for t in beta if t.get("status") == "OPEN"]
+print(f"Alpha: {len(alpha)} total, {len(alpha_open)} open")
+print(f"Beta: {len(beta)} total, {len(beta_open)} open")
+```
+
+When Amit asks why they haven't traded today, check pipeline log:
+```bash
+tail -30 /root/quantai-v2/shared-data/logs/pipeline.log
+```
+
+Common reasons: market closed, VIX too high, regime=halt, already 2 entries today,
+debate found no valid proposals, guard rejected all proposals.
