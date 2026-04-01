@@ -238,7 +238,7 @@ for prop, (bull, bear) in zip(proposals, bull_bear_results):
         continue
     score = score_map.get(pid, {})
     approved_trades.append({
-        "proposal": prop,
+        "proposal": {**prop, "source": "agent"},  # mark as agent-proposed for sheets
         "bull_case": bull,
         "bear_case": bear,
         "judge_score": score.get("net_score", 0),

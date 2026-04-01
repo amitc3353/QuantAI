@@ -57,6 +57,7 @@ trade = {
     "premium": 1.10,
     "contracts": 2,
     "underlying_price": 15.88,  # fetched or provided
+    "source": "manual",
     "strategy": "collar",
     "notes": "",
     "status": "OPEN"
