@@ -11,7 +11,20 @@ import json, os, sys, time
 from datetime import datetime, timedelta
 import yfinance as yf
 
-CACHE = os.environ.get("QUANTAI_HOME", "/root/quantai-v2") + "/shared-data/cache"
+# Auto-load .env
+import pathlib as _pl
+for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.env")]:
+    if _ef.exists():
+        for _line in _ef.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                if not os.environ.get(_k.strip()):
+                    os.environ[_k.strip()] = _v.strip()
+        break
+
+
+CACHE = os.environ.get("QUANTAI_CACHE", "/home/trader/QuantAI/v2/shared-data/cache")
 
 # ── Dynamic ticker discovery ──────────────────────────────────────────
 # Instead of a hardcoded list, we pull from multiple sources and filter
@@ -42,7 +55,7 @@ def discover_tickers():
             "BA", "LUV", "DAL", "UBER", "LYFT",
             "SQ", "PYPL", "V", "MA", "JPM", "GS",
             "CRSP", "MRNA", "PFE", "ABBV",
-            "DIS", "WBD", "PARA",
+            "DIS", "WBD",
         ]))
         tickers.update(trending.symbols)
     except:

@@ -1,25 +1,34 @@
 #!/usr/bin/env python3
 """
-QuantAI Autonomous Pipeline
-Runs the full intelligence → debate → execution cycle on a schedule.
+QuantAI Autonomous Pipeline — Condition-Triggered
 
-Called by cron. No human approval needed.
-Agents Alpha and Beta execute within guardrails automatically.
+Runs every 15 minutes during market hours via cron.
+Agents enter when conditions are right, not on a fixed clock.
 
-Schedule (set in VPS crontab):
-  9:50 AM ET Mon-Fri  — Entry 1 (morning session)
-  1:30 PM ET Mon-Fri  — Entry 2 (afternoon session)
-  3:30 PM ET Mon-Fri  — Position monitor + hard close check
+Entry logic:
+- Market must be open (9:45 AM – 3:30 PM ET)
+- Intelligence packet must show regime != halt
+- VIX must be in acceptable range
+- No entry in first 15 min of open (9:30-9:45) — volatility too high
+- Max 2 entries per day (tracked in daily_state.json)
+- If Entry 1 is open and profitable, consider Entry 2
+- Never enter after 3:00 PM ET (not enough time to manage)
 
-Usage:
-  python3 run_pipeline.py entry_1    # morning entry
-  python3 run_pipeline.py entry_2    # afternoon entry
-  python3 run_pipeline.py monitor    # position check
-  python3 run_pipeline.py eod        # end of day scoring
+Monitor runs every 15 min during market hours:
+- Checks all open agent positions
+- Closes at 50% profit, 2x stop, or 3:30 PM hard close
+
+Usage (crontab):
+  */15 * * * 1-5  python3 /home/trader/QuantAI/v2/shared-data/scripts/run_pipeline.py
+
+Modes:
+  python3 run_pipeline.py          # auto-detect what to do
+  python3 run_pipeline.py monitor  # force position check only
+  python3 run_pipeline.py eod      # end of day wrap-up
 """
 
 import os, sys, subprocess, json
-from datetime import datetime
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
 # Auto-load .env
@@ -35,190 +44,218 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
         break
 
 ET = ZoneInfo("America/New_York")
-SCRIPTS = "/home/trader/QuantAI/v2/shared-data/scripts"
-CACHE   = "/root/quantai-v2/shared-data/cache"
-LOGS    = "/root/quantai-v2/shared-data/logs"
+SCRIPTS  = "/home/trader/QuantAI/v2/shared-data/scripts"
+CACHE    = "/root/quantai-v2/shared-data/cache"
+LOGS     = "/root/quantai-v2/shared-data/logs"
+JOURNAL  = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
+STATE    = f"{CACHE}/daily_state.json"
 os.makedirs(LOGS, exist_ok=True)
+os.makedirs(CACHE, exist_ok=True)
 
-mode = sys.argv[1] if len(sys.argv) > 1 else "entry_1"
+forced_mode = sys.argv[1] if len(sys.argv) > 1 else None
 
-def run(cmd, label):
-    print(f"\n[pipeline] {label}")
-    result = subprocess.run(
-        ["python3"] + cmd,
-        capture_output=False,
-        timeout=300
-    )
+now = datetime.now(ET)
+today = date.today().isoformat()
+
+def log(msg):
+    ts = now.strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}")
+
+def run_script(script, *args, label=""):
+    if label:
+        log(label)
+    cmd = ["python3", f"{SCRIPTS}/{script}"] + list(args)
+    result = subprocess.run(cmd, timeout=300)
     return result.returncode == 0
 
-def log_pipeline_event(event):
-    entry = {"timestamp": datetime.now(ET).isoformat(), "mode": mode, **event}
-    with open(f"{LOGS}/pipeline_log.jsonl", "a") as f:
-        f.write(json.dumps(entry) + "\n")
-
-
-# ── Entry 1 or Entry 2 (full pipeline) ───────────────────────────────
-if mode in ("entry_1", "entry_2"):
-    print(f"\n{'='*60}")
-    print(f"QuantAI Autonomous Pipeline — {mode.upper()}")
-    print(f"Time: {datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}")
-    print(f"{'='*60}")
-
-    # Step 1: Market intelligence (refresh if stale)
-    ok = run([f"{SCRIPTS}/market_intelligence.py"], "Building market intelligence packet...")
-    if not ok:
-        print("[pipeline] Intelligence failed — aborting")
-        log_pipeline_event({"step": "intelligence", "status": "failed"})
-        sys.exit(1)
-
-    # Check regime — abort if halt
-    try:
-        with open(f"{CACHE}/market_intelligence.json") as f:
-            intel = json.load(f)
-        regime = intel.get("market_regime", "normal")
-        vix = intel.get("macro", {}).get("vix", 0)
-        print(f"[pipeline] Regime: {regime.upper()} | VIX: {vix:.1f}")
-        if regime == "halt":
-            print("[pipeline] HALT regime — no trading today")
-            log_pipeline_event({"step": "regime_check", "status": "halted", "vix": vix})
-            sys.exit(0)
-    except Exception as e:
-        print(f"[pipeline] Could not read intel packet: {e}")
-
-    # Step 2: Scan options
-    run([f"{SCRIPTS}/scan_options.py", "both"], "Running options scanner...")
-
-    # Step 3: Debate chamber
-    ok = run([f"{SCRIPTS}/debate_chamber.py"], "Running debate chamber...")
-    if not ok:
-        print("[pipeline] Debate chamber failed — aborting")
-        log_pipeline_event({"step": "debate", "status": "failed"})
-        sys.exit(1)
-
-    # Step 4: Autonomous execution
-    run([f"{SCRIPTS}/autonomous_execution.py"], "Executing approved trades...")
-
-    log_pipeline_event({"step": "complete", "status": "ok"})
-    print(f"\n[pipeline] ✅ {mode.upper()} complete")
-
-
-# ── Position monitor ──────────────────────────────────────────────────
-elif mode == "monitor":
-    print(f"\n[pipeline] Position Monitor — {datetime.now(ET).strftime('%H:%M ET')}")
-
-    import requests as req
-    ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
-    ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
-    ALPACA_BASE   = "https://paper-api.alpaca.markets"
-    DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
-
-    if not os.path.exists(JOURNAL):
-        print("[monitor] No journal yet")
-        sys.exit(0)
-
-    trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
-    open_trades = [t for t in trades if t.get("status") == "OPEN"
-                   and t.get("source", "").startswith("agent")]
-
-    if not open_trades:
-        print("[monitor] No open agent positions to monitor")
-        sys.exit(0)
-
-    now = datetime.now(ET)
-    hard_close_time = now.replace(hour=15, minute=30, second=0)
-    is_hard_close = now >= hard_close_time
-
-    alerts = []
-    for t in open_trades:
-        symbol = t.get("symbol", "")
-        trade_id = t.get("id", "")
-        credit = t.get("estimated_credit", 0)
-        agent = t.get("source", "agent")
-
-        # Try to get current value from Alpaca
+def load_state():
+    if os.path.exists(STATE):
         try:
-            headers = {
-                "APCA-API-KEY-ID": ALPACA_KEY,
-                "APCA-API-SECRET-KEY": ALPACA_SECRET
-            }
-            r = req.get(f"{ALPACA_BASE}/v2/positions", headers=headers, timeout=10)
-            positions = r.json() if r.status_code == 200 else []
-
-            # Find matching position
-            for pos in positions:
-                if symbol in pos.get("symbol", ""):
-                    current_pl_pct = float(pos.get("unrealized_plpc", 0)) * 100
-                    current_pl = float(pos.get("unrealized_pl", 0))
-
-                    # 50% profit target
-                    if current_pl_pct >= 50:
-                        alerts.append({
-                            "trade_id": trade_id,
-                            "symbol": symbol,
-                            "agent": agent,
-                            "action": "CLOSE_PROFIT_TARGET",
-                            "pl_pct": current_pl_pct,
-                            "pl": current_pl,
-                        })
-                    # 2x stop loss
-                    elif current_pl_pct <= -100:
-                        alerts.append({
-                            "trade_id": trade_id,
-                            "symbol": symbol,
-                            "agent": agent,
-                            "action": "CLOSE_STOP_LOSS",
-                            "pl_pct": current_pl_pct,
-                            "pl": current_pl,
-                        })
-        except Exception as e:
-            print(f"[monitor] Could not check {symbol}: {e}")
-
-        # Hard close at 3:30 PM regardless
-        if is_hard_close:
-            alerts.append({
-                "trade_id": trade_id,
-                "symbol": symbol,
-                "agent": agent,
-                "action": "HARD_CLOSE_3:30PM",
-                "pl_pct": 0,
-                "pl": 0,
-            })
-
-    # Post alerts to Discord
-    if alerts and DISCORD_WEBHOOK:
-        msg = "🔔 **Position Monitor Alert**\n"
-        for a in alerts:
-            emoji = "✅" if "PROFIT" in a["action"] else "🛑"
-            msg += f"{emoji} **{a['agent'].upper()}** {a['symbol']} → {a['action']}\n"
-            if a.get("pl_pct"):
-                msg += f"   P&L: {a['pl_pct']:+.1f}% (${a['pl']:+.2f})\n"
-        try:
-            req.post(DISCORD_WEBHOOK, json={"content": msg}, timeout=8)
+            s = json.load(open(STATE))
+            if s.get("date") == today:
+                return s
         except:
             pass
+    return {"date": today, "entries_today": 0, "last_entry_time": None}
 
-    for a in alerts:
-        print(f"[monitor] {a['agent']} {a['symbol']}: {a['action']} (P&L: {a.get('pl_pct',0):+.1f}%)")
+def save_state(state):
+    with open(STATE, "w") as f:
+        json.dump(state, f)
 
-    log_pipeline_event({"step": "monitor", "alerts": len(alerts)})
+def load_intel():
+    p = f"{CACHE}/market_intelligence.json"
+    if not os.path.exists(p):
+        return None
+    try:
+        return json.load(open(p))
+    except:
+        return None
 
+def count_open_agent_trades():
+    if not os.path.exists(JOURNAL):
+        return 0
+    trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
+    return len([t for t in trades
+                if t.get("status") == "OPEN"
+                and t.get("source", "").startswith("agent")])
 
-# ── EOD scoring ───────────────────────────────────────────────────────
-elif mode == "eod":
-    print(f"\n[pipeline] EOD — {datetime.now(ET).strftime('%H:%M ET')}")
-    # EOD scoring is triggered by Amit saying "score today X/100" in Discord
-    # This mode just posts a reminder to Discord
-    DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    if DISCORD_WEBHOOK:
-        import requests as req
+def is_market_open():
+    h, m = now.hour, now.minute
+    # Market hours: 9:30 AM – 4:00 PM ET weekdays
+    if now.weekday() >= 5:
+        return False
+    if h < 9 or (h == 9 and m < 30):
+        return False
+    if h >= 16:
+        return False
+    return True
+
+def past_entry_cutoff():
+    # No new entries after 3:00 PM — not enough time to manage
+    return now.hour >= 15
+
+def in_opening_volatility_window():
+    # Avoid first 15 min of open
+    return now.hour == 9 and now.minute < 45
+
+def past_hard_close():
+    return now.hour == 15 and now.minute >= 30 or now.hour > 15
+
+def intel_is_fresh():
+    p = f"{CACHE}/market_intelligence.json"
+    if not os.path.exists(p):
+        return False
+    try:
+        d = json.load(open(p))
+        ts = datetime.fromisoformat(d.get("timestamp", "2000-01-01"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ET)
+        age_min = (now - ts).total_seconds() / 60
+        return age_min < 30  # fresh if under 30 min
+    except:
+        return False
+
+# ── MONITOR mode ──────────────────────────────────────────────────────
+def run_monitor():
+    log("Running position monitor...")
+    run_script("autonomous_execution.py", "--monitor-only",
+               label="Checking open agent positions...")
+
+# ── EOD mode ─────────────────────────────────────────────────────────
+def run_eod():
+    log("EOD wrap-up")
+    DISCORD = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
+    if DISCORD:
+        import requests
+        state = load_state()
         msg = (
-            "📊 **Market Close** — Time to score today\n"
-            "Tell me: `score today [0-100]/100`\n"
-            "I'll run the evolution analysis on today's agent trades."
+            f"📊 **Market Close — {today}**\n"
+            f"Agent entries today: {state.get('entries_today', 0)}\n"
+            f"Tell me: `score today [0-100]/100` to run evolution analysis."
         )
         try:
-            req.post(DISCORD_WEBHOOK, json={"content": msg}, timeout=8)
+            requests.post(DISCORD, json={"content": msg}, timeout=8)
         except:
             pass
-    print("[pipeline] EOD reminder posted")
+    # Reset daily state for next day
+    save_state({"date": today, "entries_today": 0, "last_entry_time": None})
+
+# ── ENTRY mode ────────────────────────────────────────────────────────
+def run_entry(state):
+    log(f"Considering entry — {state['entries_today']} entries today so far")
+
+    # Refresh intelligence
+    run_script("market_intelligence.py", label="Refreshing market intelligence...")
+    intel = load_intel()
+    if not intel:
+        log("No intel — skipping")
+        return state
+
+    regime = intel.get("market_regime", "normal")
+    vix = intel.get("macro", {}).get("vix", 0)
+    log(f"Regime: {regime.upper()} | VIX: {vix:.1f}")
+
+    # Regime gate
+    if regime == "halt":
+        log("HALT regime — no entry today")
+        return state
+
+    # VIX gate for condors (Agent Beta)
+    # VIX gate for spreads (Agent Alpha) — wider range acceptable
+    if vix > 35:
+        log(f"VIX {vix:.1f} too high — no entry")
+        return state
+
+    # Entry 2 gate — only if Entry 1 exists and is doing well
+    if state["entries_today"] >= 1:
+        open_count = count_open_agent_trades()
+        if open_count == 0:
+            log("Entry 1 already closed — Entry 2 valid if conditions strong")
+        elif open_count >= 3:
+            log(f"Already {open_count} open positions — max reached, skipping entry")
+            return state
+        else:
+            log(f"{open_count} position(s) still open — evaluating Entry 2")
+            # Only enter second time if regime is PROCEED (not caution)
+            if regime != "normal":
+                log("Regime not normal — skipping Entry 2")
+                return state
+
+    if state["entries_today"] >= 2:
+        log("Max 2 entries per day reached — done for today")
+        return state
+
+    # Run scan + debate + execute
+    log("Conditions met — running full pipeline")
+    run_script("scan_options.py", "both", label="Scanning options...")
+    ok = run_script("debate_chamber.py", label="Running debate chamber...")
+    if not ok:
+        log("Debate failed — skipping execution")
+        return state
+
+    run_script("autonomous_execution.py", label="Executing approved trades...")
+
+    state["entries_today"] += 1
+    state["last_entry_time"] = now.isoformat()
+    save_state(state)
+    log(f"Entry {state['entries_today']} complete")
+    return state
+
+
+# ── Main ──────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+
+    if forced_mode == "eod":
+        run_eod()
+        sys.exit(0)
+
+    if forced_mode == "monitor":
+        run_monitor()
+        sys.exit(0)
+
+    if not is_market_open():
+        log(f"Market closed at {now.strftime('%H:%M ET')} — nothing to do")
+        sys.exit(0)
+
+    state = load_state()
+
+    # Always run monitor when market is open
+    if past_hard_close():
+        log("Past 3:30 PM — hard close check")
+        run_monitor()
+        sys.exit(0)
+
+    if in_opening_volatility_window():
+        log("Opening volatility window (9:30-9:45) — waiting for market to settle")
+        sys.exit(0)
+
+    if past_entry_cutoff():
+        # After 3 PM — monitor only, no new entries
+        run_monitor()
+        sys.exit(0)
+
+    # Normal market hours — run monitor + consider entry
+    run_monitor()
+
+    if not past_entry_cutoff():
+        state = run_entry(state)
