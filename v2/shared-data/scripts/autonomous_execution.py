@@ -56,10 +56,22 @@ MIN_CREDIT        = 0.30
 VIX_HALT          = 35
 ACCOUNT_SIZE      = 20000
 
-# Strategies agents are allowed to trade autonomously
-ALLOWED_STRATEGIES = {"bull_put_spread", "iron_condor", "bear_call_spread", "put_spread", "call_spread"}
-# Strategies that require owning shares — Amit handles these manually
-MANUAL_ONLY = {"covered_call", "collar", "cash_secured_put"}
+# All defined-risk strategies agents can execute autonomously
+# Key rule: every strategy must have fully defined max loss, no share ownership needed
+ALLOWED_STRATEGIES = {
+    "bull_put_spread",    # sell put + buy lower put — bullish/neutral
+    "bear_call_spread",   # sell call + buy higher call — bearish/neutral
+    "iron_condor",        # bull put + bear call — range-bound
+    "iron_butterfly",     # sell ATM straddle + buy wings — tight range, IV crush
+    "calendar_spread",    # near-term sell + far-term buy same strike — low IV
+    "diagonal_spread",    # near-term sell + far-term buy diff strike — directional
+    "jade_lizard",        # put spread + call — defined risk, bullish high-IV
+    "put_spread",         # generic put spread
+    "call_spread",        # generic call spread
+    "strangle_spread",    # defined-risk strangle with long wings
+}
+# Strategies that require owning shares — Amit executes these manually
+MANUAL_ONLY = {"covered_call", "collar", "cash_secured_put", "covered_strangle"}
 
 def log(msg):
     print(f"[{datetime.now(ET).strftime('%H:%M:%S')}] {msg}")
