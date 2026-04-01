@@ -1,310 +1,246 @@
-# QuantAI — System Tutorial
-**Updated: March 31, 2026**
+# QuantAI — How to Use Your System
+**Updated: April 1, 2026**
 
-## How to use your autonomous trading system, every day.
-
----
-
-## Your Discord Server — The Command Center
-
-Everything happens in Discord. Here's what each channel is for:
-
-| Channel | What happens here | Who posts |
-|---|---|---|
-| **#command** | Slash commands — trading, analysis, system ops | You |
-| **#chat** | Talk naturally — ask questions, discuss strategy, `cto:` tasks | You + AI |
-| **#research** | Morning briefs, CTO scan, intelligence summaries, debate outcomes | Orchestrator (auto) |
-| **#trade-proposals** | Trade cards from Debate Chamber. React ✅ approve · ❌ reject · 🔄 defer | Orchestrator + You |
-| **#execution-log** | Filled orders, confirmations, closes | Execution Agent (auto) |
-| **#guard-log** | Guard approvals and rejections with reason codes | Guard Engine (auto) |
-| **#system-health** | Startup, EOD scores, health checks, evolution events, digests | System (auto) |
-| **#pr-updates** | Self-evolution changes + rejected proposals with gate results | Self-Evolution (auto) |
+Everything runs in Discord. The system has two streams running in parallel — autonomous agent trades and your manual trades. Both log to Google Sheets automatically.
 
 ---
 
-## What Actually Happens Each Day
+## Your Discord Channels
 
-### 6:00 AM Monday — CTO Intelligence Scan
-The CTO agent scans GitHub, arXiv, and PyPI for new tools and integrations.
-Posts a ranked proposal list to #research before anything else runs.
+| Channel | What it's for |
+|---|---|
+| **#chat** | Everything — talk to Orchestrator, get analysis, score the day |
+| **#research** | SOFI briefs, credit spread reports, collar scans (auto-posted) |
+| **#infra** | System health, errors, deployments |
+| **#journal** | Log your manual trades, check stats |
 
-### 6:20 AM Mon–Fri — Market Intelligence Build
-The intelligence service aggregates everything:
-- VIX + term structure + regime classification
-- RSI, MACD, Bollinger Bands, EMA200 for all 10 watchlist symbols
-- Fear & Greed, yield curve, treasury yields
-- Earnings calendar — flags any tickers within 14 days of earnings
-- News sentiment via Finnhub for each symbol
-- Open positions with live P&L and recommended actions
-- Pre-screened high conviction setups ranked by score
-- Risk flags: HALT / WARNING / CAUTION
-
-Saved as `data/cache/market_intelligence_packet.json`.
-
-### 6:25 AM Mon–Fri — Debate Chamber (Pre-Market)
-The three-agent debate runs on the intelligence packet:
-
-1. **Proposal Agent** reads the packet → generates 3–5 trade candidates with strikes, credits, and thesis
-2. **Bull Agent** argues FOR each trade simultaneously
-3. **Bear Agent** argues AGAINST each trade simultaneously
-4. **Judge Agent** scores the debate → selects TOP 2
-5. **Guard Engine** validates both → posts to #trade-proposals
-
-Each trade card in #trade-proposals shows:
-- Full trade structure (strikes, expiry, credit, max loss)
-- Bull case (3–5 bullet points)
-- Bear case (3–5 bullet points)
-- Judge score + reasoning
-- Guard result (APPROVED or REJECTED with reason)
-
-**React ✅ to execute · ❌ to reject · 🔄 to defer to mid-session**
-
-### 6:30 AM Mon–Fri — Morning Brief
-Standard morning brief with macro context, sector overview, and watchlist summary.
-Posts to #research alongside the debate chamber summary.
-
-### 9:50 AM Mon–Fri — Agent 1: Entry 1
-Autonomous iron condor entry on SPY.
-Pre-entry checks: context score → journal consultation → VIX → flow check → credit → guard.
-Trade card posted to #trade-proposals. Executes automatically in paper mode.
-
-### 10:00 AM Monday — Agent 2: Weekly CC Scan
-Scans PLTR/TSM/MU/AMD/AVGO/ASML for covered call opportunities.
-Earnings blackout (14 days), min IV rank 30, delta 0.20, 21–35 DTE.
-
-### 11:30 AM Mon–Fri — Agent 1: Entry 2 (conditional)
-Only if Entry 1 has hit 40%+ profit. Same pre-entry check sequence.
-
-### 1:30 PM Mon–Fri — Market Intelligence Build (Mid-Session)
-Refreshes the intelligence packet with mid-session data.
-Key additions vs morning: live session P&L on open positions, updated VIX,
-afternoon RSI readings, any news that broke during morning session.
-
-### 1:35 PM Mon–Fri — Debate Chamber (Mid-Session)
-Second debate chamber run of the day. Focuses on:
-- Afternoon setups (different from morning — often covered calls, not condors)
-- Position management recommendations for open trades
-- Any morning proposals that weren't approved and are still valid
-
-### 4:30 PM Mon–Fri — EOD Scoring
-Scores today's trades 0–100. Extracts lessons. Posts to #system-health.
-
-### 4:35 PM Mon–Fri — Self-Evolution Engine
-If EOD score < 90:
-1. Observes today's journal — wins, losses, timing, credits
-2. Critiques: which param caused the biggest misalignment?
-3. Generates ONE targeted change with evidence
-4. Runs 5 validation gates (constitution, size, drift, safety, backtest)
-5. If all pass → applies change, bumps config version, posts diff to #pr-updates
-6. If any gate fails → logs rejection reason, stores observation for future data
-
-### 4:45 PM Friday — Weekly Review + Consolidation
-- Weekly performance review posted to #system-health
-- Strategy consolidation: 4+ weeks of observations compressed into durable principles
-- CTO report on system health and reliability
-- Correlation analysis: does context score predict outcomes?
+That's it. Four channels. No approval workflows, no slash commands to memorize.
 
 ---
 
-## Reading Trade Cards in #trade-proposals
+## The Two Trading Streams
 
-Every trade card looks like this:
+### Stream 1 — Agents Alpha and Beta (fully autonomous)
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 TRADE PROPOSAL — SPY IRON CONDOR
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Legs:
-  SELL PUT $555 0DTE
-  BUY  PUT $550 0DTE
-  SELL CALL $575 0DTE
-  BUY  CALL $580 0DTE
+You do nothing. They run on their own every 15 minutes during market hours.
 
-Credit: $0.75 | Max Loss: $4.25 (1.7%)
-Prob of Profit: 68%
-Debate Score: 74/100
+**Agent Alpha** trades bull put spreads on any liquid ticker when conditions are right.
+**Agent Beta** trades iron condors on SPY/QQQ when VIX is 13-28 and market is range-bound.
 
-Thesis: SPY range-bound at 563, VIX 17 contango. RSI 52 neutral.
-Invalidation: SPY breaks above 572 or below 558 on volume.
+When they trade, you get a Discord notification in #chat and the trade appears in your Google Sheet "Agent Trades" tab automatically.
 
-🐂 Bull: [3-5 reasons this trade works]
-🐻 Bear: [3-5 reasons to be careful]
-⚖️ Judge: Strong risk/reward. Bear point on gap risk is valid but wings absorb $5 moves.
+They will NOT trade when:
+- VIX ≥ 35
+- Market regime is halt or risk_off
+- Already 2 trades placed today
+- After 3:00 PM ET (no time to manage)
+- Earnings within 14 days on the ticker
 
-Guard: ✅ GUARD APPROVED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-React ✅ to execute · ❌ to reject · 🔄 to defer
-```
+At 3:30 PM they automatically close any open same-day positions.
 
-In autonomous paper mode, approved trades execute automatically.
-In live mode, you must react ✅ to confirm.
+### Stream 2 — Your Manual Trades (SOFI + learning)
+
+You decide when to trade. You execute on Webull. You log it in #journal. That's it.
+
+The Orchestrator gives you everything you need to decide — you never trade blind.
 
 ---
 
-## Reading #pr-updates (Self-Evolution)
+## What You Say in #chat
 
-When evolution applies a change:
+**To get trade ideas for yourself:**
 ```
-🧬 Evolution Applied — Agent 1
-param:     min_credit
-old value: 0.50
-new value: 0.60
-version:   v3
+any trades?
+what looks good today?
+run the scan
+```
+Orchestrator runs the intelligence packet + options scanner + debate chamber and gives you 2-3 setups with exact contracts, credits, and reasoning. You decide whether to execute.
 
-Rationale: 3 of last 5 stop-outs had credit below $0.55.
-Evidence: avg loss -$180 on sub-$0.55 entries vs +$32 on above-$0.55 entries.
-All 5 gates passed ✅ | EOD Score was 72/100
+**To check SOFI and your collar:**
+```
+SOFI update
+how's my collar?
+SOFI price vs triggers
+```
+Gives you current price, which trigger level you're near, what action to take, and the exact contract to trade if action is needed.
+
+**To check your open positions:**
+```
+how are my positions?
+open positions?
+what do I have open?
 ```
 
-When a proposed change is rejected:
+**To check what the agents traded:**
 ```
-🔬 Evolution Proposed — REJECTED
-Change: short_delta 0.10 → 0.08
-Failed gates:
-• ❌ Regression: win rate degraded -4.2% over 30-day backtest
-Observation stored for future data accumulation.
+what did alpha trade today?
+agent trades this week
+show me today's agent activity
 ```
 
-You don't need to do anything with these. They're your transparency window into how the system is improving itself.
+**To score the day and trigger evolution:**
+```
+score today 72/100
+score today 85/100
+```
+Score is your honest assessment — did trades make sense? Did you follow the plan? Below 90 triggers the self-evolution analysis. Fridays add --consolidate:
+```
+score today 80/100 --consolidate
+```
+
+**To get market context:**
+```
+market conditions?
+what's the regime today?
+is it a good day to trade?
+```
+
+**Anything else:**
+Just ask naturally. "Should I roll my SOFI call?", "What happens if SPY drops 2% today?", "Explain iron condor gamma risk." The Orchestrator answers everything.
 
 ---
 
-## Commands Reference
+## What You Say in #journal
 
-### Trading Commands (#command)
-
-| Command | When to use | Example |
-|---|---|---|
-| `/account` | Check portfolio value, cash, buying power | `/account` |
-| `/positions` | See all open positions with P&L | `/positions` |
-| `/quote SPY` | Get live price, bid/ask, volume | `/quote symbol:SPY` |
-| `/buy` | Buy shares (through guards, needs ✅ in live mode) | `/buy symbol:SPY qty:1` |
-| `/sell` | Sell shares | `/sell symbol:SPY qty:1` |
-| `/close` | Close entire position | `/close symbol:SPY` |
-| `/emergency_stop` | HALT all new trades immediately | `/emergency_stop` |
-| `/resume` | Resume after halt | `/resume` |
-
-### Options Analysis Commands
-
-| Command | When to use | Example |
-|---|---|---|
-| `/greeks` | Compute delta/theta/gamma/vega | `/greeks symbol:SPY strike:565 dte:0 option_type:put iv:0.18` |
-| `/iron_condor` | Full iron condor analysis | `/iron_condor symbol:SPY put_short:555 put_long:550 call_short:575 call_long:580 dte:0 iv:0.18` |
-| `/bull_put` | Bull put spread analysis | `/bull_put symbol:SPY short_strike:555 long_strike:550 dte:30 iv:0.22` |
-| `/covered_call` | Covered call analysis | `/covered_call symbol:PLTR strike:32 dte:28 iv:0.55` |
-
-### Intelligence & Guard Commands
-
-| Command | When to use | Example |
-|---|---|---|
-| `/guard_check` | Test if a trade would pass guards | `/guard_check symbol:SPY position_pct:2 max_loss_pct:1.7 dte:0` |
-| `/rules` | View current guard rules | `/rules` |
-| `/status` | Quick system status | `/status` |
-| `/journal` | Today's trades + P&L + lessons | `/journal` |
-| `/performance [days]` | Win rates, P&L, context correlation | `/performance days:14` |
-| `/lessons [query]` | Browse/search lessons | `/lessons iron condor` |
-
-### Dev & Ops Commands
-
-| Command | When to use | Example |
-|---|---|---|
-| `/health` | Full system health | `/health` |
-| `/deploy` | Pull latest code from GitHub + rebuild | `/deploy` |
-| `/logs` | View service logs | `/logs service:orchestrator lines:50` |
-| `/restart` | Restart a service (needs ✅) | `/restart service:trader-orchestrator` |
-| `/cto [task]` | Ask CTO agent to investigate | `/cto check why Entry 2 keeps stopping out` |
-
-### Memory Commands (#chat)
-
+**Log a trade (always paper unless you say "real"):**
 ```
-remember: [lesson]     — save a lesson permanently
-lessons                — view all saved lessons
-lessons [query]        — search lessons
-stats                  — view trade statistics
-cto: [task]            — trigger CTO agent on-demand
+log: sold 2x SOFI $16C Apr 18 for $1.10
+log: bought 2x SOFI $12P May 16 for $0.25
+log: MSTR $115/$110 put spread Apr 10 credit $0.78 x1
+```
+Journal agent logs it immediately, fetches the underlying price automatically, confirms in one message. Never asks questions.
+
+**Close a trade:**
+```
+close: P001 expired worthless
+close: P001 bought back at $0.40
+```
+
+**Check your stats:**
+```
+stats
+open positions
+how am I doing?
+weekly stats
 ```
 
 ---
 
-## The #chat Channel
+## Google Sheet — Your Live Dashboard
 
-Talk naturally. No slash commands needed.
+Bookmark this on your phone:
+**https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0**
 
-**Learning options:**
-```
-What is an iron condor in simple terms?
-Why do we use delta 0.10 for short strikes?
-What happens to our position if SPY drops 2% today?
-Explain why we only change one param at a time in evolution.
-```
+**Summary tab** — open this every morning:
+- Open positions (agent + manual)
+- Win rate: agent vs manual (tracked separately)
+- Total P&L
+- Last sync time
 
-**Strategy discussion:**
-```
-Should we trade iron condors on FOMC days?
-Why did the Debate Chamber reject that QQQ trade?
-What patterns do you see in our losing trades this week?
-The Bear Agent kept flagging gap risk — should we widen wings?
-```
+**Agent Trades tab** — Alpha and Beta performance only. This is how you evaluate whether the autonomous system is working.
 
-**Intelligence review:**
-```
-What was the intelligence packet saying at 6:20 AM today?
-Which symbols have the best setup right now?
-Why is the market regime showing CAUTION?
-How has context score correlated with our win rate so far?
-```
+**Manual Trades tab** — your SOFI collar and anything you trade yourself.
+
+**All Trades tab** — everything combined, color-coded:
+- 🟡 Yellow = OPEN position
+- 🟢 Green = closed winner
+- 🔴 Red = closed loser
+
+Trade IDs: `A001`, `A002`... = agent trades. `P001`, `P002`... = your manual trades.
 
 ---
 
-## The Guard Engine — Rules That Never Bend
+## SOFI Collar — 5 Rules, No Improvising
 
-Every trade from every source (Agent 1, Agent 2, Debate Chamber) must pass ALL guards.
+| SOFI Price | What you do |
+|---|---|
+| $15.70 | Nothing. Monitor. |
+| $16.00 | ROLL the call to $18, 2 weeks out. Collect net credit. |
+| Called away | Accept it. Rebuy on next dip. Restart collar. |
+| $12.50 | Assess conviction. Is the thesis still intact? |
+| $12.00 | Exercise put OR roll to $10 OR exit. Max loss accepted. |
 
-**Position rules:** max 5% portfolio/trade · max 2% loss at entry · max 10 contracts · min 21 DTE for CC · min $0.15 bid-ask spread
-**Portfolio rules:** max ±0.30 delta · max -$50/day theta · max 8 positions · max 3 per sector · -3% daily triggers pause
-**Timing rules:** no trading 9:30–9:45 AM · no trading 3:45–4:00 PM · 14-day earnings blackout · VIX > 35 = advisory only · 24h cooldown after closing
-
----
-
-## Self-Evolution — What It Can and Can't Change
-
-**Can tune (with gate approval):**
-- `min_credit` — minimum credit to enter
-- `short_delta` — target delta for short strikes (0.05–0.20 range)
-- `wing_width` — wing width in dollars
-- `profit_target_pct` — % of max profit to close
-- `entry2_profit_threshold` — Entry 2 trigger level
-- Context weight parameters (after 4 weeks of data)
-
-**Can never change (constitution-protected):**
-- `max_loss_pct` (stays ≤ 2%)
-- `hard_close_hour` (stays ≤ 3:30 PM)
-- `vix_upper` (stays ≤ 30)
-- `earnings_blackout_days` (stays ≥ 14)
-- `max_daily_loss` (stays ≤ $1,000)
+The Orchestrator tells you which level you're near every time you ask "SOFI update." You never need to remember the numbers.
 
 ---
 
-## Paper vs Live Trading
+## What Happens Each Day (Automatically)
 
-Currently: **PAPER MODE** — all trades use fake money via Alpaca simulator.
+| Time (ET) | What happens |
+|---|---|
+| 6:00 AM | Research agent posts SOFI brief to #research |
+| 9:45 AM | Pipeline first check — evaluates if conditions support entry |
+| 9:45 AM–3:00 PM | Pipeline checks every 15 min — enters if conditions warrant |
+| 3:00 PM | Entry cutoff — no new positions after this |
+| 3:30 PM | Hard close — all agent same-day positions closed |
+| 4:05 PM | EOD reminder posted to #chat — prompts you to score the day |
 
-### Switching to live (future):
-1. Complete pre-live checklist in SYSTEM_STATE.md
-2. Prove consistent results (40+ trades, 60%+ win rate, 8+ weeks paper)
-3. Add MarketXLS MCP ($94/mo Advanced for real-time Greeks)
-4. Add Unusual Whales ($48/mo for real sweep detection)
-5. Create separate live Alpaca API keys (never reuse paper keys)
-6. Switch `TRADING_MODE=live` in .env
-7. Start at $5k allocation, max 2 simultaneous live positions
+**You don't need to do anything for the agent stream.** Just watch Discord and Google Sheet.
 
 ---
 
-## Key Principles
+## Daily Routine (What Amit Does)
 
-1. **Never override the guards.** They protect you from compounding losses.
-2. **Paper first, always.** The debate chamber proves ideas before real capital.
-3. **One change at a time.** Evolution moves in small, validated steps.
-4. **Read the debates.** The Bull/Bear transcripts are where the learning happens.
-5. **Watch #pr-updates.** That's the system improving itself — understand each change.
-6. **The morning packet at 6:20 AM is your edge.** Read it before market open.
+**Morning (5 min):**
+1. Open Google Sheet Summary tab — any overnight changes?
+2. In #chat: "SOFI update" — where are we vs trigger levels?
+3. Watch for agent trade notification in #chat around market open
+
+**During market (as needed):**
+4. If you want to paper trade something yourself → execute on Webull → log in #journal
+5. Ask Orchestrator anything you're curious about
+6. Agents handle themselves — you just watch
+
+**End of day (2 min):**
+7. In #chat: "score today [0-100]/100"
+8. Check Google Sheet — P&L for the day
+
+**Friday (10 min):**
+9. In #chat: "score today [score]/100 --consolidate"
+10. In #journal: "stats" — full week breakdown
+11. Compare Agent Trades tab vs Manual Trades — who's winning this week?
+
+---
+
+## What You Never Need to Do
+
+- Approve agent trades — they execute automatically within guardrails
+- SSH into the VPS for normal operations — ask Infra agent in #infra
+- Manually run scripts — Orchestrator runs them when you ask
+- Remember contract specifics — ask Orchestrator for exact contracts
+- Update configs manually — self-evolution handles it with validation
+
+---
+
+## If Something Seems Wrong
+
+**Agent not trading when it should:**
+In #infra: "check pipeline log" or "why aren't agents trading?"
+Infra agent reads the log and tells you what happened.
+
+**Trade not showing in Google Sheet:**
+In #journal: "sync sheets" — forces a manual sync.
+Or on VPS: `python3 /home/trader/QuantAI/v2/shared-data/scripts/sheets_sync.py`
+
+**System feels slow or broken:**
+In #infra: "health check" — disk, memory, all processes.
+
+**SOFI hitting a trigger level:**
+In #chat: "SOFI update" — Orchestrator tells you exactly what to do based on the pre-decided actions. Follow the plan. Don't improvise.
+
+---
+
+## Key Numbers to Know
+
+| Thing | Value |
+|---|---|
+| Paper account size | $20,000 |
+| Max loss per trade | 2% = $400 |
+| Max open positions | 3 simultaneously |
+| Stop loss | 2x credit received |
+| Profit target | 50% of max profit (close early) |
+| SOFI collar max loss | $600 |
+| SOFI income target | $170/month at 200 shares |
+| Agent entry cutoff | 3:00 PM ET |
+| Hard close | 3:30 PM ET |
+| VIX halt level | 35 (no trades above this) |
