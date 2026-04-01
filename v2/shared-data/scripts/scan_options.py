@@ -181,7 +181,7 @@ def scan_credit_spreads():
                 continue
 
             avg_vol = info.get("averageVolume", 0)
-            if avg_vol < 1_000_000:
+            if avg_vol < 5_000_000:
                 continue
 
             # Options must exist
@@ -211,6 +211,14 @@ def scan_credit_spreads():
             # Earnings check
             earnings = get_earnings(t)
             if earnings.get("within_7d"):
+                continue
+
+            # OI check — at least 200 OI on ATM options (liquidity gate)
+            atm_calls = chain.calls[abs(chain.calls.strike - price) / price < 0.05]
+            atm_puts = chain.puts[abs(chain.puts.strike - price) / price < 0.05]
+            max_call_oi = int(atm_calls["openInterest"].max()) if not atm_calls.empty else 0
+            max_put_oi = int(atm_puts["openInterest"].max()) if not atm_puts.empty else 0
+            if max_call_oi < 200 and max_put_oi < 200:
                 continue
 
             # Get technicals to decide direction

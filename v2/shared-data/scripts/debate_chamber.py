@@ -128,7 +128,25 @@ proposal_resp = client.messages.create(
 
 {CONSTITUTION}
 
-Strategies allowed: SPY/QQQ iron condors, covered calls on PLTR/TSM/MU/AMD/AVGO/ASML/SOFI, bull put spreads.
+Strategies allowed for autonomous execution (all are defined-risk, no share ownership needed):
+- bull_put_spread: sell put + buy lower put. Best when bullish/neutral, stock above key support.
+- bear_call_spread: sell call + buy higher call. Best when bearish/neutral, stock below resistance.
+- iron_condor: bull put spread + bear call spread combined. Best when range-bound, VIX 15-28. Works on ANY liquid ticker, not just SPY/QQQ.
+- iron_butterfly: sell ATM call + put, buy OTM wings. Best when expecting IV crush, tight range.
+- calendar_spread: sell near-term option, buy far-term same strike. Best when IV low, expecting rise.
+- diagonal_spread: sell near-term option, buy far-term different strike. Directional + time decay.
+- jade_lizard: sell put spread + sell OTM call (wings defined). Best bullish high-IV play, no upside risk.
+
+Ticker selection rules:
+- Any ticker with average daily volume > 5M shares
+- Options open interest > 500 on the strikes you're using
+- Bid/ask spread on options < $0.15
+- No earnings within 14 days
+- Prefer tickers where the scanner has already confirmed liquidity
+- SPY/QQQ are good defaults for condors but NOT the only choices
+
+DO NOT propose: covered_call, collar, cash_secured_put — require owning shares (Amit handles manually).
+Every proposal MUST have fully defined max loss. No naked short options ever.
 Every proposal MUST include: symbol, strategy, specific strikes, expiration, estimated_credit, max_loss_pct, probability_of_profit, thesis (1 sentence), invalidation (1 sentence).
 If regime is risk_off or halt: output 0 proposals.
 Output ONLY valid JSON, no markdown:

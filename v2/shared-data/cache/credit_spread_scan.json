@@ -1,0 +1,179 @@
+{
+  "ts": "2026-04-01T12:30:55.771213",
+  "scan_type": "credit_spreads",
+  "vix": 23.6,
+  "tickers_scanned": 95,
+  "opportunities_found": 35,
+  "top_picks": [
+    {
+      "symbol": "HOOD",
+      "name": "Robinhood Markets, Inc.",
+      "price": 70.39,
+      "sector": "Financial Services",
+      "direction": "CALL_SPREAD",
+      "short_strike": 74.0,
+      "long_strike": 77.0,
+      "width": 3.0,
+      "credit": 0.74,
+      "max_profit": 74.0,
+      "max_loss": 226.0,
+      "risk_reward": 3.1,
+      "distance_pct": 5.1,
+      "expiry": "2026-04-10",
+      "iv_rank": 32.4,
+      "short_oi": 1283,
+      "short_vol": 345,
+      "technicals": {
+        "rsi14": 41.6,
+        "macd": "bearish",
+        "sma20": 73.58,
+        "sma50": 80.7,
+        "high_52w": 153.86,
+        "low_52w": 29.66,
+        "pct_from_high": -54.2,
+        "trend_5d_pct": 0.1
+      },
+      "earnings": {
+        "date": "2026-02-10",
+        "days_until": -50,
+        "within_7d": false
+      }
+    },
+    {
+      "symbol": "IONQ",
+      "name": "IonQ, Inc.",
+      "price": 28.98,
+      "sector": "Technology",
+      "direction": "PUT_SPREAD",
+      "short_strike": 28.0,
+      "long_strike": 25.0,
+      "width": 3.0,
+      "credit": 0.68,
+      "max_profit": 68.0,
+      "max_loss": 232.0,
+      "risk_reward": 3.4,
+      "distance_pct": 3.4,
+      "expiry": "2026-04-10",
+      "iv_rank": 39.0,
+      "short_oi": 586,
+      "short_vol": 274,
+      "technicals": {
+        "rsi14": 34.8,
+        "macd": "bearish",
+        "sma20": 32.23,
+        "sma50": 35.49,
+        "high_52w": 84.64,
+        "low_52w": 18.81,
+        "pct_from_high": -65.8,
+        "trend_5d_pct": -2.9
+      },
+      "earnings": {
+        "date": "2026-02-25",
+        "days_until": -35,
+        "within_7d": false
+      }
+    },
+    {
+      "symbol": "LUV",
+      "name": "Southwest Airlines Company",
+      "price": 38.42,
+      "sector": "Industrials",
+      "direction": "CALL_SPREAD",
+      "short_strike": 40.0,
+      "long_strike": 42.5,
+      "width": 2.5,
+      "credit": 0.55,
+      "max_profit": 55.0,
+      "max_loss": 195.0,
+      "risk_reward": 3.5,
+      "distance_pct": 4.1,
+      "expiry": "2026-04-10",
+      "iv_rank": 47.6,
+      "short_oi": 315,
+      "short_vol": 7,
+      "technicals": {
+        "rsi14": 49.3,
+        "macd": "bearish",
+        "sma20": 40.05,
+        "sma50": 45.42,
+        "high_52w": 54.87,
+        "low_52w": 23.35,
+        "pct_from_high": -30.0,
+        "trend_5d_pct": -2.8
+      },
+      "earnings": {
+        "date": "2026-04-22",
+        "days_until": 21,
+        "within_7d": false
+      }
+    },
+    {
+      "symbol": "MRNA",
+      "name": "Moderna, Inc.",
+      "price": 50.78,
+      "sector": "Healthcare",
+      "direction": "CALL_SPREAD",
+      "short_strike": 53.0,
+      "long_strike": 56.0,
+      "width": 3.0,
+      "credit": 0.65,
+      "max_profit": 65.0,
+      "max_loss": 235.0,
+      "risk_reward": 3.6,
+      "distance_pct": 4.4,
+      "expiry": "2026-04-10",
+      "iv_rank": 53.8,
+      "short_oi": 130,
+      "short_vol": 13,
+      "technicals": {
+        "rsi14": 41.3,
+        "macd": "bearish",
+        "sma20": 52.57,
+        "sma50": 49.12,
+        "high_52w": 59.55,
+        "low_52w": 22.28,
+        "pct_from_high": -14.7,
+        "trend_5d_pct": -5.2
+      },
+      "earnings": {
+        "date": "2026-02-13",
+        "days_until": -47,
+        "within_7d": false
+      }
+    },
+    {
+      "symbol": "MU",
+      "name": "Micron Technology, Inc.",
+      "price": 374.69,
+      "sector": "Technology",
+      "direction": "CALL_SPREAD",
+      "short_strike": 395.0,
+      "long_strike": 400.0,
+      "width": 5.0,
+      "credit": 1.0,
+      "max_profit": 100.0,
+      "max_loss": 400.0,
+      "risk_reward": 4.0,
+      "distance_pct": 5.4,
+      "expiry": "2026-04-10",
+      "iv_rank": 63.7,
+      "short_oi": 868,
+      "short_vol": 790,
+      "technicals": {
+        "rsi14": 44.0,
+        "macd": "bearish",
+        "sma20": 398.42,
+        "sma50": 403.94,
+        "high_52w": 471.14,
+        "low_52w": 61.39,
+        "pct_from_high": -20.5,
+        "trend_5d_pct": 5.5
+      },
+      "earnings": {
+        "date": "2026-03-18",
+        "days_until": -14,
+        "within_7d": false
+      }
+    }
+  ]
+}
