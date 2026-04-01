@@ -1,7 +1,7 @@
 # QuantAI — System State
-**Last updated: March 23, 2026 | Update this file after every significant session**
+**Last updated: March 31, 2026 | Update after every significant session**
 
-This is the single source of truth. Start every new chat with: "Read SYSTEM_STATE.md."
+Start every new chat: "Read SYSTEM_STATE.md."
 
 ---
 
@@ -12,337 +12,274 @@ This is the single source of truth. Start every new chat with: "Read SYSTEM_STAT
 | VPS | Hetzner CX31 · 87.99.141.55 |
 | OS | Ubuntu 24 |
 | Repo | github.com/amitc3353/QuantAI |
-| Runtime | Docker Compose · project name: `quantai` |
-| Trading mode | **PAPER** |
-| Auto mode | **ON** |
-
-**5 running containers:**
-- `trader-discord` — Discord bot, all slash commands, chat agent, CTO command
-- `trader-guards` — Guard engine FastAPI on port 8100
-- `trader-orchestrator` — APScheduler, all agents, all automation
-- `trader-alpaca` — Alpaca MCP server
-- `trader-cto` — CTO listener, watches cto_queue.json, runs Claude Code, posts to Discord
+| Active branch | v2-openclaw |
+| Live path on VPS | /home/trader/QuantAI |
+| Runtime | OpenClaw multi-agent framework |
+| Trading mode | PAPER |
 
 ---
 
-## Capital Structure
+## How This System Works
 
-| | Amount |
-|---|---|
-| Total paper account | $20,000 |
-| Agent 1 allocation | $10,000 |
-| Agent 2 allocation | $10,000 |
-| Max simultaneous at risk | $2,000 (10%) |
-| Daily loss limit (all agents) | $1,000 (5%) → halt ALL |
-| Weekly loss limit | $2,000 (10%) → halt + alert |
-| Max drawdown before pause | $4,000 |
+QuantAI uses **OpenClaw** — a multi-agent framework where each agent is a Claude model instance with its own personality, instructions, and tool access. Agents are not bots running scheduled loops. They are Claude instances that read workspace files, execute Python scripts via Bash tool, and respond in Discord.
+
+**No fixed scheduler.** Agents act when Amit talks to them in Discord, or when a cron job posts a message to their channel to trigger a task.
+
+**No fixed strategy per agent.** The Orchestrator reads current conditions and proposes whatever makes sense: credit spreads, collars, covered calls, iron condors, cash-secured puts. Strategy follows conditions. Guardrails are constant.
 
 ---
 
-## Agent 1 — Iron Condor Bot
+## The Four Agents
 
-**Strategy:** Sell 0DTE iron condors on SPY
-**Status:** ACTIVE · autonomous · paper mode
-**Config:** `configs/agent1_params.json` (v2)
+| Agent | Channel | Model | Role |
+|---|---|---|---|
+| Orchestrator | #chat | Claude Sonnet | Primary interface — scans, proposes trades, monitors positions, answers all questions |
+| Research | #research | Claude Sonnet | SOFI daily brief, credit spread report, weekly collar candidate scan |
+| Infra | #infra | Claude Sonnet | System health, files, git, script maintenance, deployment |
+| Journal | #journal | Claude Haiku | Trade logging (paper + real), P&L stats, weekly/monthly digests |
+
+Config: `/root/quantai-v2/.openclaw/config.js`
+Workspaces: `/root/quantai-v2/v2/workspace-{orchestrator,research,infra,journal}/`
+
+---
+
+## Active Strategies
+
+### SOFI Collar — paper, 200 shares
+Primary learning strategy. Defined max loss regardless of downside.
 
 | Parameter | Value |
 |---|---|
-| Primary symbol | SPY |
-| Short delta | 0.10 |
-| Wing width | $5.00 (adjusted to $6 when context=CAUTION) |
-| Min credit | $0.50 |
-| Profit target | 50% |
-| Stop loss | 2x credit |
-| Hard close | 3:30 PM ET |
-| VIX range | 13.0 – 30.0 |
-| Max daily trades | 2 |
-| Max risk/trade | $500 (1 contract) |
-| Daily loss limit | $300 → pause Agent 1 |
+| Shares | 200 (paper) |
+| Entry price | ~$15 |
+| Call strike | $16, sell biweekly |
+| Put strike | $12, buy monthly |
+| Net income target | $170/month |
+| Hard max loss | $600 |
+| Scale plan | 200 → 500 → 1,000 shares over 12 months |
 
-**Entry schedule:**
-- Entry 1: 9:50 AM ET Mon-Fri
-- Entry 2: 11:30 AM ET (only if Entry 1 ≥40% profit)
+5 pre-decided trigger actions (no improvising at these levels):
+- $15.70 → MONITOR
+- $16.00 → ROLL call to $18, 2 weeks out
+- Called away → ACCEPT profit, rebuy on dip
+- $12.50 → MONITOR, assess conviction
+- $12.00 → EXERCISE put OR roll to $10 OR exit
 
-**Pre-entry checks (in order):**
-1. Context score ≥ 40
-2. Journal consultation via Haiku — skip/caution/proceed
-3. VIX within range
-4. Guard engine approval
+Full params: `/root/quantai-v2/v2/shared-data/strategies/sofi_collar.json`
 
-**Known issue fixed:** Was switching to QQQ when SPY IV rank was low.
-Removed — IV rank doesn't gate 0DTE entries (VIX handles volatility).
-Added 1DTE fallback when 0DTE chain is empty.
+### Credit Spreads — opportunistic
+Scanner finds these dynamically. Not tied to specific tickers.
+- Put spreads (bullish bias): RSI < 40 + above 200 EMA
+- Call spreads (bearish bias): RSI > 60 + extended move
+- Weekly expiry, 4-7% from price, 1 contract while learning
+- Stop: 2x credit | Target: 50% profit
+
+### Everything Else — condition-driven
+When conditions support it, the Orchestrator can propose:
+- Iron condors (SPY/QQQ when VIX 15-25, range-bound)
+- Covered calls (on holdings with IV rank > 30)
+- Cash-secured puts (to acquire a stock at a lower price)
+- Bull put spreads (stronger bullish structure than put spread alone)
+
+**Strategy is whatever the data says is best. Guardrails never change.**
 
 ---
 
-## Agent 2 — Covered Call Bot
+## Guard Rules — always enforced, never negotiated
 
-**Strategy:** Sell covered calls on 6 portfolio holdings
-**Status:** ACTIVE · autonomous · paper mode · Monday weekly scan
-**Config:** `configs/agent2_params.json` (v2)
-
-| Parameter | Value |
+| Rule | Value |
 |---|---|
-| Symbols | PLTR, TSM, MU, AMD, AVGO, ASML |
-| Target delta | 0.20 |
-| DTE range | 21 – 35 days |
-| Min IV rank | 30 |
-| Profit target | 50% |
-| Roll trigger | Stock >2% through strike |
-| Max rolls | 3 per position |
-| Hard close | 2 DTE |
-| Simulated shares | 10 per ticker |
-| Earnings blackout | 14 days |
+| Max loss per trade | 2% of account |
+| Earnings blackout | 14 days before and after |
+| VIX ≥ 35 | Advisory only — no new positions |
+| No-trade windows | 9:30-9:45 AM ET and 3:45-4:00 PM ET |
+| Stop loss | 2x credit received |
+| Profit target | Close at 50% of max profit |
+| Max simultaneous open | 3 positions |
 
 ---
 
-## Intelligence Layer — Context Score (0–100)
+## Trade Intelligence Flow
 
-**File:** `services/context_builder.py`
+When Amit asks for trades or the Orchestrator decides to scan:
 
-| Signal | Weight | Source |
+```
+market_intelligence.py    →  intelligence packet (auto-fresh if < 90 min old)
+       ↓
+scan_options.py both      →  credit spread + collar candidates
+       ↓
+debate_chamber.py         →  Bull/Bear/Judge debate → top 2 proposals
+       ↓
+Orchestrator posts cards  →  #trade-proposals
+       ↓
+Amit reacts ✅ ❌ 🔄
+```
+
+There is no fixed schedule for this. It runs when:
+- Amit asks "any trades?" or "what looks good?"
+- Orchestrator notices a significant market move
+- Intelligence packet is stale and Amit is asking about conditions
+
+---
+
+## Scripts
+
+All in `/root/quantai-v2/v2/shared-data/scripts/`
+
+| Script | What it does | How to run |
 |---|---|---|
-| VIX regime | 25 pts | yfinance `^VIX` |
-| Event calendar | 15 pts | Finnhub / yfinance |
-| Macro regime | 20 pts | FRED API |
-| Sentiment | 20 pts | CBOE put/call + CNN Fear&Greed |
-| Flow | 20 pts | Alpaca Vol/OI + volume proxy |
-
-**Decisions:** ≥60=PROCEED · 40-59=CAUTION (wings +$2) · <40=SKIP
-**Hard overrides:** FOMC/CPI day OR VIX ≥ 35 → always skip
-**Auto-tune:** After 4 weeks, correlation_analyzer adjusts weights
+| market_intelligence.py | Builds intelligence packet from all data sources. Auto-skips if < 90 min old. | `python3 market_intelligence.py` or `--force` |
+| debate_chamber.py | 3-agent Bull/Bear/Judge debate. Reads intelligence packet. | `python3 debate_chamber.py` |
+| self_evolution.py | EOD evolution pipeline. Pass today's score. | `python3 self_evolution.py 75` |
+| scan_options.py | Credit spread + collar scanner across 100+ tickers. | `python3 scan_options.py both` |
+| fetch_sofi.py | SOFI-specific data fetch for Research agent. | `python3 fetch_sofi.py` |
 
 ---
 
-## CTO Agent — Tech Intelligence
+## Intelligence Packet
 
-**Two modes:**
+`/root/quantai-v2/v2/shared-data/cache/market_intelligence.json`
 
-**1. Automated (Monday 6:00 AM):**
-- `services/cto_agent.py` scans GitHub, arXiv, PyPI
-- Posts ranked proposals to #research
-- Security assessment on every proposal
-- No auto-install ever
+Built by market_intelligence.py. Contains:
 
-**2. On-demand (anytime):**
-- Type `cto: [task]` in #chat → Claude Code investigates
-- Or use `/cto [task]` slash command in #command
-- Claude Code reads CLAUDE.md, actual files, live logs
-- Posts result back to #chat (via DISCORD_WEBHOOK_CHAT)
-- Host listener: `scripts/cto_listener.sh` (must be running)
-- Queue file: `data/cto_queue.json`
+**Macro:** VIX + VIX3M + term structure, regime classification (normal/caution/risk_off/halt), Fear & Greed score, 10Y/2Y treasury yields + yield curve regime, Finnhub event calendar (days to FOMC/CPI/jobs), today's event flag
 
-**CTO can do autonomously:** bug fixes, log investigation, code reading,
-GitHub/URL scanning, security checks, syntax validation
+**Per symbol (all watchlist):** Price + change, volume vs average, RSI-14, MACD signal, Bollinger Band position + width, SMA20/EMA50/EMA200, ADX, above-EMA200 flag, P/E ratio, market cap, days to next earnings, news sentiment score
 
-**CTO needs approval:** guard rule changes, param changes, new installs,
-docker-compose changes, anything touching .env
+**Setups:** Pre-screened high conviction setups ranked by score — any strategy type
+
+**Risk flags:** Specific HALT/WARNING/CAUTION alerts with reasons
+
+**Quality score:** 0-100, decrements when data sources fail
+
+---
+
+## Self-Evolution
+
+Runs after Orchestrator scores the day's trades (0-100 scale).
+
+```
+If score < 90:
+  1. Observe  — extract what happened from journal
+  2. Critique — find single biggest param misalignment
+  3. Generate — propose ONE specific config change with evidence
+  4. Validate — 5 gates (constitution → size → drift → safety → regression)
+  5. Apply    — update sofi_collar.json, post to Discord
+  6. Log      — append to evolution_log.jsonl
+
+If score ≥ 90:
+  No change needed — post confirmation
+
+Every Friday: add --consolidate flag
+  Compresses 35 days of observations into durable strategy principles
+```
+
+Constitution (gates can never change these):
+- max_loss_pct ≤ 2%, min_credit ≥ $0.30, earnings_blackout ≥ 14 days
+- delta range 0.05-0.20, VIX upper ≤ 30, stop_loss_multiplier ≤ 3x
 
 ---
 
 ## Data Sources
 
-| Source | Data | Cost | Notes |
-|---|---|---|---|
-| yfinance | VIX, prices, IV rank | Free | 15-min delayed |
-| Alpaca | Options chain with Greeks | Free | Paper account |
-| FRED API | Fed rate, yield curve, CPI | Free | Daily, cached 6h |
-| Finnhub | Earnings calendar, news | Free tier | 60 calls/min |
-| CBOE | Put/call ratio | Free scrape | Fragile — falls back |
-| CNN | Fear & Greed | Free scrape | Falls back to VIX proxy |
-| Alpha Vantage | Morning brief quotes | Free tier | 25 req/day |
-
----
-
-## Scheduler — 12 Jobs (all times ET)
-
-| Time | Job | Days |
+| Source | Data | Cost |
 |---|---|---|
-| 6:00 AM | CTO Tech Intelligence Scan | Monday |
-| 6:30 AM | Morning Brief + Context + Auto-Proposals | Mon-Fri |
-| 8:00 AM | Daily Digest → #system-health | Mon-Fri |
-| 9:45 AM | Pre-entry context build | Mon-Fri |
-| 9:50 AM | Agent 1: Entry 1 | Mon-Fri |
-| 10:00 AM | Agent 2: Weekly CC Scan | Monday |
-| 11:25 AM | Pre-entry 2 context build | Mon-Fri |
-| 11:30 AM | Agent 1: Entry 2 (conditional) | Mon-Fri |
-| Every 5 min | Agent 1 Monitor + Health Check | Market hours |
-| 4:30 PM | EOD Scoring + Lessons + Self-Improve | Mon-Fri |
-| 4:30 PM | Agent 1 EOD Score | Mon-Fri |
-| 4:45 PM | Weekly Review + Correlation + CTO Report | Friday |
-| 4:45 PM | Agent 2 Weekly Score | Friday |
-
----
-
-## Discord Channels & Commands
-
-| Channel | Purpose |
-|---|---|
-| #command | Slash commands |
-| #chat | Natural language + `cto: [task]` |
-| #research | Morning brief, CTO scan, context score |
-| #trade-proposals | Trade cards, journal vetoes |
-| #execution-log | Fills, closes, rolls |
-| #system-health | Health checks, EOD scores, digests, CTO reports |
-| #guard-log | Guard approvals/rejections |
-| #pr-updates | Self-improvement PRs |
-
-**Key commands:**
-- `cto: [task]` — ask CTO anything in #chat (posts back to #chat)
-- `/cto [task]` — same but via slash command
-- `/journal` — today's trades + P&L + lessons
-- `/performance [days]` — win rates, P&L, context correlation
-- `/lessons [query]` — browse/search all lessons
-- `/health` — system health check
-- `/deploy` — git pull + no-cache build + restart (always --no-cache now)
-- `/emergency_stop` — halt all new trades
-
----
-
-## Self-Improvement Loop
-
-**Trigger:** EOD score < 90
-
-**Flow:**
-1. Haiku scores trades → extracts LESSON/WHEN/ACTION structured lessons
-2. `backtester.py` validates param changes against 30 days journal
-3. If backtest passes → GitHub PR created
-4. If backtest fails → PR discarded, reason posted to Discord
-
-**Weekly correlation (Friday 4:45 PM):**
-- Measures: high-score days vs low-score days win rate
-- Per-signal accuracy analysis
-- Auto-adjusts weights after 4 weeks
-
----
-
-## Journal System
-
-**What's logged:** event type, symbol, strikes, credit, VIX, IV rank,
-context score + components, market regime, lessons applied, outcome, P&L
-
-**How journals teach agents:**
-1. Pre-entry: Haiku reads lessons → skip/caution/proceed
-2. Backtester: validates params against history
-3. Correlation: measures signal predictiveness
-4. Weekly review: strategic adjustments
-5. #chat: injects recent trades + lessons into every conversation
+| yfinance | Price, volume, RSI, MACD, BB, EMAs, VIX, fundamentals | Free |
+| Finnhub | Event calendar, earnings dates, news headlines | Free tier |
+| Alpha Vantage | Earnings surprise history | Free (25 req/day) |
+| CNN | Fear & Greed index (falls back to VIX proxy) | Free scrape |
+| Anthropic API | All agent reasoning, debate chamber, self-evolution | ~$15-25/mo |
+| **MarketXLS** | **Real-time Greeks, options screeners, 1,100+ functions** | **Not subscribed — pre-live only ($94/mo Advanced)** |
+| **Unusual Whales** | **Real sweep detection, dark pool, net premium flow** | **Not subscribed — pre-live only ($48/mo)** |
 
 ---
 
 ## File Structure
 
 ```
-configs/
-  agent1_params.json      ← v2, self-improve can edit
-  agent2_params.json      ← v2
-  guard_config.json       ← APPROVAL REQUIRED to change
-  context_weights.json    ← auto-tuned by correlation_analyzer
-  watchlist.json          ← symbols + sector classification
-
-services/                 ← mounted read-only into orchestrator
-  market_data.py          ← VIX, options chain, IV rank, strike finder
-  macro_data.py           ← FRED + Finnhub
-  sentiment_data.py       ← PCR, Fear&Greed, VIX term structure
-  flow_detector.py        ← Vol/OI + dark pool proxy
-  context_builder.py      ← Pre-trade score 0-100
-  backtester.py           ← Param change validator
-  correlation_analyzer.py ← Signal weight auto-tuner
-  health_monitor.py       ← All health checks
-  cto_agent.py            ← Tech Intelligence (GitHub/arXiv/PyPI scanner)
-  cto_report.py           ← Weekly CTO reliability report
-
-orchestrator/
-  scheduler.py            ← All 12 cron jobs
-  agent1_iron_condor.py   ← Agent 1 full logic
-  agent2_covered_call.py  ← Agent 2 + roll logic
-  self_improve.py         ← PR generation + backtest gate
-
-discord-bot/
-  memory.py               ← Persistent memory
-  cogs/
-    trading.py            ← /buy /sell /journal /performance /lessons
-    infra_agent.py        ← /health /deploy /logs /restart /cto
-    chat_agent.py         ← #chat + cto: trigger
-    options_analysis.py   ← /greeks /bull_put /iron_condor
-
-guard-engine/
-  guards.py               ← 16 rules, 44 tests
-
-scripts/
-  cto_listener.py         ← Dockerized CTO task runner (trader-cto container)
-  cto_listener.sh         ← DEPRECATED — replaced by cto_listener.py + Dockerfile.cto
-
-data/
-  memory/paper/           ← agent1_journal.jsonl, agent2_journal.jsonl
-  memory/shared/          ← lessons.jsonl, decisions.jsonl
-  journal/                ← EOD scores, backtest results, CTO reports
-  cache/                  ← market data (15-60 min TTL)
-  cto_queue.json          ← CTO task queue (container writes, host reads)
-  logs/                   ← cto_TIMESTAMP.log files
+/root/quantai-v2/
+├── .openclaw/
+│   └── config.js                    ← Agent definitions + Discord bindings
+└── v2/
+    ├── workspace-orchestrator/
+    │   ├── SOUL.md                  ← Personality
+    │   └── AGENTS.md                ← Full operating manual
+    ├── workspace-research/
+    │   ├── SOUL.md
+    │   └── AGENTS.md
+    ├── workspace-infra/
+    │   ├── SOUL.md
+    │   └── AGENTS.md
+    ├── workspace-journal/
+    │   ├── SOUL.md
+    │   └── AGENTS.md
+    └── shared-data/
+        ├── scripts/
+        │   ├── market_intelligence.py
+        │   ├── debate_chamber.py
+        │   ├── self_evolution.py
+        │   ├── scan_options.py
+        │   └── fetch_sofi.py
+        ├── cache/
+        │   ├── market_intelligence.json
+        │   ├── credit_spread_scan.json
+        │   └── collar_candidates.json
+        ├── journal/
+        │   ├── paper/trades.jsonl
+        │   ├── real/trades.jsonl
+        │   └── digests/
+        ├── logs/
+        │   ├── debate_log.jsonl
+        │   ├── evolution_log.jsonl
+        │   └── evolution_observations.jsonl
+        └── strategies/
+            └── sofi_collar.json     ← Self-evolution updates this
 ```
-
----
-
-## Known Technical Debt & Pre-Live Checklist
-
-- [ ] Market Intelligence Agent (daily news synthesis, 6th context signal)
-- [ ] Pattern & Learning Agent (statistical pattern detection)
-- [ ] Replace flow_detector.py with Polygon.io ($29/mo) before live
-- [ ] Add Unusual Whales ($30/mo) before live
-- [ ] Verify CBOE scraper stability
-- [ ] 4+ weeks correlation analysis to validate context score
-- [ ] Agent 1 win rate ≥ 60% over 40+ paper trades
-- [ ] pip audit before live trading
-- [ ] Separate live Alpaca API keys
 
 ---
 
 ## Monthly Cost
 
-| Item | Cost |
+| Item | Monthly |
 |---|---|
-| Claude API (Haiku + Sonnet + Code) | ~$10–20/mo |
-| VPS (Hetzner CX31) | ~$12/mo |
+| Claude API (4 agents + scripts) | ~$15-25 |
+| VPS Hetzner CX31 | ~$12 |
 | All data sources | $0 |
-| **Total** | **~$22–32/mo** |
+| **Total now** | **~$27-37** |
+| + MarketXLS Advanced (pre-live) | +$94 |
+| + Unusual Whales (pre-live) | +$48 |
+| **Total at live** | **~$169-179** |
+
+---
+
+## Pre-Live Checklist
+
+Before any real capital:
+- [ ] 40+ paper trades, 60%+ win rate sustained over 3+ weeks
+- [ ] Self-evolution ran ≥ 4 weeks, ≥ 1 validated change applied
+- [ ] Debate chamber proposals reviewed weekly — quality confirmed
+- [ ] Subscribe MarketXLS Advanced ($94/mo)
+- [ ] Subscribe Unusual Whales ($48/mo)
+- [ ] Open IBKR account for XSP (Section 1256 tax treatment)
+- [ ] Create separate live Alpaca API keys (never reuse paper keys)
+- [ ] pip audit clean on all scripts
+- [ ] Emergency stop tested end-to-end in paper mode first
 
 ---
 
 ## Security Rules
 
-- Manual review before any open-source integration
-- Pin all versions (== not >=) after vetting
-- No auto-install from agent suggestions
-- New integrations in services/ only (read-only mount)
-- pip audit before live trading transition
-- Rotate GitHub PAT after every session where it appears in chat
-
-## Trade Proposal Rules (all agents)
-
-Every proposed trade MUST pass guard /check, include max_loss_pct,
-include thesis + invalidation condition, paper only until validated.
+- GitHub PAT rotated after every session where it appears in chat
+- No hardcoded credentials in any script (all via env vars)
+- New open-source integrations: >500 stars, manual review first, pin versions
+- Infra agent needs Amit approval before installing new packages or changing strategy params
 
 ---
 
-## How to Use This Document
+## Starting a New Chat
 
-**Starting a new chat:**
 > "Read SYSTEM_STATE.md. I want to [task]."
 
-**After significant changes:**
-1. Push updated SYSTEM_STATE.md to GitHub
-2. Download from repo and re-upload to this Claude project
+After significant changes: update this file → push to GitHub → re-upload to Claude project.
 
-**For research/improvement sessions:**
-> "Read SYSTEM_STATE.md. Research what's new in [topic] that could
-> improve our system. Consider cost, complexity, security rules.
-> Propose only if clearly beneficial."
-
-**For CTO tasks:**
-> In #chat: `cto: [what you want to investigate or fix]`
-
----
-
-*Last updated: March 24, 2026 — CTO listener containerized (trader-cto), replaces host bash script*
-*Next update: after first week of paper trading data (March 28, 2026)*
+*Last updated: March 31, 2026 — Complete rewrite. Accurately reflects OpenClaw v2 architecture. No v1 ghost references.*
