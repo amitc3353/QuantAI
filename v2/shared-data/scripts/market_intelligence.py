@@ -32,7 +32,7 @@ if _env_file.exists():
 
 ET = ZoneInfo("America/New_York")
 HOME = os.environ.get("QUANTAI_HOME", "/root/quantai-v2")
-CACHE = f"{HOME}/v2/shared-data/cache"
+CACHE = "/root/quantai-v2/shared-data/cache"
 os.makedirs(CACHE, exist_ok=True)
 
 force = "--force" in sys.argv

@@ -28,10 +28,10 @@ if _env_file.exists():
 
 ET = ZoneInfo("America/New_York")
 HOME = os.environ.get("QUANTAI_HOME", "/root/quantai-v2")
-JOURNAL   = f"{HOME}/v2/shared-data/journal/paper"
-LOGS      = f"{HOME}/v2/shared-data/logs"
+JOURNAL   = "/root/quantai-v2/shared-data/journal/paper"
+LOGS      = "/root/quantai-v2/shared-data/logs"
 CACHE     = f"{HOME}/v2/shared-data/cache"
-STRATEGIES = f"{HOME}/v2/shared-data/strategies"
+STRATEGIES = "/root/quantai-v2/shared-data/strategies"
 os.makedirs(LOGS, exist_ok=True)
 
 eod_score    = float(sys.argv[1]) if len(sys.argv) > 1 else 100.0

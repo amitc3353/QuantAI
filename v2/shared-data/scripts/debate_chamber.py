@@ -29,8 +29,8 @@ if _env_file.exists():
 
 ET = ZoneInfo("America/New_York")
 HOME = os.environ.get("QUANTAI_HOME", "/root/quantai-v2")
-CACHE = f"{HOME}/v2/shared-data/cache"
-LOGS  = f"{HOME}/v2/shared-data/logs"
+CACHE = "/root/quantai-v2/shared-data/cache"
+LOGS  = "/root/quantai-v2/shared-data/logs"
 os.makedirs(CACHE, exist_ok=True)
 os.makedirs(LOGS, exist_ok=True)
 

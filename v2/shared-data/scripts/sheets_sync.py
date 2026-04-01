@@ -36,8 +36,8 @@ ET = ZoneInfo("America/New_York")
 
 SHEET_ID             = os.environ.get("GOOGLE_SHEET_ID", "")
 SERVICE_ACCOUNT_FILE = "/home/trader/QuantAI/v2/shared-data/google_service_account.json"
-PAPER_JOURNAL        = "/home/trader/QuantAI/v2/shared-data/journal/paper/trades.jsonl"
-REAL_JOURNAL         = "/home/trader/QuantAI/v2/shared-data/journal/real/trades.jsonl"
+PAPER_JOURNAL        = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
+REAL_JOURNAL         = "/root/quantai-v2/shared-data/journal/real/trades.jsonl"
 
 if not SHEET_ID:
     print("[sheets_sync] ERROR: GOOGLE_SHEET_ID not in .env"); sys.exit(1)
