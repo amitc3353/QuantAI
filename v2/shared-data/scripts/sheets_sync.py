@@ -110,11 +110,10 @@ def bold_header(tab_name):
         "repeatCell": {
             "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1},
             "cell": {"userEnteredFormat": {
-                "textFormat": {"bold": True},
+                "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
                 "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2},
-                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
             }},
-            "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)"
+            "fields": "userEnteredFormat(textFormat,backgroundColor)"
         }
     }]}).execute()
 
