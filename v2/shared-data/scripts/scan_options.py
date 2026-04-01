@@ -55,7 +55,7 @@ def discover_tickers():
             "BA", "LUV", "DAL", "UBER", "LYFT",
             "SQ", "PYPL", "V", "MA", "JPM", "GS",
             "CRSP", "MRNA", "PFE", "ABBV",
-            "DIS", "WBD", "PARA",
+            "DIS", "WBD",
         ]))
         tickers.update(trending.symbols)
     except:
