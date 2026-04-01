@@ -143,20 +143,9 @@ def run_monitor():
 
 # ── EOD mode ─────────────────────────────────────────────────────────
 def run_eod():
-    log("EOD wrap-up")
-    DISCORD = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    if DISCORD:
-        import requests
-        state = load_state()
-        msg = (
-            f"📊 **Market Close — {today}**\n"
-            f"Agent entries today: {state.get('entries_today', 0)}\n"
-            f"Tell me: `score today [0-100]/100` to run evolution analysis."
-        )
-        try:
-            requests.post(DISCORD, json={"content": msg}, timeout=8)
-        except:
-            pass
+    log("EOD wrap-up — posting daily summary")
+    import subprocess
+    subprocess.run(["python3", f"{SCRIPTS}/eod_summary.py"], timeout=60)
     # Reset daily state for next day
     save_state({"date": today, "entries_today": 0, "last_entry_time": None})
 
