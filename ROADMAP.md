@@ -1,131 +1,113 @@
 # QuantAI — Master Roadmap
-**Updated: March 31, 2026**
-
-## Two Tracks, Running in Parallel
-
-### Track 1: Options Trading Execution (YOUR focus)
-You learn, you review, you make decisions. The agents execute.
-
-### Track 2: Platform Development (AGENT focus)
-Dev agents build, enhance, integrate. Runs 24/7 without you.
+**Last updated: March 31, 2026**
 
 ---
 
-## Track 1: Options Trading Execution
+## What This System Actually Is
 
-### Phase A: First Strategy — SPY 0DTE Iron Condors ✅ ACTIVE
-- [x] Guard engine with all trading rules
-- [x] Alpaca paper trading connected
-- [x] Greeks engine (py_vollib)
-- [x] Options analysis commands (/greeks, /bull_put, /iron_condor)
-- [x] Morning brief automation
-- [x] Agent 1 autonomous 0DTE iron condor bot ✅ Mar 21
-- [x] Debate Chamber — 3-agent debate selects 2 trades/session ✅ Mar 31
-- [x] Market Intelligence MCP — twice-daily intelligence packet ✅ Mar 31
-- [ ] Run 40+ paper trades through debate chamber, track win rate
-- [ ] End of Week 1 review — debate quality vs Agent 1 solo quality
-- [ ] Tune strike selection based on first 2 weeks of data
+QuantAI runs on **OpenClaw** — four Claude agents (Orchestrator, Research, Infra, Journal) that live in Discord and have Bash tool access to run Python scripts. There is no separate scheduler, no Agent 1/Agent 2 as fixed bots, no Docker container per strategy. The Orchestrator IS the trading agent. It evaluates conditions and proposes whatever strategy fits — not a hardcoded one.
 
-### Phase B: Add Weekly Layer (Week 3-4)
-- [ ] Weekly put spread scanner (Monday entry, Friday close)
-- [ ] Delta 0.10 short strike, $5 wide
-- [ ] Separate risk allocation (max 15% of account in weeklies)
-- [ ] Compare daily vs weekly performance
+**Current focus:** SOFI collar + opportunistic credit spreads. Both paper trading.
 
-### Phase C: Add Monthly Opportunistic Layer (Week 5-6)
-- [ ] IV rank tracker for SPY/QQQ/IWM
-- [ ] Trigger: only enter when IV rank > 50
-- [ ] 21–30 DTE credit spreads
-- [ ] Max 20% of account in monthly positions
+---
 
-### Phase D: Broker Migration for Tax Efficiency (Month 3+)
-- [ ] Open Interactive Brokers account
-- [ ] Build IBKR client module (same interface as alpaca_client.py)
-- [ ] Migrate income strategy to XSP iron condors (60/40 tax treatment)
-- [ ] Keep Alpaca for equity trades
+## Track 1: Trading Execution (Amit's focus)
 
-### Phase E: Scale to Live (Month 4+)
-**Prerequisites:** ≥40 paper trades, ≥60% win rate, 8+ weeks consistent, pre-live checklist complete
-- [ ] MarketXLS Advanced ($94/mo) for real-time Greeks
-- [ ] Unusual Whales ($48/mo) for live sweep detection
-- [ ] Switch TRADING_MODE=live with $5k allocation
-- [ ] Max 2 simultaneous live positions initially
-- [ ] Gradually increase over 3 months
-- [ ] Target: consistent 3–5%/month at full deployment
+### Now — Active Paper Trading
+- [x] SOFI collar strategy live (200 shares paper, ~$15 entry)
+- [x] Credit spread scanner running — scans 100+ liquid tickers dynamically
+- [x] Collar candidate scanner — finds new stocks worth collaring
+- [x] Orchestrator proposes trades on demand with full analysis and debate
+- [x] Journal agent logging all paper trades
+- [ ] Log 20+ paper trades across both strategies
+- [ ] First EOD scoring session (Orchestrator runs self_evolution.py)
+- [ ] First week review — are debate proposals better than solo scan?
+- [ ] Add 1-2 more collar candidates from scanner results
+
+### Month 1 — Validate the System
+- [ ] 40+ paper trades logged with outcomes
+- [ ] Win rate ≥ 60% sustained over 3+ weeks
+- [ ] Self-evolution makes its first validated config change
+- [ ] Debate chamber quality confirmed — proposals are logical and well-argued
+- [ ] Weekly digests from Journal agent showing P&L trend
+
+### Month 2-3 — Expand Strategies
+- [ ] Iron condors on SPY/QQQ when VIX supports (scanner handles this already)
+- [ ] Cash-secured puts to acquire stocks Amit wants at a discount
+- [ ] Bull put spreads as primary bullish vehicle (vs directional long)
+- [ ] Position sizing logic — scale up on high-conviction setups
+
+### Month 3+ — Pre-Live Preparation
+- [ ] Subscribe MarketXLS Advanced ($94/mo) — real-time Greeks for live trading
+- [ ] Subscribe Unusual Whales ($48/mo) — real sweep detection
+- [ ] Open Interactive Brokers account (XSP = Section 1256, 60/40 tax treatment)
+- [ ] Run pre-live checklist in SYSTEM_STATE.md
+- [ ] Switch to live at $5k, max 2 positions
+
+### Month 4+ — Scale
+- [ ] Grow live allocation as win rate holds
+- [ ] Migrate income strategy to XSP on IBKR
+- [ ] Target: consistent 3-5%/month, scaling toward $50k+ deployed
 
 ---
 
 ## Track 2: Platform Development
 
-### ✅ COMPLETED — Core Infrastructure (Mar 21, 2026)
-- [x] Alpaca options chain integration — live SPY options with Greeks, IV
-- [x] yfinance integration — VIX level, IV rank, market context
-- [x] Cache layer — 15-min TTL, avoids redundant API calls
-- [x] Market context builder — assembles compact context for Claude
-- [x] Agent 1 — fully autonomous SPY 0DTE iron condor bot
-- [x] Agent 2 — fully autonomous covered call bot (PLTR/TSM/MU/AMD/AVGO/ASML)
-- [x] Per-agent JSONL journals
-- [x] Per-agent EOD scoring with param suggestions
-- [x] Orchestrator scheduler with 12 jobs
-- [x] Discord trade cards to #trade-proposals and #execution-log
-- [x] configs/agent1_params.json, agent2_params.json (v2 baseline)
+### ✅ Completed — OpenClaw v2 Foundation (Mar 2026)
+- [x] Four agents live in Discord: Orchestrator, Research, Infra, Journal
+- [x] Orchestrator: runs scans, proposes trades, monitors positions, answers questions
+- [x] Research: SOFI daily brief, credit spread top 2, collar candidate scan weekly
+- [x] Infra: full system access, git, health checks, script deployment
+- [x] Journal: paper/real trade logging, stats, weekly digests
+- [x] scan_options.py — dynamic scanner, no hardcoded ticker list, 100+ symbols
+- [x] SOFI collar params in sofi_collar.json with trigger actions
+- [x] Paper and real journal separation (trades.jsonl per mode)
 
-### ✅ COMPLETED — Intelligence Layer (Mar 24, 2026)
-- [x] Context score bug fixes (VIX bad data, cross-signal contradictions)
-- [x] Flow detector wired into Agent 1 pre-entry
-- [x] GEX engine as 6th context signal (gamma × OI from Alpaca chain)
-- [x] 6-signal context score: VIX=25, Event=15, Macro=15, Sentiment=15, Flow=15, GEX=15
-- [x] CTO listener containerized (trader-cto)
-
-### ✅ COMPLETED — Debate Chamber + Intelligence MCP (Mar 31, 2026)
-- [x] `services/market_intelligence_mcp.py` — twice-daily intelligence packet
-  - [x] Macro: VIX + term structure + regime, F&G, yields, yield curve
-  - [x] Symbols: RSI, MACD, BB, EMA200, ADX, fundamentals, news sentiment for all 10 tickers
-  - [x] Events: FOMC/CPI/jobs calendar from Finnhub
-  - [x] Earnings: next earnings dates + surprise history per symbol
-  - [x] Open positions: live P&L + recommended actions from Alpaca
-  - [x] High conviction setups: pre-screened, ranked by conviction score
-  - [x] Risk flags: HALT/WARNING/CAUTION with specific reasons
-  - [x] Market regime classification: normal/caution/risk_off/halt
-  - [x] Data quality score (decrements when sources fail)
-- [x] `orchestrator/debate_chamber.py` — 3-agent Bull/Bear/Judge debate
-  - [x] Proposal Agent (Sonnet): generates 3–5 trade candidates from packet
-  - [x] Bull Agent (Haiku): argues FOR each proposal
-  - [x] Bear Agent (Haiku): argues AGAINST each proposal
-  - [x] Judge Agent (Sonnet): scores debate, selects TOP 2
-  - [x] Guard check on all approved trades before posting
-  - [x] Full debate transcript to #trade-proposals (formatted trade cards)
-  - [x] Debate summary to #research
-  - [x] Debate log to data/memory/shared/debate_log.jsonl
-- [x] `orchestrator/self_evolution.py` — 6-step evolution pipeline
-  - [x] Step 1 OBSERVE: extract structured lessons from journal
-  - [x] Step 2 CRITIQUE: identify single biggest param misalignment
-  - [x] Step 3 GENERATE: propose ONE traceable config change
-  - [x] Step 4 VALIDATE: 5 gates (constitution/size/drift/safety/regression)
-  - [x] Step 5 APPLY: write change, bump version, post to #pr-updates
-  - [x] Step 6 CONSOLIDATE: weekly compression into strategy principles
-- [x] `orchestrator/scheduler_additions.py` — 6 new scheduler jobs
-  - [x] 6:20 AM — Market Intelligence pre-market
-  - [x] 6:25 AM — Debate Chamber pre-market
-  - [x] 1:30 PM — Market Intelligence mid-session
-  - [x] 1:35 PM — Debate Chamber mid-session
-  - [x] 4:35 PM — Self-Evolution Engine
-  - [x] 4:45 PM Friday — Weekly Consolidation
+### ✅ Completed — Intelligence + Debate + Evolution (Mar 31, 2026)
+- [x] market_intelligence.py — on-demand intelligence packet
+  - VIX + term structure + regime (normal / caution / risk_off / halt)
+  - RSI, MACD, BB, EMA200, ADX for all watchlist symbols
+  - Fear & Greed, yield curve, treasury yields
+  - Finnhub event calendar: FOMC, CPI, jobs report dates
+  - Earnings dates + news sentiment per symbol
+  - Pre-screened setups ranked by conviction score
+  - Risk flags with HALT / WARNING / CAUTION levels
+  - 90-min freshness check — auto-skips if packet still current, --force to override
+- [x] debate_chamber.py — 3-agent Bull/Bear/Judge debate
+  - Proposal Agent (Sonnet): any valid strategy, reads intelligence packet
+  - Bull and Bear agents (Haiku): argue each proposal
+  - Judge (Sonnet): selects top 2, formatted trade cards printed to stdout
+  - Debate log appended to shared-data/logs/debate_log.jsonl
+- [x] self_evolution.py — 6-step evolution pipeline
+  - Observe today's journal → Critique current params → Generate ONE change
+  - 5 validation gates: constitution, size, drift, safety, regression
+  - Applies change to sofi_collar.json only if all 5 gates pass
+  - Friday --consolidate: compresses 35 days of observations into principles
+- [x] Orchestrator AGENTS.md: flexible strategies, on-demand intelligence, no fixed entry times
+- [x] Infra AGENTS.md: health checks for all scripts, clean troubleshooting guide
+- [x] Research AGENTS.md: reads intelligence packet to enrich SOFI briefs
 
 ---
 
-## Priority 1 (Next Session): Wire Everything In
-
-These files are built and ready. Next step is integrating them into the live system.
+## Priority 1: First Real Usage (This Week)
 
 ```
-P0 SMALL   Add scheduler_additions.py jobs into orchestrator/scheduler.py
-P0 SMALL   Add market_intelligence_mcp.py and debate_chamber.py to orchestrator requirements.txt
-P0 SMALL   Add DISCORD_WEBHOOK_PROPOSALS and DISCORD_WEBHOOK_RESEARCH to .env
-P0 SMALL   Test run market_intelligence_mcp.py standalone — verify packet builds correctly
-P0 SMALL   Test run debate_chamber.py standalone — verify 2 proposals post to Discord
-P0 SMALL   Wire self_evolution EOD score: pass actual score from self_improve.py
-P0 MEDIUM  Add aiohttp to orchestrator/requirements.txt (dependency for new services)
+P0  Test market_intelligence.py on VPS
+    python3 /root/quantai-v2/v2/shared-data/scripts/market_intelligence.py --force
+    Verify: packet saved to cache/, regime shows correctly, all symbols have data
+
+P0  Test debate_chamber.py
+    python3 /root/quantai-v2/v2/shared-data/scripts/debate_chamber.py
+    Verify: reads packet, 2 trade cards printed, debate_log.jsonl updated
+
+P0  Log first paper trades in #journal — self_evolution needs journal data to work
+
+P0  Test self_evolution.py with dummy score
+    python3 /root/quantai-v2/v2/shared-data/scripts/self_evolution.py 75
+    Verify: runs through all steps, posts output cleanly
+
+P1  Ask Orchestrator in #chat: "run the debate" — verify full end-to-end flow
+    Orchestrator should run intelligence → debate → post cards to #trade-proposals
 ```
 
 ---
@@ -133,220 +115,85 @@ P0 MEDIUM  Add aiohttp to orchestrator/requirements.txt (dependency for new serv
 ## Priority 2: Data Quality Upgrades
 
 ```
-P1 MEDIUM  Add MarketXLS MCP (Standard $56/mo) — technicals + fundamentals via MCP
-           Adds: real options chain data, screeners, sector performance
-           Why now: Intelligence packet currently uses yfinance approximations
-           Target: replace yfinance technical calcs with MarketXLS precision
+P1  tradingview-mcp (328 stars, free, passes security threshold)
+    Adds: multi-timeframe RSI, BB squeeze detection, candlestick patterns
+    Wire as supplementary input into market_intelligence.py
+    Low complexity install
 
-P1 SMALL   Integrate tradingview-mcp (328 stars, passes threshold) as 7th context signal
-           Adds: BB squeeze scanner, RSI on multiple timeframes, candlestick patterns
-           Already evaluated — low complexity, free
+P1  StockTwits sentiment (free, no key needed for basic data)
+    20 lines of code, supplements Finnhub news sentiment
+    Add to market_intelligence.py symbol snapshots
 
-P1 SMALL   Add StockTwits sentiment to sentiment_data.py (free, portable)
-           Wire as additional signal in intelligence packet news_sentiment field
+P1  FRED API macro data in intelligence packet
+    Fed funds rate, CPI trend — free, key already exists from v1
+    Wire fed_funds_rate into MacroSnapshot in market_intelligence.py
 
-P1 MEDIUM  services/pattern_engine.py — statistical win/loss pattern detection
-           Requires: 20+ trades in journal (accumulating now)
-           Goal: find patterns that EOD scoring misses (day-of-week, VIX level at entry, etc.)
+P1  pattern_engine.py — statistical pattern detection
+    Needs 20+ journal entries first (accumulate through active trading)
+    Goal: find what conditions actually predict wins vs losses
+    Only reports patterns with p < 0.05 significance
 ```
 
 ---
 
-## Priority 3: Position Monitor Upgrade
+## Priority 3: Position Monitoring
 
 ```
-P1 MEDIUM  Upgrade position_monitor to use Alpaca MCP for live Greeks
-           Currently: monitors price only
-           Target: monitor delta/theta on open condors, alert if delta exceeds 0.15
-           Feed: position data from intelligence packet open_positions field
+P2  Proactive position monitoring in Orchestrator
+    After any trade posts, Orchestrator tracks it and checks at 50% profit / 2x stop
+    Currently: Amit has to ask. Target: Orchestrator flags without being asked
 
-P2 SMALL   Add mid-session position review to Debate Chamber mid-session run
-           If open condor > 50% profit → post close recommendation to #trade-proposals
-           If open condor delta > 0.15 → post adjustment recommendation
-```
-
----
-
-## Priority 4: Market Intelligence Expansion
-
-```
-P2 MEDIUM  Market Intelligence Agent — daily news synthesis conviction modifier
-           services/market_intelligence.py (proactive, not just packet-based)
-           6:20 AM: synthesizes overnight news → "FOMC today — skip Entry 1"
-           Posts conviction to #research unprompted when something material happens
-
-P2 SMALL   Add congressional trading data via Finnhub → Agent 2 directional bias
-           If insiders buying stock → boost covered call conviction
-           If insiders selling → flag in intelligence packet
-
-P2 SMALL   Add FRED API macro regime to intelligence packet
-           Currently in context_builder.py but not in intelligence packet
-           Wire fed_funds_rate into MacroSnapshot.fed_funds_rate field
+P2  Position Greeks in intelligence packet
+    Fetch open Alpaca positions in market_intelligence.py (already stubbed)
+    Show delta/theta drift on open spreads
+    Alert when condor delta exceeds 0.15
 ```
 
 ---
 
-## Priority 5: Pre-Live Upgrades (Month 3+)
+## Priority 4: Pre-Live Upgrades (Month 3+)
 
 ```
-P3 MEDIUM  Unusual Whales API ($48-50/mo) — real options sweep detection
-           Replace flow_detector.py Vol/OI proxy with actual sweep alerts
-           Wire into Debate Chamber as additional bear argument evidence
-           Add before live transition — sweep detection prevents worst live losses
+P3  MarketXLS Advanced ($94/mo) — subscribe at live transition, not before
+    Real-time options Greeks, full chain data, 1,100+ functions via MCP
+    Replaces yfinance approximations with institutional-grade data
 
-P3 MEDIUM  Polygon.io ($29/mo) — real-time options flow with Greeks
-           Replace 15-min delayed yfinance data with real-time
-           Required for live trading; paper trading can use delayed data
+P3  Unusual Whales ($48/mo) — subscribe at live transition
+    Real sweep detection replaces DIY Vol/OI proxy
+    DIY proxy adequate for paper; not reliable enough for live capital
 
-P3 MEDIUM  Set up IBKR connector for XSP trading
-           XSP iron condors = 60/40 tax treatment (Section 1256)
-           Wire same interface as alpaca_client.py
-```
+P3  Polygon.io ($29/mo) — evaluate after 4+ weeks paper data
+    Real-time quotes if Alpaca delay causes execution issues
 
----
-
-## Ongoing
-
-```
-P1 ALWAYS  Debate Chamber quality review (read #trade-proposals daily, evaluate reasoning)
-P1 ALWAYS  Self-Evolution monitoring (read #pr-updates, understand each proposed change)
-P1 ALWAYS  EOD score tracking (target: average > 85/100 over any 10-day rolling period)
-P2 ALWAYS  Weekly context score correlation (does score predict win rate? validate monthly)
-P2 ALWAYS  CTO scan review every Monday (evaluate proposals before dismissing)
-P3 ALWAYS  Code quality, test coverage, documentation
+P3  IBKR connector for XSP
+    XSP = European-style S&P 500 options, Section 1256 60/40 tax treatment
+    Build same interface as current Alpaca integration
 ```
 
 ---
 
-## Task Queue for Dev Agents
+## What We Are NOT Building
 
-### Immediate (this week)
-```
-P0 SMALL   Wire scheduler_additions.py into scheduler.py (paste 6 new jobs)
-P0 SMALL   Add aiohttp to requirements.txt
-P0 SMALL   Add new env vars to .env.example: DISCORD_WEBHOOK_PROPOSALS, DISCORD_WEBHOOK_RESEARCH
-P0 SMALL   Smoke test market_intelligence_mcp.py — log packet to console
-P0 SMALL   Smoke test debate_chamber.py — verify Discord posts
-P1 SMALL   Wire actual EOD score from self_improve.py → self_evolution.py
-P1 SMALL   Add tradingview-mcp as 7th signal in context_builder.py
-```
-
-### Next week
-```
-P1 MEDIUM  MarketXLS MCP integration (Standard tier) — replace yfinance technical calcs
-P1 SMALL   StockTwits sentiment in sentiment_data.py
-P1 MEDIUM  pattern_engine.py — statistical detection (needs 20+ journal entries first)
-P1 MEDIUM  Position monitor upgrade — live Greeks via Alpaca MCP
-P2 SMALL   Congressional trading data — Finnhub endpoint → intelligence packet
-P2 SMALL   FRED macro data → intelligence packet MacroSnapshot
-```
-
-### Week 3-4
-```
-P2 MEDIUM  Market Intelligence Agent (proactive news conviction)
-P2 MEDIUM  NautilusTrader backtesting for iron condor strategy validation
-P2 MEDIUM  Full market intelligence dashboard
-P3 MEDIUM  Personal finance integration (401k, crypto, net worth tracker)
-```
+- **Fixed-schedule bots with locked strategies** — OpenClaw agents evaluate conditions before every trade. Clock-based entries ignore context. Removed.
+- **Separate Agent 1 / Agent 2** — One Orchestrator proposing the best strategy for current conditions is more adaptable. Removed.
+- **CTO agent** — Infra agent has full bash/git/file access. The CTO agent was a v1 workaround. Removed entirely.
+- **MarketXLS now** — Paper trading doesn't need real-time Greeks. Subscribe when going live.
 
 ---
 
 ## Success Metrics
 
-### Trading (Track 1)
-| Milestone | Target | Kill Signal |
+### Paper Trading
+| Milestone | Target | If Missed |
 |---|---|---|
-| Week 2 | Debate Chamber win rate > 60% | < 45% after 20 debate-selected trades |
-| Week 4 | Evolution applies first valid change | No change applied after 20 trading days |
-| Month 1 | Both agents + debate chamber net positive | Either agent down > 5% |
-| Month 2 | Debate Chamber > 3%/mo, Agent 2 > 1%/mo | Consistent underperformance |
-| Month 3 | Combined > 5%/mo on $20k paper | Kill weakest, scale winner |
-| Month 4+ | Transition to live at $5k, scale to $50k+ | Live drawdown > 10% → pause |
+| Week 2 | 10+ trades logged, scripts running cleanly | Debug before adding features |
+| Week 4 | Win rate > 60% over 20+ trades | Review debate quality, check guard rules |
+| Month 2 | Self-evolution makes first valid change | Check journal data volume and gate logic |
+| Month 3 | Consistent positive paper P&L | Ready for live transition planning |
 
-### Platform (Track 2)
+### Live (Month 4+)
 | Milestone | Target |
 |---|---|
-| Week 1 | Debate Chamber posting 4 trade cards/day |
-| Week 2 | Self-Evolution observing and critiquing (even if no changes applied) |
-| Month 1 | First self-evolution change successfully applied and validated |
-| Month 2 | MarketXLS integrated, intelligence packet quality score > 90 consistently |
-| Month 3 | Pattern engine finding statistically significant patterns (p < 0.05) |
-| Ongoing | System improves itself daily without manual intervention |
-
----
-
-## Long-Term Vision
-
-**Month 1-2 (now):** Paper trading + debate chamber validation + self-evolution learning
-**Month 3:** Live trading small ($5k), Polygon.io + Unusual Whales, MarketXLS
-**Month 4-6:** Pattern library building, multi-strategy expansion
-**Month 6-12:** Statistical edge validation, position sizing optimization, XSP transition
-**Year 2+:** Institutional-grade: tick data, order flow, ML signal generation
-
-The gap between retail and quant is not tools — it is **validated edge**.
-Everything we build is working toward that validation.
-The debate chamber is the mechanism that proves edge before capital goes live.
-
----
-
-## Architecture Overview (Current State)
-
-```
-6:20 AM + 1:30 PM
-      │
-      ▼
-┌─────────────────────────────────────┐
-│    MARKET INTELLIGENCE MCP          │
-│    market_intelligence_mcp.py       │
-│                                     │
-│  yfinance: price, RSI, MACD, EMA    │
-│  Finnhub: events, earnings, news    │
-│  Alpha Vantage: earnings surprises  │
-│  CNN/CBOE: Fear&Greed, PCR          │
-│  Alpaca: positions + P&L            │
-│                                     │
-│  Output: intelligence_packet.json   │
-└───────────────┬─────────────────────┘
-                │
-                ▼
-┌─────────────────────────────────────┐
-│    DEBATE CHAMBER                   │
-│    debate_chamber.py                │
-│                                     │
-│  Proposal Agent (Sonnet)            │
-│  → 3-5 trade candidates             │
-│                                     │
-│  Bull Agent (Haiku) ──┐             │
-│                        ├── parallel │
-│  Bear Agent (Haiku) ──┘             │
-│                                     │
-│  Judge Agent (Sonnet)               │
-│  → TOP 2 selected                   │
-└───────────────┬─────────────────────┘
-                │
-                ▼
-┌─────────────────────────────────────┐
-│    GUARD ENGINE (16 rules, 44 tests)│
-│    guard-engine/guards.py           │
-└───────────────┬─────────────────────┘
-                │ APPROVED
-                ▼
-┌─────────────────────────────────────┐
-│    AGENT 1 + AGENT 2 EXECUTION      │
-│    Alpaca paper trading             │
-│    → #trade-proposals + #execution  │
-└───────────────┬─────────────────────┘
-                │
-                ▼
-┌─────────────────────────────────────┐
-│    SELF-EVOLUTION ENGINE            │
-│    self_evolution.py (4:35 PM)      │
-│                                     │
-│  Observe → Critique → Generate      │
-│  → Validate (5 gates)               │
-│  → Apply → Consolidate (weekly)     │
-│                                     │
-│  → configs/agent1_params.json       │
-│  → #pr-updates                      │
-└─────────────────────────────────────┘
-```
+| Month 4 | Live $5k, max 2 positions, win rate holds from paper |
+| Month 6 | $15k deployed, 4 positions, SOFI scaled |
+| Month 12 | $50k+ deployed, XSP on IBKR, $3-5k/month |
