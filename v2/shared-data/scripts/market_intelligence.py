@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
 QuantAI Market Intelligence
-Runs twice daily: 6:20 AM ET (pre-market) and 1:30 PM ET (mid-session)
+On-demand: run whenever an agent needs fresh market context.
 Outputs: /root/quantai-v2/v2/shared-data/cache/market_intelligence.json
 
-Agents read this file to get structured market context before proposing trades.
+Agents call this before any trade proposal or when conditions may have changed.
+No fixed schedule — agents decide when they need fresh data.
+
+Usage:
+  python3 market_intelligence.py           # auto-detect session from time
+  python3 market_intelligence.py --force   # force refresh regardless of age
 """
 import json, os, sys, time
 from datetime import datetime, timedelta
@@ -15,9 +20,39 @@ HOME = os.environ.get("QUANTAI_HOME", "/root/quantai-v2")
 CACHE = f"{HOME}/v2/shared-data/cache"
 os.makedirs(CACHE, exist_ok=True)
 
-session = sys.argv[1] if len(sys.argv) > 1 else "pre_market"
+force = "--force" in sys.argv
+now_et = datetime.now(ET)
+hour = now_et.hour
 
-print(f"[market_intelligence] Starting {session} build — {datetime.now(ET).strftime('%H:%M ET')}")
+# Auto-detect session context from time of day
+if hour < 9:
+    session = "pre_market"
+elif hour < 12:
+    session = "morning"
+elif hour < 15:
+    session = "afternoon"
+else:
+    session = "end_of_day"
+
+# Check if packet is fresh enough (skip if < 90 min old unless forced)
+packet_path = f"{CACHE}/market_intelligence.json"
+if not force and os.path.exists(packet_path):
+    try:
+        with open(packet_path) as f:
+            existing = json.load(f)
+        ts_str = existing.get("timestamp", "")
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ET)
+        age_minutes = (now_et - ts).total_seconds() / 60
+        if age_minutes < 90:
+            print(f"[market_intelligence] Packet is {age_minutes:.0f}min old — still fresh. Use --force to override.")
+            print(f"[market_intelligence] Regime: {existing.get('market_regime','?')} | VIX: {existing.get('macro',{}).get('vix','?')}")
+            sys.exit(0)
+    except Exception:
+        pass
+
+print(f"[market_intelligence] Building {session} packet — {now_et.strftime('%H:%M ET')}")
 
 # ── yfinance ──────────────────────────────────────────────────────────
 try:

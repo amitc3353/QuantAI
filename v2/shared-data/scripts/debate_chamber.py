@@ -19,7 +19,9 @@ LOGS  = f"{HOME}/v2/shared-data/logs"
 os.makedirs(CACHE, exist_ok=True)
 os.makedirs(LOGS, exist_ok=True)
 
-session = sys.argv[1] if len(sys.argv) > 1 else "pre_market"
+now_et = datetime.now(ET)
+hour = now_et.hour
+session = "pre_market" if hour < 9 else "morning" if hour < 12 else "afternoon" if hour < 15 else "end_of_day"
 client  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 SONNET = "claude-sonnet-4-5"
