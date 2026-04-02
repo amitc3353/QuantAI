@@ -201,6 +201,22 @@ If something fails, the test tells you exactly how to fix it. Common fixes:
 
 ---
 
+## If Agents Seem to Have Wrong Information
+
+If an agent says something that's clearly outdated (like "Alpha doesn't exist"), their workspace file is stale. Fix it with one command on the VPS:
+
+```bash
+bash /home/trader/QuantAI/scripts/sync_workspaces.sh
+```
+
+This syncs all AGENTS.md and SOUL.md files from the git repo to where OpenClaw reads them. Agents pick up the changes on the very next message. No restart needed.
+
+---
+
+## Updated: April 2, 2026
+
+---
+
 ## Key Numbers
 
 | Parameter | Value |
