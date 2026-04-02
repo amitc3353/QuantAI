@@ -384,24 +384,74 @@ def execute_generic_spread(symbol, trade, expiry):
     ]
     return place_mleg_order(symbol, mleg_legs, trade.get("strategy", "spread"))
 
+def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
+    """
+    Diagonal spread (poor man's covered call/put).
+    BUY far-dated option + SELL near-dated option at same or nearby strike.
+    Submitted as mleg order. Net debit position.
+    """
+    legs = trade.get("legs", [])
+    sell_leg = next((l for l in legs if l.get("action") == "sell"), None)
+    buy_leg  = next((l for l in legs if l.get("action") == "buy"), None)
+
+    if not sell_leg or not buy_leg:
+        log("  Diagonal spread missing sell or buy leg")
+        return None
+
+    option_type = sell_leg.get("type", "call").lower()
+    sell_strike = float(sell_leg.get("strike", 0))
+    buy_strike  = float(buy_leg.get("strike", sell_strike))  # often same strike
+
+    # Get real strikes from Alpaca chain
+    near_strikes = get_available_strikes(symbol, option_type, near_expiry)
+    far_strikes  = get_available_strikes(symbol, option_type, far_expiry)
+
+    actual_sell_strike = nearest_strike(near_strikes, sell_strike) if near_strikes else sell_strike
+    actual_buy_strike  = nearest_strike(far_strikes, buy_strike)   if far_strikes  else buy_strike
+
+    if not actual_sell_strike or not actual_buy_strike:
+        log(f"  Could not find diagonal strikes in Alpaca chain")
+        return None
+
+    sell_sym = build_occ_symbol(symbol, near_expiry, option_type, actual_sell_strike)
+    buy_sym  = build_occ_symbol(symbol, far_expiry,  option_type, actual_buy_strike)
+
+    log(f"  Diagonal: BUY {buy_sym} + SELL {sell_sym}")
+
+    mleg_legs = [
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": buy_sym},
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": sell_sym},
+    ]
+    return place_mleg_order(symbol, mleg_legs, "diagonal_spread")
+
+
 def execute_trade(trade, intel):
     """Route to correct executor based on strategy. Returns fill or None."""
     strategy = trade.get("strategy", "").lower().replace(" ", "_")
     symbol   = trade.get("symbol", "")
     legs     = trade.get("legs", [])
-    expiry   = resolve_expiry(legs[0].get("expiry", "7DTE") if legs else "7DTE")
 
-    log(f"  Executing {strategy.upper()} on {symbol} | Expiry: {expiry}")
+    log(f"  Executing {strategy.upper()} on {symbol}")
 
-    if strategy == "iron_condor":
+    if strategy == "diagonal_spread":
+        # Diagonal needs two different expiries
+        sell_leg = next((l for l in legs if l.get("action") == "sell"), None)
+        buy_leg  = next((l for l in legs if l.get("action") == "buy"), None)
+        near_expiry = resolve_expiry(sell_leg.get("expiry", "21DTE") if sell_leg else "21DTE")
+        far_expiry  = resolve_expiry(buy_leg.get("expiry", "45DTE")  if buy_leg  else "45DTE")
+        log(f"  Near expiry: {near_expiry} | Far expiry: {far_expiry}")
+        return execute_diagonal_spread(symbol, trade, near_expiry, far_expiry)
+    elif strategy == "iron_condor":
+        expiry = resolve_expiry(legs[0].get("expiry", "14DTE") if legs else "14DTE")
         return execute_iron_condor(symbol, trade, expiry)
-    elif strategy == "bull_put_spread" or (strategy == "put_spread" and
-         any(l.get("action") == "sell" for l in legs if l.get("type") == "put")):
+    elif strategy in ("bull_put_spread", "put_spread"):
+        expiry = resolve_expiry(legs[0].get("expiry", "14DTE") if legs else "14DTE")
         return execute_bull_put_spread(symbol, trade, expiry)
-    elif strategy == "bear_call_spread" or (strategy == "call_spread" and
-         any(l.get("action") == "sell" for l in legs if l.get("type") == "call")):
+    elif strategy in ("bear_call_spread", "call_spread"):
+        expiry = resolve_expiry(legs[0].get("expiry", "14DTE") if legs else "14DTE")
         return execute_bear_call_spread(symbol, trade, expiry)
     else:
+        expiry = resolve_expiry(legs[0].get("expiry", "14DTE") if legs else "14DTE")
         return execute_generic_spread(symbol, trade, expiry)
 
 # ── Guard check ───────────────────────────────────────────────────────

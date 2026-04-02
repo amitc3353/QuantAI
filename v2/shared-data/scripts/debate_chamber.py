@@ -44,14 +44,22 @@ HAIKU  = "claude-haiku-4-5-20251001"
 
 CONSTITUTION = """
 IRON-CLAD RULES (never violate):
-- max_loss_pct per trade ≤ 2% of account
+- max_loss_pct per trade ≤ 2% of account ($400 max loss per trade on $20k account)
 - Short delta: 0.05 – 0.20 only
-- Min credit: $0.30
+- Min credit/income: $0.30 for spreads, $1.00 net debit max for diagonals
 - Hard close: 3:30 PM ET latest
 - VIX upper bound: 30 for iron condors
 - Earnings blackout: 14+ days minimum
 - Max daily loss: $1,000 total → halt all
 - No trading 9:30–9:45 AM or 3:45–4:00 PM
+
+INCOME GOAL: $1,000/month from agent trades on $20,000 paper account (5%/month).
+- That means ~$50/day average across ~20 trading days
+- Prefer trades that collect $100-400 premium per position
+- Quality over quantity — 1-2 high conviction trades per day beats 5 mediocre ones
+- Diagonal spreads (poor man's covered call/put) are PREFERRED for consistent income:
+  they collect time decay with defined risk and no shares needed
+- Boring and consistent beats exciting and volatile
 """
 
 # ── Load intelligence packet ──────────────────────────────────────────
@@ -108,11 +116,68 @@ context_lines += ["", "HIGH CONVICTION SETUPS (pre-screened):"]
 for s in setups:
     context_lines.append(f"  {s['symbol']} {s['setup_type']} — score {s['conviction_score']} — {', '.join(s['reasons'][:2])}")
 
+# Load scan results — credit spreads
+spread_path = f"{CACHE}/credit_spread_scan.json"
+if os.path.exists(spread_path):
+    try:
+        spread_data = json.load(open(spread_path))
+        tops = spread_data.get("top_opportunities", [])[:5]
+        if tops:
+            context_lines += ["", "TOP CREDIT SPREAD CANDIDATES (from scanner):"]
+            for o in tops:
+                context_lines.append(
+                    f"  {o['symbol']} ${o['price']:.0f} {o['strategy']} "
+                    f"short@{o['short_strike']} long@{o['long_strike']} "
+                    f"exp:{o['expiry']} credit:${o['credit']:.2f} "
+                    f"IVR:{o.get('iv_rank','?')} RSI:{o.get('rsi','?'):.0f}"
+                )
+    except:
+        pass
+
+# Load diagonal scan results
+diag_path = f"{CACHE}/diagonal_scan.json"
+if os.path.exists(diag_path):
+    try:
+        diag_data = json.load(open(diag_path))
+        tops = diag_data.get("top_opportunities", [])[:5]
+        if tops:
+            context_lines += ["", "TOP DIAGONAL SPREAD CANDIDATES (poor man's covered call/put):"]
+            for o in tops:
+                context_lines.append(
+                    f"  {o['symbol']} ${o['price']:.0f} {o['option_type'].upper()} diagonal "
+                    f"strike@{o['strike']} near:{o['near_expiry']} far:{o['far_expiry']} "
+                    f"net_debit:${o['net_debit']:.2f} est_profit:${o['est_max_profit']:.2f} "
+                    f"IVR:{o.get('iv_rank','?')} RSI:{o.get('rsi','?'):.0f}"
+                )
+    except:
+        pass
+
+# Load condor scan results
+condor_path = f"{CACHE}/condor_scan.json"
+if os.path.exists(condor_path):
+    try:
+        condor_data = json.load(open(condor_path))
+        tops = condor_data.get("top_opportunities", [])[:3]
+        if tops:
+            context_lines += ["", "TOP IRON CONDOR CANDIDATES:"]
+            for o in tops:
+                context_lines.append(
+                    f"  {o['symbol']} ${o['price']:.0f} condor "
+                    f"puts:{o['put_long']}/{o['put_short']} calls:{o['call_short']}/{o['call_long']} "
+                    f"exp:{o['expiry']} credit:${o['credit']:.2f} IVR:{o.get('iv_rank','?')}"
+                )
+    except:
+        pass
+
 context_lines += ["", "SYMBOL DATA:"]
-for sym in ["PLTR","TSM","MU","AMD","AVGO","ASML","SOFI"]:
+for sym in list(symbols.keys())[:12]:  # Show all symbols, not just 7
     s = symbols.get(sym, {})
     if s:
-        context_lines.append(f"  {sym}: ${s.get('price',0):.2f} RSI:{s.get('rsi_14',50):.0f} MACD:{s.get('macd_signal','?')} Earn:{s.get('next_earnings_days',999)}d")
+        context_lines.append(
+            f"  {sym}: ${s.get('price',0):.2f} RSI:{s.get('rsi_14',50):.0f} "
+            f"MACD:{s.get('macd_signal','?')} Earn:{s.get('next_earnings_days',999)}d "
+            f"EMA200:{'above' if s.get('above_ema200') else 'below'}"
+        )
 
 market_context = "\n".join(context_lines)
 
@@ -129,23 +194,29 @@ proposal_resp = client.messages.create(
 {CONSTITUTION}
 
 Strategies allowed for autonomous execution (all are defined-risk, no share ownership needed):
-- bull_put_spread: sell put + buy lower put. Best when bullish/neutral, stock above key support.
-- bear_call_spread: sell call + buy higher call. Best when bearish/neutral, stock below resistance.
-- iron_condor: bull put spread + bear call spread combined. Best when range-bound, VIX 15-28. Works on ANY liquid ticker, not just SPY/QQQ.
-- iron_butterfly: sell ATM call + put, buy OTM wings. Best when expecting IV crush, tight range.
-- calendar_spread: sell near-term option, buy far-term same strike. Best when IV low, expecting rise.
-- diagonal_spread: sell near-term option, buy far-term different strike. Directional + time decay.
-- jade_lizard: sell put spread + sell OTM call (wings defined). Best bullish high-IV play, no upside risk.
+- diagonal_spread: PREFERRED STRATEGY. Sell near-term option, buy further-dated same strike.
+  Poor man's covered call (call diagonal) or poor man's covered put (put diagonal).
+  Net debit to enter (~$200-500). Max loss = net debit. Max profit = 2-3x net debit.
+  Best when: IV rank > 40, stock near target strike, 2-3 month time horizon.
+  Use scanner diagonal candidates — they have pre-verified liquidity and two expiries.
+- bull_put_spread: sell put + buy lower put. Bullish/neutral, stock above key support.
+- bear_call_spread: sell call + buy higher call. Bearish/neutral, stock below resistance.
+- iron_condor: bull put + bear call combined. Range-bound market, VIX 13-28.
+- iron_butterfly: sell ATM straddle + buy wings. Very tight range, high IV crush expected.
+- jade_lizard: sell put spread + sell OTM call. Strong bullish conviction + high IV.
+- calendar_spread: sell near-term, buy far-term same strike. Low IV environment only.
 
-Ticker selection rules:
-- Any ticker with average daily volume > 5M shares
-- Options open interest > 500 on the strikes you're using
-- Bid/ask spread on options < $0.15
-- No earnings within 14 days
-- Prefer tickers where the scanner has already confirmed liquidity
-- SPY/QQQ are good defaults for condors but NOT the only choices
+INCOME GOAL: Propose trades that collectively target $50/day ($1,000/month).
+- Prefer diagonal spreads: consistent time decay income, defined risk, no shares
+- Each trade should collect or position for $100-400 in premium/profit
+- 1-2 high conviction trades per day. Never force a trade just to trade.
 
-DO NOT propose: covered_call, collar, cash_secured_put — require owning shares (Amit handles manually).
+Ticker selection:
+- Use the pre-screened scanner candidates above — they already pass liquidity gates
+- Any ticker with avg volume >5M, options OI >200, bid/ask <$0.15, no earnings within 14 days
+- For diagonals: use exactly the near_expiry and far_expiry from scanner output
+
+DO NOT propose: covered_call, collar, cash_secured_put — require owning shares.
 Every proposal MUST have fully defined max loss. No naked short options ever.
 Every proposal MUST include: symbol, strategy, specific strikes, expiration, estimated_credit, max_loss_pct, probability_of_profit, thesis (1 sentence), invalidation (1 sentence).
 If regime is risk_off or halt: output 0 proposals.
