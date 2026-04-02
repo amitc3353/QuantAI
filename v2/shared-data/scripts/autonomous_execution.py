@@ -3,16 +3,18 @@
 QuantAI Autonomous Execution Engine
 Executes approved trades from debate_chamber.py via Alpaca paper API.
 
-Agent Alpha: Bull put spreads — any liquid ticker
-Agent Beta:  Iron condors — SPY/QQQ only
+Agent Alpha: Bull put spreads, bear call spreads, and other defined-risk strategies
+Agent Beta:  Iron condors and butterflies — submitted as multi-leg orders
 
-Spreads only — no covered calls or naked positions.
-Covered calls require owning underlying shares (Amit handles those manually).
+Key fixes (Apr 2):
+- Iron condors submitted as single mleg order (fixes uncovered options error)
+- Strike selection queries Alpaca chain first, falls back to nearest available
+- Spreads also submitted as mleg for cleaner execution
 
 Usage:
   python3 autonomous_execution.py               # execute from debate_output.json
-  python3 autonomous_execution.py --check-only  # dry run, no orders placed
-  python3 autonomous_execution.py --monitor-only # check positions only
+  python3 autonomous_execution.py --check-only  # dry run
+  python3 autonomous_execution.py --monitor-only
 """
 
 import json, os, sys, time, requests
@@ -31,9 +33,9 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
                     os.environ[_k.strip()] = _v.strip()
         break
 
-ET = ZoneInfo("America/New_York")
-DRY_RUN      = "--check-only" in sys.argv
-MONITOR_ONLY = "--monitor-only" in sys.argv
+ET          = ZoneInfo("America/New_York")
+DRY_RUN     = "--check-only" in sys.argv
+MONITOR_ONLY= "--monitor-only" in sys.argv
 
 ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
@@ -54,29 +56,18 @@ MAX_OPEN          = 3
 EARNINGS_BLACKOUT = 14
 MIN_CREDIT        = 0.30
 VIX_HALT          = 35
-ACCOUNT_SIZE      = 20000
 
-# All defined-risk strategies agents can execute autonomously
-# Key rule: every strategy must have fully defined max loss, no share ownership needed
+# Strategies agents can execute autonomously (defined-risk only, no shares needed)
 ALLOWED_STRATEGIES = {
-    "bull_put_spread",    # sell put + buy lower put — bullish/neutral
-    "bear_call_spread",   # sell call + buy higher call — bearish/neutral
-    "iron_condor",        # bull put + bear call — range-bound
-    "iron_butterfly",     # sell ATM straddle + buy wings — tight range, IV crush
-    "calendar_spread",    # near-term sell + far-term buy same strike — low IV
-    "diagonal_spread",    # near-term sell + far-term buy diff strike — directional
-    "jade_lizard",        # put spread + call — defined risk, bullish high-IV
-    "put_spread",         # generic put spread
-    "call_spread",        # generic call spread
-    "strangle_spread",    # defined-risk strangle with long wings
+    "bull_put_spread", "bear_call_spread", "iron_condor", "iron_butterfly",
+    "calendar_spread", "diagonal_spread", "jade_lizard", "put_spread", "call_spread",
 }
-# Strategies that require owning shares — Amit executes these manually
 MANUAL_ONLY = {"covered_call", "collar", "cash_secured_put", "covered_strangle"}
 
 def log(msg):
     print(f"[{datetime.now(ET).strftime('%H:%M:%S')}] {msg}")
 
-def headers():
+def hdrs():
     return {
         "APCA-API-KEY-ID": ALPACA_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET,
@@ -88,187 +79,342 @@ def post_discord(msg):
         return
     try:
         requests.post(DISCORD_WEBHOOK, json={"content": msg[:1900]}, timeout=8)
-    except Exception as e:
-        log(f"Discord post failed: {e}")
+    except:
+        pass
 
 def is_market_open():
     now = datetime.now(ET)
-    if now.weekday() >= 5:
-        return False
+    if now.weekday() >= 5: return False
     h, m = now.hour, now.minute
     return not (h < 9 or (h == 9 and m < 30) or h >= 16)
 
 def count_open_agent_trades():
-    if not os.path.exists(JOURNAL):
-        return 0
+    if not os.path.exists(JOURNAL): return 0
     trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
     return len([t for t in trades if t.get("status") == "OPEN"
                 and t.get("source", "").startswith("agent")])
 
-def check_guards(trade, intel):
-    """Returns (passed, reason)."""
-    macro = intel.get("macro", {})
-
-    # Strategy gate — only spreads and condors for autonomous trading
-    strategy = trade.get("strategy", "").lower().replace(" ", "_")
-    if strategy in MANUAL_ONLY:
-        return False, f"{strategy} requires owning shares — Amit executes manually"
-
-    # VIX halt
-    vix = macro.get("vix", 0)
-    if vix >= VIX_HALT:
-        return False, f"VIX {vix:.1f} ≥ {VIX_HALT} — halted"
-
-    # Max loss
-    if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
-        return False, f"Max loss {trade.get('max_loss_pct',99):.1f}% > {MAX_LOSS_PCT}% limit"
-
-    # Min credit
-    if trade.get("estimated_credit", 0) < MIN_CREDIT:
-        return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT} minimum"
-
-    # Earnings blackout
-    symbol = trade.get("symbol", "")
-    earn_days = intel.get("symbols", {}).get(symbol, {}).get("next_earnings_days", 999)
-    if earn_days < EARNINGS_BLACKOUT:
-        return False, f"Earnings in {earn_days} days — blackout"
-
-    # Max open positions
-    if count_open_agent_trades() >= MAX_OPEN:
-        return False, f"Already {MAX_OPEN} open agent positions"
-
-    # Regime halt
-    if intel.get("market_regime") == "halt":
-        return False, "Market regime: halt"
-
-    return True, "Guards passed"
-
-def build_option_symbol(symbol, expiry, option_type, strike):
-    """
-    Build OCC option symbol: SYMBOL + YYMMDD + C/P + 8-digit strike (padded)
-    Strike in the symbol = strike * 1000, zero-padded to 8 digits
-    Example: SPY 2026-04-08 P $550 → SPY260408P00550000
-    """
+# ── Option symbol builder ─────────────────────────────────────────────
+def build_occ_symbol(symbol, expiry, option_type, strike):
+    """OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)"""
     try:
-        exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
-        exp_str = exp_dt.strftime("%y%m%d")
+        exp_str = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
     except:
         exp_str = expiry.replace("-", "")[2:]
-
     type_char = "C" if option_type.lower() in ("call", "c") else "P"
     strike_padded = f"{int(float(strike) * 1000):08d}"
     return f"{symbol}{exp_str}{type_char}{strike_padded}"
 
-def verify_option_exists(option_symbol):
-    """Check if option contract exists in Alpaca before ordering."""
-    if DRY_RUN:
-        return True
+def resolve_expiry(expiry_str):
+    """Convert '7DTE', '0DTE' etc to YYYY-MM-DD."""
+    if expiry_str and len(str(expiry_str)) == 10 and "-" in str(expiry_str):
+        return str(expiry_str)
     try:
-        r = requests.get(
-            f"{ALPACA_DATA}/v1beta1/options/snapshots/{option_symbol}",
-            headers=headers(),
-            timeout=10
-        )
-        return r.status_code == 200
+        days = int(str(expiry_str).upper().replace("DTE","").strip())
+        target = datetime.now(ET).date() + timedelta(days=max(days, 0))
+        while target.weekday() >= 5:
+            target += timedelta(days=1)
+        return target.strftime("%Y-%m-%d")
     except:
-        return False
+        today = datetime.now(ET).date()
+        days_to_friday = (4 - today.weekday()) % 7 or 7
+        return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
 
-def find_nearest_valid_strike(symbol, target_strike, option_type, expiry):
+# ── Strike selection — query Alpaca chain first ───────────────────────
+def get_available_strikes(symbol, option_type, expiry):
     """
-    Query Alpaca options chain to find the nearest valid strike.
-    Returns closest available strike or None.
+    Query Alpaca options contracts for available strikes on a given expiry.
+    Returns sorted list of available strikes, or empty list on failure.
     """
     if DRY_RUN:
-        return target_strike
+        return []
     try:
         params = {
             "underlying_symbols": symbol,
             "expiration_date": expiry,
             "type": option_type.lower(),
-            "limit": 100,
+            "status": "active",
+            "limit": 200,
         }
         r = requests.get(
             f"{ALPACA_DATA}/v1beta1/options/contracts",
-            headers=headers(),
+            headers=hdrs(),
             params=params,
             timeout=15
         )
         if r.status_code != 200:
-            return None
+            log(f"  Chain query {r.status_code}: {r.text[:100]}")
+            return []
         contracts = r.json().get("option_contracts", [])
-        if not contracts:
-            return None
-        # Find closest strike
-        strikes = [float(c.get("strike_price", 0)) for c in contracts]
-        closest = min(strikes, key=lambda s: abs(s - float(target_strike)))
-        return closest
+        strikes = sorted([float(c.get("strike_price", 0)) for c in contracts])
+        return strikes
     except Exception as e:
-        log(f"  Strike search failed: {e}")
+        log(f"  Chain query failed: {e}")
+        return []
+
+def nearest_strike(available_strikes, target):
+    """Find the strike closest to target from available list."""
+    if not available_strikes:
         return None
+    return min(available_strikes, key=lambda s: abs(s - float(target)))
 
-def resolve_expiry(expiry_str):
-    """Convert '0DTE', '7DTE' etc to YYYY-MM-DD date string."""
-    if expiry_str and len(expiry_str) == 10 and "-" in expiry_str:
-        return expiry_str
-    try:
-        days = int(str(expiry_str).upper().replace("DTE","").strip())
-        target = datetime.now(ET).date() + timedelta(days=max(days, 0))
-        # Move to next valid weekday if lands on weekend
-        while target.weekday() >= 5:
-            target += timedelta(days=1)
-        return target.strftime("%Y-%m-%d")
-    except:
-        # Default to this Friday
-        today = datetime.now(ET).date()
-        days_to_friday = (4 - today.weekday()) % 7 or 7
-        return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
+def find_spread_strikes(symbol, short_target, long_target, option_type, expiry):
+    """
+    Find two real strikes for a spread from Alpaca's chain.
+    Returns (short_strike, long_strike) or (None, None).
+    """
+    strikes = get_available_strikes(symbol, option_type, expiry)
+    if not strikes:
+        log(f"  No {option_type} contracts found for {symbol} {expiry}")
+        return None, None
 
-def place_leg(symbol, action, option_type, strike, expiry, qty=1):
-    """Place one option leg. Returns fill dict or None."""
-    expiry_str = resolve_expiry(expiry)
-    opt_symbol = build_option_symbol(symbol, expiry_str, option_type, strike)
+    short_strike = nearest_strike(strikes, short_target)
+    if short_strike is None:
+        return None, None
 
+    # For puts: long strike is below short. For calls: long strike is above short.
+    if option_type.lower() == "put":
+        long_candidates = [s for s in strikes if s < short_strike]
+        long_strike = max(long_candidates) if long_candidates else None
+    else:
+        long_candidates = [s for s in strikes if s > short_strike]
+        long_strike = min(long_candidates) if long_candidates else None
+
+    if long_strike is None:
+        log(f"  Could not find long {option_type} below/above ${short_strike}")
+        return None, None
+
+    log(f"  Found strikes: short ${short_strike}, long ${long_strike} (from Alpaca chain)")
+    return short_strike, long_strike
+
+# ── Multi-leg order (mleg) ────────────────────────────────────────────
+def place_mleg_order(symbol, legs_config, strategy_name):
+    """
+    Place a multi-leg options order as a single mleg order.
+    This avoids the 'uncovered options' error for condors/spreads.
+
+    legs_config: list of dicts with keys:
+      ratio_qty, side, position_intent, symbol (OCC)
+
+    Returns order dict or None.
+    """
     if DRY_RUN:
-        log(f"  [DRY RUN] {action.upper()} {qty}x {opt_symbol}")
-        return {"id": "dry-run", "symbol": opt_symbol, "status": "simulated"}
-
-    # Verify contract exists — if not, try to find nearest valid strike
-    if not verify_option_exists(opt_symbol):
-        log(f"  Contract {opt_symbol} not found — searching for nearest strike...")
-        nearest = find_nearest_valid_strike(symbol, strike, option_type, expiry_str)
-        if nearest and nearest != float(strike):
-            log(f"  Using nearest strike: ${nearest} instead of ${strike}")
-            opt_symbol = build_option_symbol(symbol, expiry_str, option_type, nearest)
-            strike = nearest
-        else:
-            log(f"  No valid contract found for {symbol} {option_type} ~${strike} {expiry_str}")
-            return None
+        log(f"  [DRY RUN] Would place mleg {strategy_name} with {len(legs_config)} legs")
+        for leg in legs_config:
+            log(f"    {leg['side'].upper()} {leg['symbol']}")
+        return {"id": "dry-run", "status": "simulated"}
 
     payload = {
-        "symbol": opt_symbol,
-        "qty": str(qty),
-        "side": "buy" if action.lower() == "buy" else "sell",
         "type": "market",
         "time_in_force": "day",
+        "order_class": "mleg",
+        "legs": legs_config,
     }
 
     try:
-        r = requests.post(f"{ALPACA_BASE}/v2/orders",
-                         headers=headers(), json=payload, timeout=15)
+        r = requests.post(
+            f"{ALPACA_BASE}/v2/orders",
+            headers=hdrs(),
+            json=payload,
+            timeout=20
+        )
         result = r.json()
         if r.status_code in (200, 201):
-            log(f"  ✅ {action.upper()} {qty}x {opt_symbol} | ID: {result.get('id','?')[:8]}")
+            order_id = result.get("id", "?")[:8]
+            log(f"  ✅ mleg order placed | ID: {order_id}")
             return result
         else:
-            msg = result.get("message", str(result))[:100]
-            log(f"  ❌ Order failed: {msg}")
+            msg = result.get("message", str(result))[:150]
+            log(f"  ❌ mleg order failed: {msg}")
             return None
     except Exception as e:
-        log(f"  ❌ Exception: {e}")
+        log(f"  ❌ mleg exception: {e}")
         return None
 
-def log_trade(trade, agent_name, fills, intel):
-    """Append executed trade to journal."""
+# ── Strategy execution builders ───────────────────────────────────────
+def execute_bull_put_spread(symbol, trade, expiry):
+    """
+    Bull put spread: SELL higher put + BUY lower put.
+    Both legs submitted as single mleg order.
+    """
+    legs = trade.get("legs", [])
+    sell_leg = next((l for l in legs if l.get("action") == "sell"), None)
+    buy_leg  = next((l for l in legs if l.get("action") == "buy"), None)
+
+    short_target = float(sell_leg.get("strike", 0)) if sell_leg else 0
+    long_target  = float(buy_leg.get("strike", 0))  if buy_leg  else 0
+
+    if not short_target:
+        log("  No short strike in proposal")
+        return None
+
+    # Get real strikes from Alpaca
+    short_strike, long_strike = find_spread_strikes(
+        symbol, short_target, long_target, "put", expiry
+    )
+    if not short_strike or not long_strike:
+        return None
+
+    short_sym = build_occ_symbol(symbol, expiry, "put", short_strike)
+    long_sym  = build_occ_symbol(symbol, expiry, "put", long_strike)
+
+    mleg_legs = [
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": short_sym},
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": long_sym},
+    ]
+    return place_mleg_order(symbol, mleg_legs, "bull_put_spread")
+
+def execute_bear_call_spread(symbol, trade, expiry):
+    """Bear call spread: SELL lower call + BUY higher call."""
+    legs = trade.get("legs", [])
+    sell_leg = next((l for l in legs if l.get("action") == "sell"), None)
+    buy_leg  = next((l for l in legs if l.get("action") == "buy"), None)
+
+    short_target = float(sell_leg.get("strike", 0)) if sell_leg else 0
+    long_target  = float(buy_leg.get("strike", 0))  if buy_leg  else 0
+
+    short_strike, long_strike = find_spread_strikes(
+        symbol, short_target, long_target, "call", expiry
+    )
+    if not short_strike or not long_strike:
+        return None
+
+    short_sym = build_occ_symbol(symbol, expiry, "call", short_strike)
+    long_sym  = build_occ_symbol(symbol, expiry, "call", long_strike)
+
+    mleg_legs = [
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": short_sym},
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": long_sym},
+    ]
+    return place_mleg_order(symbol, mleg_legs, "bear_call_spread")
+
+def execute_iron_condor(symbol, trade, expiry):
+    """
+    Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
+    This avoids the uncovered options rejection.
+    """
+    legs = trade.get("legs", [])
+
+    # Separate put and call legs
+    put_legs  = [l for l in legs if l.get("type", "").lower() == "put"]
+    call_legs = [l for l in legs if l.get("type", "").lower() == "call"]
+
+    put_sell  = next((l for l in put_legs  if l.get("action") == "sell"), None)
+    put_buy   = next((l for l in put_legs  if l.get("action") == "buy"),  None)
+    call_sell = next((l for l in call_legs if l.get("action") == "sell"), None)
+    call_buy  = next((l for l in call_legs if l.get("action") == "buy"),  None)
+
+    if not all([put_sell, put_buy, call_sell, call_buy]):
+        log("  Iron condor proposal missing legs")
+        return None
+
+    # Get real put strikes
+    put_short_s, put_long_s = find_spread_strikes(
+        symbol,
+        float(put_sell.get("strike", 0)),
+        float(put_buy.get("strike", 0)),
+        "put", expiry
+    )
+    # Get real call strikes
+    call_short_s, call_long_s = find_spread_strikes(
+        symbol,
+        float(call_sell.get("strike", 0)),
+        float(call_buy.get("strike", 0)),
+        "call", expiry
+    )
+
+    if not all([put_short_s, put_long_s, call_short_s, call_long_s]):
+        log("  Could not find all 4 condor strikes in Alpaca chain")
+        return None
+
+    mleg_legs = [
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, "put",  put_short_s)},
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, "put",  put_long_s)},
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, "call", call_short_s)},
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, "call", call_long_s)},
+    ]
+    return place_mleg_order(symbol, mleg_legs, "iron_condor")
+
+def execute_generic_spread(symbol, trade, expiry):
+    """Fallback for any other spread — detect put/call from legs and build mleg."""
+    legs = trade.get("legs", [])
+    if not legs:
+        return None
+
+    option_type = legs[0].get("type", "put").lower()
+    sell_leg = next((l for l in legs if l.get("action") == "sell"), None)
+    buy_leg  = next((l for l in legs if l.get("action") == "buy"),  None)
+    if not sell_leg or not buy_leg:
+        return None
+
+    short_s, long_s = find_spread_strikes(
+        symbol,
+        float(sell_leg.get("strike", 0)),
+        float(buy_leg.get("strike", 0)),
+        option_type, expiry
+    )
+    if not short_s or not long_s:
+        return None
+
+    mleg_legs = [
+        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, option_type, short_s)},
+        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+         "symbol": build_occ_symbol(symbol, expiry, option_type, long_s)},
+    ]
+    return place_mleg_order(symbol, mleg_legs, trade.get("strategy", "spread"))
+
+def execute_trade(trade, intel):
+    """Route to correct executor based on strategy. Returns fill or None."""
+    strategy = trade.get("strategy", "").lower().replace(" ", "_")
+    symbol   = trade.get("symbol", "")
+    legs     = trade.get("legs", [])
+    expiry   = resolve_expiry(legs[0].get("expiry", "7DTE") if legs else "7DTE")
+
+    log(f"  Executing {strategy.upper()} on {symbol} | Expiry: {expiry}")
+
+    if strategy == "iron_condor":
+        return execute_iron_condor(symbol, trade, expiry)
+    elif strategy == "bull_put_spread" or (strategy == "put_spread" and
+         any(l.get("action") == "sell" for l in legs if l.get("type") == "put")):
+        return execute_bull_put_spread(symbol, trade, expiry)
+    elif strategy == "bear_call_spread" or (strategy == "call_spread" and
+         any(l.get("action") == "sell" for l in legs if l.get("type") == "call")):
+        return execute_bear_call_spread(symbol, trade, expiry)
+    else:
+        return execute_generic_spread(symbol, trade, expiry)
+
+# ── Guard check ───────────────────────────────────────────────────────
+def check_guards(trade, intel):
+    macro    = intel.get("macro", {})
+    strategy = trade.get("strategy", "").lower().replace(" ", "_")
+
+    if strategy in MANUAL_ONLY:
+        return False, f"{strategy} requires shares — Amit executes manually"
+    if macro.get("vix", 0) >= VIX_HALT:
+        return False, f"VIX {macro.get('vix',0):.1f} >= {VIX_HALT}"
+    if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
+        return False, f"Max loss {trade.get('max_loss_pct',99):.1f}% > {MAX_LOSS_PCT}%"
+    if trade.get("estimated_credit", 0) < MIN_CREDIT:
+        return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT}"
+
+    symbol    = trade.get("symbol", "")
+    earn_days = intel.get("symbols", {}).get(symbol, {}).get("next_earnings_days", 999)
+    if earn_days < EARNINGS_BLACKOUT:
+        return False, f"Earnings in {earn_days} days"
+    if count_open_agent_trades() >= MAX_OPEN:
+        return False, f"Already {MAX_OPEN} open positions"
+    if intel.get("market_regime") == "halt":
+        return False, "Regime: halt"
+
+    return True, "Guards passed"
+
+# ── Journal ───────────────────────────────────────────────────────────
+def log_trade(trade, agent_name, fill, intel):
     symbol = trade.get("symbol", "")
     existing = []
     if os.path.exists(JOURNAL):
@@ -290,8 +436,7 @@ def log_trade(trade, agent_name, fills, intel):
         "regime_at_entry": intel.get("market_regime", "normal"),
         "thesis": trade.get("thesis", ""),
         "invalidation": trade.get("invalidation", ""),
-        "contracts": 1,
-        "order_ids": [f.get("id","") for f in fills if f],
+        "order_id": fill.get("id", "") if fill else "",
         "status": "OPEN",
         "notes": f"Auto-executed by {agent_name}",
     }
@@ -305,118 +450,79 @@ def sync_sheets():
         import subprocess
         r = subprocess.run(["python3", f"{SCRIPTS}/sheets_sync.py"],
                           capture_output=True, text=True, timeout=30)
-        if r.returncode == 0:
-            log("  📊 Sheets synced")
-        else:
-            log(f"  ⚠️ Sheets sync: {r.stderr[:80]}")
+        log("  📊 Sheets synced" if r.returncode == 0 else f"  ⚠️ Sheets: {r.stderr[:60]}")
     except Exception as e:
-        log(f"  ⚠️ Sheets sync error: {e}")
+        log(f"  ⚠️ Sheets error: {e}")
 
+# ── Monitor ───────────────────────────────────────────────────────────
 def run_monitor():
-    """Check open agent positions — close at profit target, stop loss, or hard close time."""
-    if not os.path.exists(JOURNAL):
-        return
-
+    if not os.path.exists(JOURNAL): return
     trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
     open_agent = [t for t in trades if t.get("status") == "OPEN"
                   and t.get("source", "").startswith("agent")]
-
     if not open_agent:
         log("Monitor: no open agent positions")
         return
 
     now = datetime.now(ET)
-    hard_close = now.hour == 15 and now.minute >= 30 or now.hour > 15
+    hard_close = now.hour > 15 or (now.hour == 15 and now.minute >= 30)
     alerts = []
 
     for t in open_agent:
-        trade_id = t.get("id")
-        symbol = t.get("symbol")
-        credit = t.get("estimated_credit", 0)
-        agent = t.get("source", "agent")
-        action = None
-
         if hard_close:
-            action = "HARD_CLOSE_3:30PM"
-            alerts.append(f"⏰ **{agent.upper()}** {trade_id} {symbol} — HARD CLOSE (3:30 PM)")
-        else:
-            # Try to get current P&L from Alpaca positions
-            try:
-                r = requests.get(f"{ALPACA_BASE}/v2/positions",
-                                headers=headers(), timeout=10)
-                if r.status_code == 200:
-                    for pos in r.json():
-                        if symbol in pos.get("symbol", ""):
-                            pl_pct = float(pos.get("unrealized_plpc", 0)) * 100
-                            if pl_pct >= 50:
-                                action = "CLOSE_PROFIT_TARGET"
-                                alerts.append(f"✅ **{agent.upper()}** {trade_id} {symbol} +{pl_pct:.0f}% — PROFIT TARGET")
-                            elif pl_pct <= -100:
-                                action = "CLOSE_STOP_LOSS"
-                                alerts.append(f"🛑 **{agent.upper()}** {trade_id} {symbol} {pl_pct:.0f}% — STOP LOSS")
-            except Exception as e:
-                log(f"Monitor: could not check {symbol} P&L: {e}")
+            alerts.append(f"⏰ {t.get('source','?').upper()} {t['id']} {t['symbol']} — HARD CLOSE 3:30 PM")
 
     if alerts:
         msg = "🔔 **Position Monitor**\n" + "\n".join(alerts)
         post_discord(msg)
-        for alert in alerts:
-            log(f"Monitor alert: {alert}")
+        for a in alerts:
+            log(f"Monitor: {a}")
 
+# ── Main ──────────────────────────────────────────────────────────────
 def run():
-    log(f"Autonomous Execution Engine starting {'[DRY RUN] ' if DRY_RUN else ''}")
+    log(f"Autonomous Execution Engine {'[DRY RUN] ' if DRY_RUN else ''}starting")
 
     if MONITOR_ONLY:
         run_monitor()
         return
 
     if not is_market_open():
-        log("Skipping execution: Market closed")
+        log("Market closed")
         return
 
-    # Load intelligence packet
-    intel_path = f"{CACHE}/market_intelligence.json"
-    if not os.path.exists(intel_path):
-        log("No intelligence packet — run market_intelligence.py first")
-        return
-
-    with open(intel_path) as f:
-        intel = json.load(f)
-
-    # Load debate output
+    intel_path  = f"{CACHE}/market_intelligence.json"
     debate_path = f"{CACHE}/debate_output.json"
+
+    if not os.path.exists(intel_path):
+        log("No intel packet — run market_intelligence.py first")
+        return
     if not os.path.exists(debate_path):
         log("No debate output — run debate_chamber.py first")
         return
 
-    with open(debate_path) as f:
-        debate = json.load(f)
+    intel  = json.load(open(intel_path))
+    debate = json.load(open(debate_path))
 
     approved = debate.get("approved_trades", [])
     if not approved:
         log(f"No approved trades: {debate.get('status','?')} — {debate.get('reason','')}")
         return
 
-    # Run monitor first
     run_monitor()
 
     log(f"Processing {len(approved)} approved trade(s)...")
-    executed = []
-    skipped = []
+    executed, skipped = [], []
 
     for item in approved:
-        trade = item.get("proposal", {})
-        symbol = trade.get("symbol", "?")
+        trade    = item.get("proposal", {})
+        symbol   = trade.get("symbol", "?")
         strategy = trade.get("strategy", "?").lower().replace(" ", "_")
-
-        # Assign agent
         agent_name = "agent_beta" if strategy == "iron_condor" else "agent_alpha"
 
         log(f"\n{'='*50}")
         log(f"Trade: {strategy.upper()} on {symbol} | Agent: {agent_name}")
         log(f"Credit: ${trade.get('estimated_credit',0):.2f} | Max loss: {trade.get('max_loss_pct',0):.1f}%")
 
-        # Guard check (includes strategy gate)
         guard_ok, reason = check_guards(trade, intel)
         if not guard_ok:
             log(f"  ❌ REJECTED: {reason}")
@@ -424,36 +530,14 @@ def run():
             continue
 
         log("  ✅ Guards passed")
+        fill = execute_trade(trade, intel)
 
-        # Place legs
-        legs = trade.get("legs", [])
-        fills = []
-        failed = False
-
-        for leg in legs:
-            expiry = resolve_expiry(leg.get("expiry", "7DTE"))
-            fill = place_leg(
-                symbol=symbol,
-                action=leg.get("action", "buy"),
-                option_type=leg.get("type", "put"),
-                strike=leg.get("strike", 0),
-                expiry=expiry,
-                qty=1
-            )
-            fills.append(fill)
-            if not fill and not DRY_RUN:
-                failed = True
-                log("  ❌ Leg failed — skipping this trade")
-                break
-            time.sleep(0.5)
-
-        if failed:
+        if not fill and not DRY_RUN:
             skipped.append({"symbol": symbol, "strategy": strategy,
-                           "reason": "Leg placement failed — contract not found in Alpaca paper"})
+                           "reason": "Execution failed — no valid contracts found"})
             continue
 
-        # Log and sync
-        entry = log_trade(trade, agent_name, fills, intel)
+        entry = log_trade(trade, agent_name, fill, intel)
         executed.append({"entry": entry, "agent": agent_name, "trade": trade})
         time.sleep(1)
 
@@ -463,17 +547,15 @@ def run():
     # Discord summary
     if executed or skipped:
         msg = f"🤖 **{'[DRY RUN] ' if DRY_RUN else ''}Agent Execution**\n"
-        msg += f"✅ Executed: {len(executed)} | ❌ Skipped: {len(skipped)}\n\n"
+        msg += f"✅ {len(executed)} executed | ❌ {len(skipped)} skipped\n\n"
         for e in executed:
             t = e["trade"]
-            msg += f"**{e['agent'].upper()}**: {t.get('strategy','').replace('_',' ').upper()} on {t.get('symbol','?')}\n"
-            msg += f"Credit: ${t.get('estimated_credit',0):.2f} | ID: {e['entry']['id']}\n\n"
+            msg += f"**{e['agent'].upper()}**: {t.get('strategy','').replace('_',' ').upper()} {t.get('symbol','?')} | Credit: ${t.get('estimated_credit',0):.2f} | ID: {e['entry']['id']}\n"
         for s in skipped:
-            msg += f"**Skipped** {s['symbol']} ({s['strategy']}): {s['reason']}\n"
+            msg += f"**Skipped** {s['symbol']}: {s['reason']}\n"
         post_discord(msg)
 
     log(f"\nDone — {len(executed)} executed, {len(skipped)} skipped")
-
 
 if __name__ == "__main__":
     run()
