@@ -12,6 +12,12 @@ All strategies collect premium. No shares required.
 import json, os, sys, time
 from datetime import datetime, timedelta
 import yfinance as yf
+import logging
+
+# Suppress yfinance/urllib3 404 noise
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
+logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 # Auto-load .env
 import pathlib as _pl
