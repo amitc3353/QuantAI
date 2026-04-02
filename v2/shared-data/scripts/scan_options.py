@@ -11,7 +11,20 @@ import json, os, sys, time
 from datetime import datetime, timedelta
 import yfinance as yf
 
-CACHE = os.environ.get("QUANTAI_HOME", "/root/quantai-v2") + "/shared-data/cache"
+# Auto-load .env
+import pathlib as _pl
+for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.env")]:
+    if _ef.exists():
+        for _line in _ef.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                if not os.environ.get(_k.strip()):
+                    os.environ[_k.strip()] = _v.strip()
+        break
+
+
+CACHE = os.environ.get("QUANTAI_CACHE", "/home/trader/QuantAI/v2/shared-data/cache")
 
 # ── Dynamic ticker discovery ──────────────────────────────────────────
 # Instead of a hardcoded list, we pull from multiple sources and filter
@@ -42,7 +55,7 @@ def discover_tickers():
             "BA", "LUV", "DAL", "UBER", "LYFT",
             "SQ", "PYPL", "V", "MA", "JPM", "GS",
             "CRSP", "MRNA", "PFE", "ABBV",
-            "DIS", "WBD", "PARA",
+            "DIS", "WBD",
         ]))
         tickers.update(trending.symbols)
     except:
@@ -168,7 +181,7 @@ def scan_credit_spreads():
                 continue
 
             avg_vol = info.get("averageVolume", 0)
-            if avg_vol < 1_000_000:
+            if avg_vol < 5_000_000:
                 continue
 
             # Options must exist
@@ -198,6 +211,14 @@ def scan_credit_spreads():
             # Earnings check
             earnings = get_earnings(t)
             if earnings.get("within_7d"):
+                continue
+
+            # OI check — at least 200 OI on ATM options (liquidity gate)
+            atm_calls = chain.calls[abs(chain.calls.strike - price) / price < 0.05]
+            atm_puts = chain.puts[abs(chain.puts.strike - price) / price < 0.05]
+            max_call_oi = int(atm_calls["openInterest"].max()) if not atm_calls.empty else 0
+            max_put_oi = int(atm_puts["openInterest"].max()) if not atm_puts.empty else 0
+            if max_call_oi < 200 and max_put_oi < 200:
                 continue
 
             # Get technicals to decide direction
