@@ -196,7 +196,7 @@ def run_entry(state):
 
     # Run scan + debate + execute
     log("Conditions met — running full pipeline")
-    run_script("scan_options.py", "both", label="Scanning options...")
+    run_script("scan_options.py", "all", label="Scanning options (spreads + diagonals + condors)...")
     ok = run_script("debate_chamber.py", label="Running debate chamber...")
     if not ok:
         log("Debate failed — skipping execution")
