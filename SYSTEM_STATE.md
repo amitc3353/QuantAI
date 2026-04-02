@@ -273,4 +273,14 @@ Auto-syncs after every execution and every journal entry.
 
 After changes: update this file → push to GitHub → re-upload to Claude project.
 
-*Last updated: April 1, 2026 — system_test.py added (41/43 passing), aiohttp and service account path fixes pending.*
+## Workspace Sync
+
+After any AGENTS.md or SOUL.md update, always run:
+```bash
+bash /home/trader/QuantAI/scripts/sync_workspaces.sh
+```
+Copies all workspace files from git repo to `/root/quantai-v2/` where OpenClaw reads them. Agents pick up changes on the next message — no restart needed. If agents seem to have stale knowledge, this is the fix.
+
+---
+
+*Last updated: April 2, 2026 — 43/43 system test confirmed. Two execution bugs fixed: iron condors now submitted as single mleg order (fixes uncovered options error); strike selection queries Alpaca live chain before ordering (fixes asset not found). Journal clean: 1 real trade (P001 SOFI $16C Apr 18). Agents ready for first real execution tomorrow.*

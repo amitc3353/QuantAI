@@ -1,5 +1,5 @@
 # QuantAI — Master Roadmap
-**Last updated: April 1, 2026**
+**Last updated: April 2, 2026**
 
 ---
 
@@ -7,7 +7,7 @@
 
 Four Claude agents on OpenClaw. Agent Alpha and Beta execute autonomously via 15-min cron. Amit trades SOFI collar and learning trades manually. Everything logs to Google Sheets. System tests itself with 43 checks.
 
-**Status: Paper trading, fully operational. First live cron runs tomorrow.**
+**Status: Paper trading, fully operational. Cron running. Execution bugs fixed Apr 2. First real agent trade expected tomorrow morning.**
 
 ---
 
@@ -17,6 +17,7 @@ Four Claude agents on OpenClaw. Agent Alpha and Beta execute autonomously via 15
 - [x] Four agents: Orchestrator (#chat), Research (#research), Infra (#infra), Journal (#journal)
 - [x] All agents know Agent Alpha and Beta — ask any channel about their performance
 - [x] SOFI collar strategy active (200 paper shares, 5 trigger actions)
+- [x] scripts/sync_workspaces.sh — keeps OpenClaw in sync with git repo
 
 ### Intelligence + Debate
 - [x] market_intelligence.py — on-demand packet (VIX, 11 symbols, events, earnings, news)
@@ -24,12 +25,15 @@ Four Claude agents on OpenClaw. Agent Alpha and Beta execute autonomously via 15
 - [x] scan_options.py — 100+ tickers, 5M volume filter, 200 OI gate, 10 strategies evaluated
 
 ### Agent Alpha and Beta (autonomous)
-- [x] autonomous_execution.py — Alpaca paper orders, strategy gate, contract verification
+- [x] autonomous_execution.py — mleg orders, live chain lookup, strategy gate
 - [x] run_pipeline.py — 15-min cron, condition-gated (VIX, regime, timing, daily count)
 - [x] Agent Alpha: full strategy toolkit, any liquid ticker, condition-driven
 - [x] Agent Beta: condors/butterflies, any liquid ticker, VIX 13-28 entry gate
 - [x] Max 2 entries/day, hard close 3:30 PM, monitor every 15 min
 - [x] Cron active: `*/15 9-16 * * 1-5` + `5 16 * * 1-5` (EOD)
+- [x] **Bug fixed Apr 2:** Iron condors use mleg orders — no more uncovered options error
+- [x] **Bug fixed Apr 2:** Strike selection queries Alpaca chain — no more asset not found
+- [x] **Bug fixed Apr 2:** Dry run no longer writes to journal
 
 ### Self-Evolution
 - [x] self_evolution.py — 6-step, 5-gate validation, updates sofi_collar.json
@@ -40,27 +44,12 @@ Four Claude agents on OpenClaw. Agent Alpha and Beta execute autonomously via 15
 - [x] Auto-syncs after every execution and manual log
 - [x] Agent trades: A-prefix IDs, source=agent_alpha/agent_beta
 - [x] Manual trades: P-prefix IDs, source=manual
+- [x] Journal clean: P001 is the only entry (SOFI $16C Apr 18, paper)
 
 ### System Health
-- [x] system_test.py — 43-check end-to-end health test
+- [x] system_test.py — **43/43 passing** as of April 2
 - [x] eod_summary.py — daily Alpha/Beta/Amit summary posted to #chat at 4:05 PM
-
-### Current test result: 41/43 (2 fixes pending — see below)
-
----
-
-## Immediate — Fix Before Tomorrow Morning
-
-```
-FIX 1: Install aiohttp
-  pip3 install aiohttp --break-system-packages
-
-FIX 2: Copy google_service_account.json to correct location
-  cp /home/trader/QuantAI/v2/shared-data/google_service_account.json \
-     /root/quantai-v2/shared-data/google_service_account.json
-
-Verify: python3 v2/shared-data/scripts/system_test.py → should show 43/43
-```
+- [x] sync_workspaces.sh — one-command workspace sync to OpenClaw
 
 ---
 
