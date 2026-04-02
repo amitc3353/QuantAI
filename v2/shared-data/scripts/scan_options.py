@@ -144,6 +144,33 @@ def get_vix():
     except:
         return 20.0
 
+def discover_tickers():
+    """Pull liquid, optionable tickers from multiple sources."""
+    tickers = set()
+    etfs = ["SPY","QQQ","IWM","DIA","XLF","XLE","XLK","XLV",
+            "XBI","XOP","GDX","ARKK","EEM","HYG","TLT","SLV","GLD"]
+    tickers.update(etfs)
+    try:
+        stocks = [
+            "TSLA","NVDA","AMD","AAPL","AMZN","META","GOOGL","MSFT",
+            "NFLX","COIN","MSTR","PLTR","SOFI","NIO","RIVN",
+            "HOOD","SNAP","PINS","ROKU","HIMS","IONQ",
+            "SOUN","AI","BBAI","PATH","AFRM","UPST","NU",
+            "AAL","UAL","CCL","NCLH","F","GM",
+            "MU","INTC","SMCI","DELL","AVGO","TSM","ASML",
+            "VALE","CLF","GOLD","AG",
+            "ET","RIG","OXY","CVX","XOM",
+            "T","VZ","CHPT","PLUG",
+            "BA","LUV","DAL","UBER","LYFT",
+            "SQ","PYPL","V","MA","JPM","GS",
+            "CRSP","MRNA","PFE","ABBV",
+            "DIS","WBD",
+        ]
+        tickers.update(stocks)
+    except:
+        pass
+    return list(tickers)
+
 # ── Credit spread scan ────────────────────────────────────────────────
 def scan_credit_spreads(tickers, vix):
     opportunities = []
