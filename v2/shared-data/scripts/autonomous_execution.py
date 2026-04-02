@@ -106,17 +106,33 @@ def build_occ_symbol(symbol, expiry, option_type, strike):
     return f"{symbol}{exp_str}{type_char}{strike_padded}"
 
 def resolve_expiry(expiry_str):
-    """Convert '7DTE', '0DTE' etc to YYYY-MM-DD."""
+    """Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today."""
+    today = datetime.now(ET).date()
+
     if expiry_str and len(str(expiry_str)) == 10 and "-" in str(expiry_str):
-        return str(expiry_str)
+        d = datetime.strptime(str(expiry_str), "%Y-%m-%d").date()
+        # If the date is today or past, push to next Friday
+        if d <= today:
+            days_to_friday = (4 - today.weekday()) % 7 or 7
+            d = today + timedelta(days=days_to_friday)
+        return d.strftime("%Y-%m-%d")
+
     try:
         days = int(str(expiry_str).upper().replace("DTE","").strip())
-        target = datetime.now(ET).date() + timedelta(days=max(days, 0))
+        # 0DTE: use today only before 9:45 AM, else use tomorrow
+        if days == 0:
+            now = datetime.now(ET)
+            if now.hour < 9 or (now.hour == 9 and now.minute < 45):
+                target = today
+            else:
+                target = today + timedelta(days=1)
+        else:
+            target = today + timedelta(days=max(days, 1))
         while target.weekday() >= 5:
             target += timedelta(days=1)
         return target.strftime("%Y-%m-%d")
     except:
-        today = datetime.now(ET).date()
+        # Default to this Friday
         days_to_friday = (4 - today.weekday()) % 7 or 7
         return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
 
@@ -535,6 +551,12 @@ def run():
         if not fill and not DRY_RUN:
             skipped.append({"symbol": symbol, "strategy": strategy,
                            "reason": "Execution failed — no valid contracts found"})
+            continue
+
+        # Don't log in dry run mode
+        if DRY_RUN:
+            log(f"  [DRY RUN] Would log as agent trade — not writing to journal")
+            executed.append({"entry": {"id": "dry-run"}, "agent": agent_name, "trade": trade})
             continue
 
         entry = log_trade(trade, agent_name, fill, intel)
