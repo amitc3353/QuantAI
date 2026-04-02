@@ -29,7 +29,38 @@ CACHE = "/root/quantai-v2/shared-data/cache"
 os.makedirs(CACHE, exist_ok=True)
 
 # ── Ticker universe ───────────────────────────────────────────────────
-def discover_tickers():
+def get_price(ticker_obj, sym):
+    """Get current price — tries fast_info first (no 404s), falls back to info."""
+    try:
+        fi = ticker_obj.fast_info
+        price = getattr(fi, "last_price", None) or getattr(fi, "previous_close", None)
+        if price and price > 0:
+            return float(price)
+    except:
+        pass
+    try:
+        info = ticker_obj.info or {}
+        price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")
+        if price and float(price) > 0:
+            return float(price)
+    except:
+        pass
+    return None
+
+def get_avg_volume(ticker_obj):
+    """Get average volume without triggering fundamentals 404s."""
+    try:
+        fi = ticker_obj.fast_info
+        vol = getattr(fi, "three_month_average_volume", None)
+        if vol:
+            return float(vol)
+    except:
+        pass
+    try:
+        info = ticker_obj.info or {}
+        return float(info.get("averageVolume", 0) or 0)
+    except:
+        return 0
     tickers = set()
     etfs = ["SPY","QQQ","IWM","DIA","XLF","XLE","XLK","XLV",
             "XBI","XOP","GDX","ARKK","EEM","HYG","TLT","SLV","GLD"]
@@ -121,11 +152,10 @@ def scan_credit_spreads(tickers, vix):
     for sym in tickers:
         try:
             t = yf.Ticker(sym)
-            info = t.info or {}
-            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            price = get_price(t, sym)
             if not price or price < 3:
                 continue
-            if info.get("averageVolume", 0) < 5_000_000:
+            if get_avg_volume(t) < 5_000_000:
                 continue
 
             exps = t.options
@@ -237,11 +267,10 @@ def scan_diagonals(tickers, vix):
     for sym in tickers:
         try:
             t = yf.Ticker(sym)
-            info = t.info or {}
-            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            price = get_price(t, sym)
             if not price or price < 5:
                 continue
-            if info.get("averageVolume", 0) < 5_000_000:
+            if get_avg_volume(t) < 5_000_000:
                 continue
 
             exps = t.options
@@ -384,11 +413,10 @@ def scan_iron_condors(tickers, vix):
     for sym in tickers:
         try:
             t = yf.Ticker(sym)
-            info = t.info or {}
-            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            price = get_price(t, sym)
             if not price or price < 10:
                 continue
-            if info.get("averageVolume", 0) < 5_000_000:
+            if get_avg_volume(t) < 5_000_000:
                 continue
 
             exps = t.options
@@ -488,11 +516,10 @@ def scan_collar_candidates(tickers):
     for sym in tickers:
         try:
             t = yf.Ticker(sym)
-            info = t.info or {}
-            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            price = get_price(t, sym)
             if not price or price > 30 or price < 5:
                 continue
-            if info.get("averageVolume", 0) < 1_000_000:
+            if get_avg_volume(t) < 1_000_000:
                 continue
 
             exps = t.options
