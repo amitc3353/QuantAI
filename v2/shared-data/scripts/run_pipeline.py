@@ -175,20 +175,13 @@ def run_entry(state):
         log(f"VIX {vix:.1f} too high — no entry")
         return state
 
-    # Entry 2 gate — only if Entry 1 exists and is doing well
+    # Entry 2 gate — allow in both normal and caution regimes (halt already blocked above)
     if state["entries_today"] >= 1:
         open_count = count_open_agent_trades()
-        if open_count == 0:
-            log("Entry 1 already closed — Entry 2 valid if conditions strong")
-        elif open_count >= 3:
+        if open_count >= 3:
             log(f"Already {open_count} open positions — max reached, skipping entry")
             return state
-        else:
-            log(f"{open_count} position(s) still open — evaluating Entry 2")
-            # Only enter second time if regime is PROCEED (not caution)
-            if regime != "normal":
-                log("Regime not normal — skipping Entry 2")
-                return state
+        log(f"Entry 1 done — {open_count} position(s) open. Evaluating Entry 2...")
 
     if state["entries_today"] >= 2:
         log("Max 2 entries per day reached — done for today")
@@ -200,6 +193,20 @@ def run_entry(state):
     ok = run_script("debate_chamber.py", label="Running debate chamber...")
     if not ok:
         log("Debate failed — skipping execution")
+        return state
+
+    # Freshness check — only execute if debate output is from THIS pipeline run (< 5 min old)
+    debate_path = f"{CACHE}/debate_output.json"
+    try:
+        debate_ts = datetime.fromisoformat(json.load(open(debate_path)).get("timestamp","2000-01-01"))
+        if debate_ts.tzinfo is None:
+            debate_ts = debate_ts.replace(tzinfo=ET)
+        age_min = (now - debate_ts).total_seconds() / 60
+        if age_min > 5:
+            log(f"Debate output is {age_min:.0f} min old — skipping stale execution")
+            return state
+    except Exception as e:
+        log(f"Could not verify debate freshness: {e} — skipping")
         return state
 
     run_script("autonomous_execution.py", label="Executing approved trades...")
