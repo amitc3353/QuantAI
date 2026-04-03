@@ -48,6 +48,10 @@ JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 LOGS    = "/root/quantai-v2/shared-data/logs"
 SCRIPTS = "/home/trader/QuantAI/v2/shared-data/scripts"
 
+# Alert channel — post trade notifications here
+DISCORD_BOT_TOKEN    = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
+DISCORD_ALERTS_CH    = os.environ.get("DISCORD_CHANNEL_ALERTS", "1487638999181951069")
+
 os.makedirs(LOGS, exist_ok=True)
 
 # Guard constants
@@ -74,13 +78,60 @@ def hdrs():
         "Content-Type": "application/json",
     }
 
-def post_discord(msg):
-    if not DISCORD_WEBHOOK or DRY_RUN:
+def post_discord(msg, channel_id=None):
+    """Post a message to Discord via bot token. Falls back to webhook if set."""
+    if DRY_RUN:
         return
-    try:
-        requests.post(DISCORD_WEBHOOK, json={"content": msg[:1900]}, timeout=8)
-    except:
-        pass
+    ch = channel_id or DISCORD_ALERTS_CH
+    # Try bot token first (preferred — no webhook setup needed)
+    if DISCORD_BOT_TOKEN and ch:
+        try:
+            requests.post(
+                f"https://discord.com/api/v10/channels/{ch}/messages",
+                headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+                         "Content-Type": "application/json"},
+                json={"content": msg[:1900]},
+                timeout=8
+            )
+            return
+        except:
+            pass
+    # Fallback: webhook
+    webhook = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
+    if webhook:
+        try:
+            requests.post(webhook, json={"content": msg[:1900]}, timeout=8)
+        except:
+            pass
+
+def post_trade_alert(entry, trade, agent_name):
+    """Post a trade execution alert to #alerts channel."""
+    strategy = trade.get("strategy", "").replace("_", " ").upper()
+    symbol   = trade.get("symbol", "?")
+    credit   = trade.get("estimated_credit", 0)
+    max_loss = trade.get("max_loss_pct", 0)
+    thesis   = trade.get("thesis", "")[:120]
+    legs     = trade.get("legs", [])
+
+    legs_str = ""
+    for l in legs:
+        action = l.get("action", "?").upper()
+        ltype  = l.get("type", "").upper()
+        strike = l.get("strike", "?")
+        expiry = l.get("expiry", "")
+        legs_str += f"\n  {action} {ltype} ${strike} {expiry}"
+
+    credit_label = f"Debit: ${abs(credit):.2f}" if credit < 0 else f"Credit: ${credit:.2f}"
+    agent_label  = "🔵 Agent Alpha" if "alpha" in agent_name else "🟠 Agent Beta"
+
+    msg = (
+        f"🤖 **TRADE EXECUTED — {agent_label}**\n"
+        f"**{strategy}** on **{symbol}** | {credit_label} | Max loss: {max_loss:.1f}%\n"
+        f"```{legs_str.strip()}```\n"
+        f"📝 {thesis}\n"
+        f"🆔 {entry.get('id','?')} | 📅 {datetime.now(ET).strftime('%b %d %H:%M ET')}"
+    )
+    post_discord(msg, channel_id=DISCORD_ALERTS_CH)
 
 def is_market_open():
     now = datetime.now(ET)
@@ -623,6 +674,7 @@ def run():
             continue
 
         entry = log_trade(trade, agent_name, fill, intel)
+        post_trade_alert(entry, trade, agent_name)
         executed.append({"entry": entry, "agent": agent_name, "trade": trade})
         time.sleep(1)
 
