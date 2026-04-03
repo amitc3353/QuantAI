@@ -109,6 +109,13 @@ def resolve_expiry(expiry_str):
     """Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today."""
     today = datetime.now(ET).date()
 
+    def next_weekday(d, min_days=1):
+        """Advance d by at least min_days, then skip weekends."""
+        d = d + timedelta(days=min_days)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        return d
+
     if expiry_str and len(str(expiry_str)) == 10 and "-" in str(expiry_str):
         d = datetime.strptime(str(expiry_str), "%Y-%m-%d").date()
         # If the date is today or past, push to next Friday
@@ -119,20 +126,23 @@ def resolve_expiry(expiry_str):
 
     try:
         days = int(str(expiry_str).upper().replace("DTE","").strip())
-        # 0DTE: use today only before 9:45 AM, else use tomorrow
+        # 0DTE: only valid before market open, otherwise use next Friday
+        # Minimum is always today+2 to avoid same/next-day 404s from Alpaca
         if days == 0:
             now = datetime.now(ET)
-            if now.hour < 9 or (now.hour == 9 and now.minute < 45):
-                target = today
+            if now.hour < 9 or (now.hour == 9 and now.minute < 30):
+                target = today  # genuine pre-market 0DTE
             else:
-                target = today + timedelta(days=1)
+                # Push to next Friday — same-day and next-day chains often return 404
+                days_to_friday = (4 - today.weekday()) % 7 or 7
+                target = today + timedelta(days=days_to_friday)
         else:
-            target = today + timedelta(days=max(days, 1))
+            target = today + timedelta(days=max(days, 2))  # minimum 2 days out
         while target.weekday() >= 5:
             target += timedelta(days=1)
         return target.strftime("%Y-%m-%d")
     except:
-        # Default to this Friday
+        # Default to next Friday
         days_to_friday = (4 - today.weekday()) % 7 or 7
         return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
 
@@ -465,8 +475,11 @@ def check_guards(trade, intel):
         return False, f"VIX {macro.get('vix',0):.1f} >= {VIX_HALT}"
     if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
         return False, f"Max loss {trade.get('max_loss_pct',99):.1f}% > {MAX_LOSS_PCT}%"
-    if trade.get("estimated_credit", 0) < MIN_CREDIT:
-        return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT}"
+    # Debit strategies (diagonal, calendar) have negative estimated_credit — skip credit floor check
+    DEBIT_STRATEGIES = {"diagonal_spread", "calendar_spread"}
+    if strategy not in DEBIT_STRATEGIES:
+        if trade.get("estimated_credit", 0) < MIN_CREDIT:
+            return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT}"
 
     symbol    = trade.get("symbol", "")
     earn_days = intel.get("symbols", {}).get(symbol, {}).get("next_earnings_days", 999)
