@@ -6,13 +6,13 @@ Runs every 15 minutes during market hours via cron.
 Agents enter when conditions are right, not on a fixed clock.
 
 Entry logic:
-- Market must be open (9:45 AM – 3:30 PM ET)
+- Market must be open (9:45 AM – 3:00 PM ET)
 - Intelligence packet must show regime != halt
 - VIX must be in acceptable range
 - No entry in first 15 min of open (9:30-9:45) — volatility too high
-- Max 2 entries per day (tracked in daily_state.json)
-- If Entry 1 is open and profitable, consider Entry 2
+- Max 3 open positions simultaneously (not a per-day cap)
 - Never enter after 3:00 PM ET (not enough time to manage)
+- Agents scan every 15 min and enter whenever a valid setup passes all guards
 
 Monitor runs every 15 min during market hours:
 - Checks all open agent positions
@@ -151,7 +151,13 @@ def run_eod():
 
 # ── ENTRY mode ────────────────────────────────────────────────────────
 def run_entry(state):
-    log(f"Considering entry — {state['entries_today']} entries today so far")
+    open_count = count_open_agent_trades()
+    log(f"Scanning for entry — {open_count}/3 positions open | {state['entries_today']} entries today")
+
+    # Max open positions gate (hard limit — never more than 3 simultaneous)
+    if open_count >= 3:
+        log(f"Max 3 open positions reached — monitor only")
+        return state
 
     # Refresh intelligence
     run_script("market_intelligence.py", label="Refreshing market intelligence...")
@@ -164,27 +170,13 @@ def run_entry(state):
     vix = intel.get("macro", {}).get("vix", 0)
     log(f"Regime: {regime.upper()} | VIX: {vix:.1f}")
 
-    # Regime gate
+    # Regime gate — only halt stops entries
     if regime == "halt":
-        log("HALT regime — no entry today")
+        log("HALT regime — no entry")
         return state
 
-    # VIX gate for condors (Agent Beta)
-    # VIX gate for spreads (Agent Alpha) — wider range acceptable
-    if vix > 35:
-        log(f"VIX {vix:.1f} too high — no entry")
-        return state
-
-    # Entry 2 gate — allow in both normal and caution regimes (halt already blocked above)
-    if state["entries_today"] >= 1:
-        open_count = count_open_agent_trades()
-        if open_count >= 3:
-            log(f"Already {open_count} open positions — max reached, skipping entry")
-            return state
-        log(f"Entry 1 done — {open_count} position(s) open. Evaluating Entry 2...")
-
-    if state["entries_today"] >= 2:
-        log("Max 2 entries per day reached — done for today")
+    if vix >= 35:
+        log(f"VIX {vix:.1f} >= 35 — no entry")
         return state
 
     # Run scan + debate + execute
