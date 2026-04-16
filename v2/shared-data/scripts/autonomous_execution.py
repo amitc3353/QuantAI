@@ -465,8 +465,10 @@ def check_guards(trade, intel):
         return False, f"VIX {macro.get('vix',0):.1f} >= {VIX_HALT}"
     if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
         return False, f"Max loss {trade.get('max_loss_pct',99):.1f}% > {MAX_LOSS_PCT}%"
-    if trade.get("estimated_credit", 0) < MIN_CREDIT:
-        return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT}"
+    DEBIT_STRATEGIES = {"diagonal_spread", "calendar_spread"}
+    if strategy not in DEBIT_STRATEGIES:
+        if trade.get("estimated_credit", 0) < MIN_CREDIT:
+            return False, f"Credit ${trade.get('estimated_credit',0):.2f} < ${MIN_CREDIT}"
 
     symbol    = trade.get("symbol", "")
     earn_days = intel.get("symbols", {}).get(symbol, {}).get("next_earnings_days", 999)
