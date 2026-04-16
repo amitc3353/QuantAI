@@ -48,6 +48,10 @@ JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 LOGS    = "/root/quantai-v2/shared-data/logs"
 SCRIPTS = "/home/trader/QuantAI/v2/shared-data/scripts"
 
+# Alert channel — post trade notifications here
+DISCORD_BOT_TOKEN    = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
+DISCORD_ALERTS_CH    = os.environ["DISCORD_CHANNEL_ALERTS"]
+
 os.makedirs(LOGS, exist_ok=True)
 
 # Guard constants
@@ -74,13 +78,60 @@ def hdrs():
         "Content-Type": "application/json",
     }
 
-def post_discord(msg):
-    if not DISCORD_WEBHOOK or DRY_RUN:
+def post_discord(msg, channel_id=None):
+    """Post a message to Discord via bot token. Falls back to webhook if set."""
+    if DRY_RUN:
         return
-    try:
-        requests.post(DISCORD_WEBHOOK, json={"content": msg[:1900]}, timeout=8)
-    except:
-        pass
+    ch = channel_id or DISCORD_ALERTS_CH
+    # Try bot token first (preferred — no webhook setup needed)
+    if DISCORD_BOT_TOKEN and ch:
+        try:
+            requests.post(
+                f"https://discord.com/api/v10/channels/{ch}/messages",
+                headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+                         "Content-Type": "application/json"},
+                json={"content": msg[:1900]},
+                timeout=8
+            )
+            return
+        except:
+            pass
+    # Fallback: webhook
+    webhook = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
+    if webhook:
+        try:
+            requests.post(webhook, json={"content": msg[:1900]}, timeout=8)
+        except:
+            pass
+
+def post_trade_alert(entry, trade, agent_name):
+    """Post a trade execution alert to #alerts channel."""
+    strategy = trade.get("strategy", "").replace("_", " ").upper()
+    symbol   = trade.get("symbol", "?")
+    credit   = trade.get("estimated_credit", 0)
+    max_loss = trade.get("max_loss_pct", 0)
+    thesis   = trade.get("thesis", "")[:120]
+    legs     = trade.get("legs", [])
+
+    legs_str = ""
+    for l in legs:
+        action = l.get("action", "?").upper()
+        ltype  = l.get("type", "").upper()
+        strike = l.get("strike", "?")
+        expiry = l.get("expiry", "")
+        legs_str += f"\n  {action} {ltype} ${strike} {expiry}"
+
+    credit_label = f"Debit: ${abs(credit):.2f}" if credit < 0 else f"Credit: ${credit:.2f}"
+    agent_label  = "🔵 Agent Alpha" if "alpha" in agent_name else "🟠 Agent Beta"
+
+    msg = (
+        f"🤖 **TRADE EXECUTED — {agent_label}**\n"
+        f"**{strategy}** on **{symbol}** | {credit_label} | Max loss: {max_loss:.1f}%\n"
+        f"```{legs_str.strip()}```\n"
+        f"📝 {thesis}\n"
+        f"🆔 {entry.get('id','?')} | 📅 {datetime.now(ET).strftime('%b %d %H:%M ET')}"
+    )
+    post_discord(msg, channel_id=DISCORD_ALERTS_CH)
 
 def is_market_open():
     now = datetime.now(ET)
@@ -109,6 +160,13 @@ def resolve_expiry(expiry_str):
     """Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today."""
     today = datetime.now(ET).date()
 
+    def next_weekday(d, min_days=1):
+        """Advance d by at least min_days, then skip weekends."""
+        d = d + timedelta(days=min_days)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        return d
+
     if expiry_str and len(str(expiry_str)) == 10 and "-" in str(expiry_str):
         d = datetime.strptime(str(expiry_str), "%Y-%m-%d").date()
         # If the date is today or past, push to next Friday
@@ -119,20 +177,23 @@ def resolve_expiry(expiry_str):
 
     try:
         days = int(str(expiry_str).upper().replace("DTE","").strip())
-        # 0DTE: use today only before 9:45 AM, else use tomorrow
+        # 0DTE: only valid before market open, otherwise use next Friday
+        # Minimum is always today+2 to avoid same/next-day 404s from Alpaca
         if days == 0:
             now = datetime.now(ET)
-            if now.hour < 9 or (now.hour == 9 and now.minute < 45):
-                target = today
+            if now.hour < 9 or (now.hour == 9 and now.minute < 30):
+                target = today  # genuine pre-market 0DTE
             else:
-                target = today + timedelta(days=1)
+                # Push to next Friday — same-day and next-day chains often return 404
+                days_to_friday = (4 - today.weekday()) % 7 or 7
+                target = today + timedelta(days=days_to_friday)
         else:
-            target = today + timedelta(days=max(days, 1))
+            target = today + timedelta(days=max(days, 2))  # minimum 2 days out
         while target.weekday() >= 5:
             target += timedelta(days=1)
         return target.strftime("%Y-%m-%d")
     except:
-        # Default to this Friday
+        # Default to next Friday
         days_to_friday = (4 - today.weekday()) % 7 or 7
         return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
 
@@ -153,7 +214,7 @@ def get_available_strikes(symbol, option_type, expiry):
             "limit": 200,
         }
         r = requests.get(
-            f"{ALPACA_DATA}/v1beta1/options/contracts",
+            f"{ALPACA_BASE}/v2/options/contracts",
             headers=hdrs(),
             params=params,
             timeout=15
@@ -221,6 +282,7 @@ def place_mleg_order(symbol, legs_config, strategy_name):
         return {"id": "dry-run", "status": "simulated"}
 
     payload = {
+        "qty": "1",
         "type": "market",
         "time_in_force": "day",
         "order_class": "mleg",
@@ -275,8 +337,8 @@ def execute_bull_put_spread(symbol, trade, expiry):
     long_sym  = build_occ_symbol(symbol, expiry, "put", long_strike)
 
     mleg_legs = [
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": short_sym},
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": long_sym},
+        {"ratio_qty": "1", "side": "sell", "symbol": short_sym},
+        {"ratio_qty": "1", "side": "buy",  "symbol": long_sym},
     ]
     return place_mleg_order(symbol, mleg_legs, "bull_put_spread")
 
@@ -299,8 +361,8 @@ def execute_bear_call_spread(symbol, trade, expiry):
     long_sym  = build_occ_symbol(symbol, expiry, "call", long_strike)
 
     mleg_legs = [
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": short_sym},
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": long_sym},
+        {"ratio_qty": "1", "side": "sell", "symbol": short_sym},
+        {"ratio_qty": "1", "side": "buy",  "symbol": long_sym},
     ]
     return place_mleg_order(symbol, mleg_legs, "bear_call_spread")
 
@@ -344,13 +406,13 @@ def execute_iron_condor(symbol, trade, expiry):
         return None
 
     mleg_legs = [
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+        {"ratio_qty": "1", "side": "sell",
          "symbol": build_occ_symbol(symbol, expiry, "put",  put_short_s)},
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+        {"ratio_qty": "1", "side": "buy",
          "symbol": build_occ_symbol(symbol, expiry, "put",  put_long_s)},
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+        {"ratio_qty": "1", "side": "sell",
          "symbol": build_occ_symbol(symbol, expiry, "call", call_short_s)},
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+        {"ratio_qty": "1", "side": "buy",
          "symbol": build_occ_symbol(symbol, expiry, "call", call_long_s)},
     ]
     return place_mleg_order(symbol, mleg_legs, "iron_condor")
@@ -377,9 +439,9 @@ def execute_generic_spread(symbol, trade, expiry):
         return None
 
     mleg_legs = [
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open",
+        {"ratio_qty": "1", "side": "sell",
          "symbol": build_occ_symbol(symbol, expiry, option_type, short_s)},
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open",
+        {"ratio_qty": "1", "side": "buy",
          "symbol": build_occ_symbol(symbol, expiry, option_type, long_s)},
     ]
     return place_mleg_order(symbol, mleg_legs, trade.get("strategy", "spread"))
@@ -419,8 +481,8 @@ def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
     log(f"  Diagonal: BUY {buy_sym} + SELL {sell_sym}")
 
     mleg_legs = [
-        {"ratio_qty": "1", "side": "buy",  "position_intent": "open", "symbol": buy_sym},
-        {"ratio_qty": "1", "side": "sell", "position_intent": "open", "symbol": sell_sym},
+        {"ratio_qty": "1", "side": "buy",  "symbol": buy_sym},
+        {"ratio_qty": "1", "side": "sell", "symbol": sell_sym},
     ]
     return place_mleg_order(symbol, mleg_legs, "diagonal_spread")
 
@@ -465,6 +527,7 @@ def check_guards(trade, intel):
         return False, f"VIX {macro.get('vix',0):.1f} >= {VIX_HALT}"
     if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
         return False, f"Max loss {trade.get('max_loss_pct',99):.1f}% > {MAX_LOSS_PCT}%"
+    # Debit strategies (diagonal, calendar) have negative estimated_credit — skip credit floor check
     DEBIT_STRATEGIES = {"diagonal_spread", "calendar_spread"}
     if strategy not in DEBIT_STRATEGIES:
         if trade.get("estimated_credit", 0) < MIN_CREDIT:
@@ -612,6 +675,7 @@ def run():
             continue
 
         entry = log_trade(trade, agent_name, fill, intel)
+        post_trade_alert(entry, trade, agent_name)
         executed.append({"entry": entry, "agent": agent_name, "trade": trade})
         time.sleep(1)
 
