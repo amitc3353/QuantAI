@@ -179,3 +179,44 @@ Catches silent pipeline failures within 2 minutes. Before this, the pipeline was
   }
 }
 ```
+
+## Position threshold monitor (Slice D — built 2026-04-17)
+
+### What it does
+Monitors every open agent position every 2 minutes. Executes hard exits when thresholds are breached. Before this, open positions had no automated exit — only manual monitoring by Amit.
+
+### Components
+- **`v2/shared-data/scripts/position_monitor.py`** — standalone script, no dependency on run_pipeline.py
+- **`collect_quantai.py`** (both copies) — `collect_positions()` call removed; position_monitor.py now owns `quantai-positions.json`
+
+### Exit rules (in priority order)
+1. **Hard close**: 3:30 PM ET → close all agent positions
+2. **Expiry proximity**: any leg expires today or tomorrow → close
+3. **Stop loss**: unrealized P&L < −(2 × abs(estimated_credit)) → close
+4. **Profit target**: unrealized P&L ≥ 0.5 × abs(estimated_credit) → close
+
+### How it works
+1. Reads OPEN agent trades from journal
+2. Calls Alpaca `GET /v2/positions` → builds `{occ_symbol: position}` dict
+3. Constructs OCC symbol per leg: `{TICKER}{YYMMDD}{C|P}{strike×1000 zero-padded to 8}`
+   - e.g. XOM 2026-06-18 Call 150.0 → `XOM260618C00150000`
+4. Sums `unrealized_pl` across all matched legs = trade P&L
+5. On exit trigger: builds reversed mleg order (buy↔sell), submits to Alpaca
+6. **Only updates journal if close order succeeds** (atomic JSONL rewrite via `os.replace`)
+7. Syncs Google Sheets, posts Discord alert per closed trade
+8. Always writes `/var/dashboard/state/quantai-positions.json` with real P&L
+
+### Key design decisions
+- If Alpaca API is unavailable: skip cycle entirely (leaves old dashboard, no spurious closes)
+- If close order fails: trade stays OPEN, auto-retried on next 2-min cycle
+- `estimated_credit == 0`: skip credit-based thresholds (hard close and expiry still apply)
+- Missing Alpaca legs (expired/assigned): skip that leg in close order; if all legs missing, skip close and log warning for manual review
+- No `position_intent` on legs — Alpaca rejects it (Bug 2)
+- DRY_RUN mode: `--dry-run` flag, no orders placed, no journal writes, Discord → stdout
+
+### Dashboard state
+File: `/var/dashboard/state/quantai-positions.json`
+Written every cycle with fields: `id, symbol, strategy, source, entry_time, pnl, pnl_pct, status (ok/warning/critical), exit_reason`
+
+### Logs
+- `/root/quantai-v2/shared-data/logs/position_monitor.log`
