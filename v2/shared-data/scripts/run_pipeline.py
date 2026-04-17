@@ -28,7 +28,7 @@ Modes:
 """
 
 import os, sys, subprocess, json
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from zoneinfo import ZoneInfo
 
 # Auto-load .env
@@ -135,6 +135,13 @@ def intel_is_fresh():
     except:
         return False
 
+def write_heartbeat():
+    """Write UTC timestamp to pipeline beat file so heartbeat_monitor can check liveness."""
+    from pathlib import Path
+    beat_dir = Path("/tmp/quantai-heartbeats")
+    beat_dir.mkdir(parents=True, exist_ok=True)
+    (beat_dir / "pipeline.beat").write_text(datetime.now(timezone.utc).isoformat())
+
 # ── MONITOR mode ──────────────────────────────────────────────────────
 def run_monitor():
     log("Running position monitor...")
@@ -232,15 +239,18 @@ if __name__ == "__main__":
     if past_hard_close():
         log("Past 3:30 PM — hard close check")
         run_monitor()
+        write_heartbeat()
         sys.exit(0)
 
     if in_opening_volatility_window():
         log("Opening volatility window (9:30-9:45) — waiting for market to settle")
+        write_heartbeat()
         sys.exit(0)
 
     if past_entry_cutoff():
         # After 3 PM — monitor only, no new entries
         run_monitor()
+        write_heartbeat()
         sys.exit(0)
 
     # Normal market hours — run monitor + consider entry
@@ -248,3 +258,5 @@ if __name__ == "__main__":
 
     if not past_entry_cutoff():
         state = run_entry(state)
+
+    write_heartbeat()

@@ -34,6 +34,7 @@ Cron (every 15m) → run_pipeline.py
 */15 9-16 * * 1-5   run_pipeline.py          # Main pipeline
 5 16 * * 1-5        run_pipeline.py eod      # EOD summary
 30 9 * * 1-5        pre_trade_check.py       # Pre-market
+*/2 * * * *         heartbeat_monitor.py     # Pipeline liveness check
 * * * * *           collect_system.py        # Dashboard collectors
 * * * * *           collect_karna.py
 * * * * *           collect_quantai.py
@@ -138,3 +139,43 @@ CNN endpoint returns HTTP 418 ("I'm a teapot" — bot detection). Code falls bac
 - **Services:** `dashboard-generator` (HTML every 30s), `dashboard-http` (Python HTTP on 127.0.0.1:8080)
 - **Extension model:** Write a JSON state file to `/home/trader/dashboard/state/`, add a render block in `generate.py`
 - **Collectors:** `collect_system.py`, `collect_karna.py`, `collect_quantai.py` — run every minute via cron
+
+## Heartbeat monitoring (Phase B — built 2026-04-17)
+
+### What it does
+Catches silent pipeline failures within 2 minutes. Before this, the pipeline was broken for 2 weeks with no alert.
+
+### Components
+- **`write_heartbeat()`** in `run_pipeline.py` — writes UTC timestamp to `/tmp/quantai-heartbeats/pipeline.beat` at every successful market-hours execution exit point.
+- **`v2/shared-data/scripts/heartbeat_monitor.py`** — reads the beat file, alerts Discord if stale, writes dashboard state.
+
+### Behavior
+- Monitor runs every 2 minutes (all day, all week)
+- During market hours (9–16 ET Mon–Fri): alerts Discord if `pipeline.beat` is missing or older than 20 minutes
+- Outside market hours: writes dashboard state but sends no alerts
+- Alert cooldown: 30 minutes between Discord messages per beat name (prevents spam)
+- Dashboard state: `/var/dashboard/state/quantai-heartbeats.json`
+- Heartbeat log: `/root/quantai-v2/shared-data/logs/heartbeat.log`
+
+### Beat file
+- Path: `/tmp/quantai-heartbeats/pipeline.beat`
+- Format: ISO 8601 UTC timestamp (e.g. `2026-04-17T18:31:54+00:00`)
+- Written by: `run_pipeline.py` (runs as root via cron)
+- Cooldown state: `/tmp/quantai-heartbeats/alert_cooldown.json`
+
+### Dashboard state contract
+```json
+{
+  "last_updated": "<ISO timestamp>",
+  "status": "ok | idle | error",
+  "data": {
+    "market_hours": true,
+    "pipeline": {
+      "status": "ok | stale | missing | unknown",
+      "age_min": 2.3,
+      "last_beat": "<ISO timestamp or null>",
+      "stale_threshold_min": 20
+    }
+  }
+}
+```
