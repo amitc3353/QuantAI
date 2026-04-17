@@ -133,12 +133,24 @@ CNN endpoint returns HTTP 418 ("I'm a teapot" — bot detection). Code falls bac
 - **Paper account equity:** ~$99,368 (as of April 15)
 - **Chain 404 on some tickers:** Fallback to proposed strikes works but skips validation
 
-## Dashboard
-- **Location:** `/home/trader/dashboard/` (KARNA-level, not project-scoped)
+## Dashboard v2 (built 2026-04-17)
+- **Location:** `/var/dashboard/index.html` (served), mirrored collectors in `/home/trader/dashboard/` (not served)
 - **Access:** `https://quantai.tail1465ff.ts.net/` via Tailscale
-- **Services:** `dashboard-generator` (HTML every 30s), `dashboard-http` (Python HTTP on 127.0.0.1:8080)
-- **Extension model:** Write a JSON state file to `/home/trader/dashboard/state/`, add a render block in `generate.py`
-- **Collectors:** `collect_system.py`, `collect_karna.py`, `collect_quantai.py` — run every minute via cron
+- **Architecture:** Single-file React SPA — no build step. CDN-loaded React 18 + Tailwind + Recharts + Mermaid + Babel standalone. Browser transpiles JSX on load.
+- **Polling:** client fetches `/state/*.json` every 30s via `setInterval`. No websockets, no server push.
+- **Tabs:** Live, Agents, System, Workflows, Errors, History. Tab state is client-only (no routing).
+- **Services:** `dashboard-http` (Python http.server on 127.0.0.1:8080) — untouched. `dashboard-generator` — **disabled** (the Python HTML generator is obsolete; index.html is static).
+- **Backups kept:** `/var/dashboard/index.html.bak.2026-04-17`, `/var/dashboard/generate.py.bak.2026-04-17`.
+- **Collectors (all via cron, every 1m unless noted):**
+  - `collect_system.py` → `system.json` (VPS CPU/mem/disk, service health)
+  - `collect_karna.py` → `karna-status.json`, `karna-cost.json`, `karna-background.json`
+  - `collect_quantai.py` → `quantai-metrics.json`, `quantai-data-status.json`, `quantai-alerts.json`, `quantai-timeline.json`, `quantai-window-current.json`
+  - `collect_alpaca.py` → `alpaca-account.json` (equity, day P&L, cash, buying power) + appends to `equity_history.jsonl`
+  - `collect_cron.py` → `cron-status.json` (known job catalog → last-run from log mtime)
+  - `collect_history.py` → `quantai-history.json` (every 5m — journal + equity curve + summary)
+  - `position_monitor.py` owns `quantai-positions.json` (every 2m during market hours, not a "collector")
+- **Env vars for Alpaca collector:** `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` (NOT `APCA_API_KEY_ID`, despite Alpaca's own header naming).
+- **Extension model:** Add a new collector → write JSON to `/var/dashboard/state/` → add a `fetchState` entry and a tab section in `index.html`. No regeneration required.
 
 ## Heartbeat monitoring (Phase B — built 2026-04-17)
 
