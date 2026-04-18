@@ -232,3 +232,43 @@ Written every cycle with fields: `id, symbol, strategy, source, entry_time, pnl,
 
 ### Logs
 - `/root/quantai-v2/shared-data/logs/position_monitor.log`
+
+## Self-learning error system (Phase E — built 2026-04-17)
+
+**Goal:** detect errors in logs, classify against a catalog of known patterns, auto-fix the safe ones, route the rest to Discord with links to runbooks, and grow the catalog automatically each week.
+
+### Components
+
+**`docs/error-catalog.json`** — authoritative catalog of known error patterns.
+Schema: `{id, pattern, is_regex, category, severity, auto_action, description, runbook, first_seen, last_seen, occurrence_count, source}`.
+Optional: `retry_command`, `restart_target`.
+Categories: `recurring` (3+ seen), `novel` (1 seen), `transient` (self-heals).
+Auto-actions: `none` (human), `retry` (re-run retry_command after 60s), `skip` (log and move on), `restart_service` (systemctl restart).
+
+**`docs/runbooks/*.md`** — one markdown file per known error family. Sections: Detection → Diagnosis → Fix → Auto-fixable? → Prevention. Seeded with 7 runbooks at launch.
+
+**`v2/shared-data/scripts/error_detector.py`** — runs every 5 min via cron. Tails the last 500 lines of pipeline.log + heartbeat.log + position_monitor.log, matches against catalog, dispatches auto-actions, updates the catalog atomically, and writes `/var/dashboard/state/quantai-errors.json` for the dashboard. Deduplicates identical patterns within a 30-minute window via `/tmp/quantai-error-dedup.json`.
+
+**`v2/shared-data/scripts/error_learner.py`** — runs Friday 22:00 UTC (6 PM ET). Scans the last 7 days of logs, counts signatures (with numeric/path/hex tokens stripped for stability), auto-appends recurring patterns (3+) as `recurring` with a stub runbook and single-occurrence patterns as `novel`. Bumps occurrence_count on known matches. Posts a weekly digest to Discord.
+
+**`v2/shared-data/scripts/add_error.py`** — CLI for manual catalog additions. Atomic write with `.bak` backup. Rejects duplicate ids unless `--force`.
+
+### Discord routing
+- `auto_action` executed successfully → `#logs` (`DISCORD_WEBHOOK_LOGS`)
+- Known pattern but manual action → `#karna-approvals` (`DISCORD_WEBHOOK_APPROVALS`)
+- Unknown pattern → `#karna-alerts` (`DISCORD_WEBHOOK_ALERTS`)
+- All three env vars fall back to `DISCORD_WEBHOOK_CHAT` if unset.
+
+### Cron
+```
+*/5 * * * *  python3 /home/trader/QuantAI/v2/shared-data/scripts/error_detector.py >> /root/quantai-v2/shared-data/logs/error_detector.log 2>&1
+0 22 * * 5   python3 /home/trader/QuantAI/v2/shared-data/scripts/error_learner.py >> /root/quantai-v2/shared-data/logs/error_learner.log 2>&1
+```
+
+### Dashboard
+- **Errors tab**: 4 summary cards (auto-fixed / known-manual / unknown / catalog size), classified-errors list with severity + classification + action badges and the latest matching log line, plus the existing alerts timeline underneath.
+- **System tab**: cron table auto-includes `error_detector.py` (every 5m) and `error_learner.py` (Fri 6 PM ET) — no dashboard change needed because `collect_cron.py` is catalog-driven.
+- **Workflows tab**: new "Error Learning Loop" collapsible flowchart.
+
+### Why this exists
+Before Phase E, errors only surfaced in pipeline.log — detection required a human tailing logs. The self-learning loop turns log tailing into structured state with automatic remediation for known-safe actions, a runbook pointer for everything else, and a weekly learner that prevents the catalog from going stale as new error patterns appear. Pure Python, no LLM calls.
