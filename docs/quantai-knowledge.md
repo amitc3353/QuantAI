@@ -306,3 +306,82 @@ Or via the MCP server (registered in `.claude/settings.local.json` as `graphify-
 export PATH="$PATH:/home/trader/.local/bin"
 graphify .   # run from inside a Claude Code session
 ```
+
+## Cost discipline (Phase A — built 2026-04-25)
+
+### What it does
+
+Routes every cron-side LLM call through ClawRoute (`localhost:18790`), an
+OpenAI-compatible proxy that classifies requests into 5 tiers and dispatches
+to the cheapest provider that fits each tier. ClawRoute records cost,
+savings, and the original-vs-routed model in `routing_log` (SQLite).
+
+### Components
+
+- `v2/shared-data/scripts/_llm_client.py` — shared shim. Two interfaces:
+  - `Client()` — drop-in for `anthropic.Anthropic` (has `.messages.create()`).
+  - `chat(messages, system, model, max_tokens, ...)` — functional helper.
+    Async-safe via `await asyncio.to_thread(chat, ...)`.
+- ClawRoute service — `systemctl status clawroute`, listens on
+  `127.0.0.1:18790`, dashboard at `http://127.0.0.1:18790/dashboard`,
+  stats JSON at `http://127.0.0.1:18790/stats`.
+- Migrated callers (cron-side):
+  - `debate_chamber.py` (4 sites: proposal, bull, bear, judge)
+  - `self_evolution.py` (4 sites: consolidate, observe, critique, generate)
+
+### Escape valve
+
+Set `LLM_BYPASS_CLAWROUTE=1` in the environment to revert any callsite to
+direct Anthropic API. Use only during incident response when ClawRoute is
+down. The shim picks up the env var at module-import time, so the var must
+be set in the cron entry / systemd unit / shell, not at runtime.
+
+### Tier classification (current ClawRoute config)
+
+| Tier | Primary | Notes |
+|---|---|---|
+| HEARTBEAT | `gemini-2.5-flash-lite` | <30 char messages, status pings |
+| SIMPLE | `deepseek/deepseek-chat` | short questions (V3, deprecating 2026-07-24) |
+| MODERATE | `gemini-2.5-flash` | default |
+| COMPLEX | `claude-sonnet-4-6` | tools present, analytical keywords, >8 messages |
+| FRONTIER | `claude-sonnet-4-6` | code blocks, tool_choice set, >8K context |
+
+The classifier is in ClawRoute's source. Tweaks to thresholds wait until
+1+ week of populated `routing_log` data.
+
+### ClawRoute quirks (worked around in `_llm_client.py`)
+
+1. **Auth middleware 500s on Bearer tokens it doesn't recognize.** The shim
+   omits the `Authorization` header entirely (ClawRoute is localhost-only).
+2. **Lying `content-encoding: gzip` header.** ClawRoute forwards the
+   upstream Google response header verbatim while its own middleware has
+   already decompressed the body. Both `httpx` and `requests` trip on this.
+   The shim uses `httpx.stream(...).iter_raw()` to bypass content-decoding.
+
+If either is fixed in ClawRoute upstream, simplify the shim accordingly.
+
+### Verifying it's working
+
+```bash
+# Stats endpoint shows cost / tier / savings
+curl -s http://127.0.0.1:18790/stats | python3 -m json.tool | head -40
+
+# Most recent routing decisions
+sudo sqlite3 /home/openclaw/.openclaw/workspace/router/data/clawroute.db \
+  "SELECT timestamp, original_model, routed_model, tier, classification_reason, actual_cost_usd, savings_usd FROM routing_log ORDER BY id DESC LIMIT 10"
+
+# Confirm no remaining direct-Anthropic calls in cron-side scripts
+grep -rn "anthropic.Anthropic\|api.anthropic.com" v2/shared-data/scripts/
+# Should match only the bypass branch in _llm_client.py
+```
+
+### Known caveats
+
+- The orchestrator/discord-bot/cto-listener Docker containers do NOT
+  bind-mount their source from the host. Their 7 LLM call sites still call
+  Anthropic directly. Migration is a separate task (image rebuilds + Docker
+  network reconfig so containers can reach ClawRoute on the host).
+- ClawRoute itself has no daily spend cap or kill switch yet (Phase B4).
+- ClawRoute's `routing_log` has no `cache_creation_input_tokens` /
+  `cache_read_input_tokens` columns yet (Phase B3) — caching savings are
+  invisible until that lands.

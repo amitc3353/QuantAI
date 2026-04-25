@@ -34,3 +34,78 @@ code-only commits). LLM extraction rebuilds remain human-initiated.
 **Out of scope for this ADR:**
 - KARNA self-knowledge graph (Use Case B — separate ADR when implemented).
 - Cross-project combined graph (Use Case D — deferred indefinitely).
+
+---
+
+## ADR-002: Cost discipline via ClawRoute as the single LLM ingress
+**Date:** 2026-04-25
+**Status:** Accepted (Phase A1 cron-side shipped; Docker-side deferred to follow-up)
+
+**Context:** Cost discipline ("LLMs only where judgment is needed; cheap models
+for cheap tasks") was a stated principle but had never been audited. Phase-1
+audit found that all 15 LLM call sites in QuantAI bypassed ClawRoute and
+called Anthropic directly. ClawRoute's `routing_log` had been empty for the
+2.5 weeks since service restart. The "ClawRoute will tier our calls" claim
+was fiction. Separately, DeepSeek V3 (used in ClawRoute's MEDIUM tier
+fallback) deprecates 2026-07-24, forcing a V4 migration regardless.
+
+**Decision:** ClawRoute becomes the single LLM ingress for QuantAI. A shared
+`_llm_client.py` shim at `v2/shared-data/scripts/_llm_client.py` exposes two
+interfaces:
+- `Client()` — drop-in replacement for `anthropic.Anthropic` with
+  `.messages.create()` returning `.content[0].text`. Used by SDK-shaped
+  callers (debate_chamber, self_evolution, etc.).
+- `chat(messages, system, model, max_tokens, ...)` — functional helper
+  returning a plain string. Used by aiohttp-shaped callers, async-safe
+  via `await asyncio.to_thread(chat, ...)`.
+
+The shim posts to `http://127.0.0.1:18790/v1/chat/completions` with two
+ClawRoute-specific workarounds: (1) no `Authorization` header (the auth
+middleware 500s on Bearer tokens it doesn't recognize); (2) raw byte reads
+via `httpx.stream(...).iter_raw()` to bypass the lying upstream
+`content-encoding: gzip` header. Both quirks documented inline in the shim.
+
+A single env var `LLM_BYPASS_CLAWROUTE=1` reverts to direct Anthropic API as
+an incident-response escape valve.
+
+**Alternatives considered:**
+- Keep direct-Anthropic, tune prompts: rejected — no audit trail, no
+  per-tier routing, no daily-cap kill switch.
+- Route through LiteLLM (already running at localhost:4000): rejected —
+  duplicate router with a worse tier classifier than ClawRoute's, no
+  integration with the existing dashboard.
+- Per-script `ANTHROPIC_BASE_URL` env override: rejected — SDK doesn't
+  expose the URL override cleanly across all 15 sites, and the shim is the
+  same effort while giving us a single point of control for future logging
+  / caching changes.
+
+**Consequences:**
+- (+) Single observable cost surface; daily caps enforceable in one place.
+- (+) Tier-tuning data accumulates in one DB (`routing_log`).
+- (+) DeepSeek V3→V4 migration handled centrally (no scripts to update).
+- (+) Smoke tests showed ~95% savings vs direct Haiku on small requests
+  (Gemini Flash-Lite via HEARTBEAT tier classification).
+- (-) ClawRoute is a SPOF for LLM traffic. Mitigated by `LLM_BYPASS_CLAWROUTE=1`.
+- (-) Two ClawRoute quirks live in our shim; if either is fixed upstream,
+  remember to simplify.
+- (-) The orchestrator / discord-bot / cto-listener Docker containers do
+  not bind-mount their source from the host, so this migration was scoped
+  to the cron-driven scripts (8 of 15 sites). The remaining 7 Docker-side
+  sites are a separate task.
+
+**Migration status (2026-04-25):**
+- Cron-side (8 sites): migrated.
+  - `v2/shared-data/scripts/debate_chamber.py` (4 sites: proposal, bull, bear, judge)
+  - `v2/shared-data/scripts/self_evolution.py` (4 sites: consolidate, observe, critique, generate)
+- Docker-side (7 sites): deferred to follow-up task.
+  - `orchestrator/{agent1_iron_condor,agent2_covered_call,scheduler,self_improve}.py`
+  - `services/{cto_agent,cto_report}.py`
+  - `discord-bot/cogs/chat_agent.py`
+
+**Out of scope for this ADR:**
+- ClawRoute tier-threshold retuning (defer until 1+ week of populated data).
+- Hardening the embedded API keys in `clawroute.service` / `openclaw.service`
+  systemd units and the LiteLLM `docker run -e` flags (separate task).
+- DeepSeek V3→V4 cutover and Groq Llama 4 Scout addition (Phase B2).
+- Daily spend cap + kill switch (Phase B4).
+- Cost observability cron (Phase B5).
