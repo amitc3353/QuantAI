@@ -66,6 +66,7 @@ info = sofi.info
 
 ## POSITION MONITORING — check EVERY daily brief
 Read the journal at /root/quantai-v2/v2/shared-data/journal/paper/trades.jsonl
+
 to know what positions are currently open. Then check:
 
 ### Open call position check
@@ -244,59 +245,22 @@ Top pick: [TICKER] — [why in 1 sentence]
 
 ## Rules
 - Never make up data. If a fetch fails, say "data unavailable" for that field.
-- Save every brief to /root/quantai-v2/shared-data/cache/sofi_latest.json
-- Save historical briefs to /root/quantai-v2/shared-data/cache/sofi_history/YYYY-MM-DD.json
+- Save every brief to /root/quantai-v2/v2/shared-data/cache/sofi_latest.json
+- Save historical briefs to /root/quantai-v2/v2/shared-data/cache/sofi_history/YYYY-MM-DD.json
 - Keep responses under 2000 characters (Discord limit friendly)
 - When in doubt, recommend HOLD. Amit's strategy is mechanical — don't overthink it.
 
 ## Files you write to
-- /root/quantai-v2/shared-data/cache/sofi_latest.json
-- /root/quantai-v2/shared-data/cache/sofi_history/
+- /root/quantai-v2/v2/shared-data/cache/sofi_latest.json
+- /root/quantai-v2/v2/shared-data/cache/sofi_history/
 
----
+## graphify
 
-## MARKET INTELLIGENCE — read this before every brief
+This project has a graphify knowledge graph at graphify-out/.
 
-The intelligence packet is built by the Orchestrator at 6:20 AM and 1:30 PM.
-Read it to enrich your SOFI briefs and credit spread reports:
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
 
-```bash
-cat /root/quantai-v2/v2/shared-data/cache/market_intelligence.json
-```
-
-Use the packet for:
-- `macro.vix` and `macro.vix_regime` → note regime in your brief header
-- `macro.is_event_day` → flag any economic events in your brief
-- `macro.fear_greed_score` → add market sentiment context
-- `symbols.SOFI` → compare your yfinance fetch against packet data
-- `risk_flags` → add any HALT/WARNING flags to your brief
-
-If packet is older than 3 hours, run it yourself:
-```bash
-python3 /root/quantai-v2/v2/shared-data/scripts/market_intelligence.py pre_market
-```
-
----
-
-## AGENT ALPHA AND BETA AWARENESS
-
-When Amit asks about Agent Alpha or Beta in #research:
-
-Agent Alpha trades bull put spreads and directional strategies across all liquid tickers.
-Agent Beta trades iron condors and range-bound strategies across all liquid tickers.
-
-To check their current positions and performance:
-```python
-import json
-trades = [json.loads(l) for l in open("/root/quantai-v2/shared-data/journal/paper/trades.jsonl") if l.strip()]
-for source, label in [("agent_alpha","Agent Alpha"), ("agent_beta","Agent Beta"), ("manual","Amit")]:
-    stream = [t for t in trades if t.get("source") == source]
-    open_t = [t for t in stream if t.get("status") == "OPEN"]
-    closed = [t for t in stream if t.get("status") == "CLOSED"]
-    wins = len([t for t in closed if (t.get("pnl") or 0) > 0])
-    wr = f"{wins/len(closed)*100:.0f}%" if closed else "N/A"
-    print(f"{label}: {len(open_t)} open | {len(closed)} closed | Win rate: {wr}")
-```
-
-When mentioning Alpha/Beta performance in research briefs, pull actual data
-from the journal rather than estimating.

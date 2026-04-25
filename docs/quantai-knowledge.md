@@ -272,3 +272,37 @@ Auto-actions: `none` (human), `retry` (re-run retry_command after 60s), `skip` (
 
 ### Why this exists
 Before Phase E, errors only surfaced in pipeline.log — detection required a human tailing logs. The self-learning loop turns log tailing into structured state with automatic remediation for known-safe actions, a runbook pointer for everything else, and a weekly learner that prevents the catalog from going stale as new error patterns appear. Pure Python, no LLM calls.
+
+## Querying the architecture
+
+A graphify knowledge graph is maintained at `graphify-out/graph.json` (976 nodes, 1727 edges, 56 communities, 44.8× token compression vs reading raw files).
+
+### How to query
+
+From a Claude Code session with the graph built:
+```
+/graphify query "what gates an order before submission?"
+/graphify path "run_pipeline" "autonomous_execution"
+/graphify explain "run_guard_pipeline"
+```
+
+Or via the MCP server (registered in `.claude/settings.local.json` as `graphify-quantai`), which exposes `query_graph`, `get_node`, `get_neighbors`, `shortest_path`.
+
+### God nodes (highest cross-community centrality)
+- `post()` — bridges 12 communities; every agent uses this for Discord output
+- `run_guard_pipeline()` — core constraint enforcer across execution + monitoring
+- `TradeProposal` — shared data structure linking scanner → debate → execution
+- `build_context()` — pre-trade context builder, touched by Alpha and Beta
+
+### Maintenance commands
+- `graphify update .` — **default**: re-extract only changed files (AST-only for code, LLM for docs). Use after editing one or a few files.
+- `graphify .` — **full rebuild**: only when structure has shifted significantly or `--update` produces stale results. Costs tokens.
+- The git post-commit hook runs `graphify update .` automatically on code-only commits (free, no LLM).
+- After editing runbooks, knowledge.md, or other doc files, run `graphify update .` manually to refresh concept edges.
+
+### Rebuild on clone
+`graph.json` is committed (1.1 MB). If it grows past 2 MB it will be gitignored — in that case rebuild with:
+```bash
+export PATH="$PATH:/home/trader/.local/bin"
+graphify .   # run from inside a Claude Code session
+```

@@ -1,0 +1,44 @@
+# --- Secrets ---
+.env
+.env.*
+*.pem
+*.key
+*secret*
+*credential*
+
+# --- Runtime / data churn ---
+data/
+*.jsonl
+*.log
+v2/shared-data/cache/
+v2/shared-data/logs/
+v2/shared-data/journal/
+
+# --- Backups (cluttering the tree) ---
+*.bak
+*.bak.*
+
+# --- Python / build noise ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# --- Container configs (may reference env vars / secrets) ---
+docker-compose.yml
+docker-compose.yml.*
+Dockerfile*
+
+# --- VCS and tooling ---
+.git/
+.github/
+.claude/
+
+# --- Don't recurse into our own output ---
+graphify-out/
+
+# --- Frontend deps (none today, future-proof) ---
+node_modules/
+dist/
+build/

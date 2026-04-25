@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "graphify-quantai": {
+      "command": "/home/trader/.local/share/pipx/venvs/graphifyy/bin/python",
+      "args": ["-m", "graphify.serve", "/home/trader/QuantAI/graphify-out/graph.json"]
+    }
+  }
+}

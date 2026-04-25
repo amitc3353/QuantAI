@@ -1,189 +1,140 @@
-# CLAUDE.md — QuantAI System Constitution
-# This file governs all Claude Code autonomous operations.
-# Read this FIRST before doing anything.
+# CLAUDE.md — KARNA + QuantAI Project
 
-## What this system is
+## About this project
 
-QuantAI is an autonomous options trading system. Real money will eventually
-be at risk. Every autonomous action must be conservative, reversible, and logged.
-When in doubt — stop, post to Discord, wait for human approval.
+KARNA is a personal AI operations layer running 24/7 on a VPS. QuantAI is an autonomous options trading system — the first project on KARNA's infrastructure. The operator is Amit.
 
----
+## How you work
 
-## Architecture — 4 Docker containers
+You are working on files that are mounted from a remote VPS via SSHFS. Every file change you make is live on the production server immediately. Be careful and deliberate.
 
-| Container | Role | Key files |
-|---|---|---|
-| `trader-discord` | Discord bot, slash commands, chat agent | `discord-bot/` |
-| `trader-guards` | Deterministic rule engine (FastAPI :8100) | `guard-engine/guards.py` |
-| `trader-orchestrator` | APScheduler, all agents, automation | `orchestrator/` |
-| `trader-alpaca` | Alpaca MCP server | `services/alpaca-mcp/` |
+## Prevent accidental damage
 
-**Docker project name:** `quantai`
-**Deploy command:** `docker compose -p quantai build --no-cache [service] && docker compose -p quantai up -d [service]`
-**Logs:** `docker logs trader-orchestrator --since 2h`
+- Before deleting, overwriting, or renaming any existing file, show me what will change and wait for confirmation.
+- Never modify files outside the current working folder unless I explicitly ask you to.
+- Always create a backup before editing production scripts: copy the file with a `.bak.YYYY-MM-DD` suffix before making changes.
+- Never modify `/etc/systemd/system/openclaw.service`. OpenClaw uses `Type=simple` — changing this caused 18 hours of debugging. This is a hard rule.
 
----
+## Keep things organized
 
-## The Three Laws — NEVER violate
+- When creating new files, use the naming format YYYY-MM-DD-descriptive-name for docs and notes.
+- At the end of a task, list all files created or modified with their locations.
+- Commit changes to git with clear, descriptive commit messages.
+- After modifying any workspace files (AGENTS.md, SOUL.md), run: `bash /home/trader/QuantAI/scripts/sync_workspaces.sh`
 
-1. **Every trade passes the guard engine.** No exceptions. Not even "obvious" trades.
-2. **Show your work.** Every fix includes an explanation of root cause and what changed.
-3. **Paper first.** Never modify TRADING_MODE or live API keys.
+## Control the pace of autonomous work
 
----
+- For multi-step tasks, outline your plan first and wait for my approval before executing.
+- After each major step, briefly summarize what you did and what's next.
+- 3-attempt debug budget: if a fix doesn't work after 3 attempts, stop and report what you tried.
 
-## What Claude Code CAN do autonomously
+## SECURITY — NON-NEGOTIABLE
 
-### Bug fixes (no approval needed):
-- Fix Python syntax errors, import errors, NameErrors
-- Fix silent crashes in agents (missing try/except, wrong variable names)
-- Fix Discord embed formatting errors
-- Fix cache file read/write issues
-- Fix scheduler job registration problems
-- Add missing log statements so failures are visible
-- Fix health check false alarms (wrong thresholds, wrong test payloads)
+- **NEVER read, cat, print, or expose .env files, API keys, tokens, or credentials.**
+- **NEVER display contents of `/home/trader/QuantAI/.env` or any file containing secrets.**
+- **NEVER display or read `/home/openclaw/.openclaw/openclaw.json` — it contains Discord bot tokens.**
+- **NEVER include credentials in commit messages, logs, or output.**
+- Credentials exist in environment variables and systemd unit files. You don't need to see them to work.
+- If a script needs a credential, it reads from `os.environ` — you write the code, not the key.
 
-### Investigation (no approval needed):
-- Read any log file or container output
-- Read any source file in the repo
-- Check container health and status
-- Scan GitHub repos and arXiv papers
-- Fetch any public URL for research
-- Run syntax checks: `python3 -c "import ast; ast.parse(open('file.py').read())"`
-- Run guard tests: `cd guard-engine && python -m pytest tests/ -v`
-
-### Always needs approval before executing:
-- Changes to `guard-engine/guards.py` or `configs/guard_config.json`
-- Changes to `configs/agent1_params.json` or `configs/agent2_params.json`
-- Changes to `orchestrator/scheduler.py` job timing
-- Any new `pip install` or `npm install`
-- Any change to `docker-compose.yml`
-- Anything touching `.env` (never touch this file)
-
----
-
-## What Claude Code NEVER does
-
-- Modify `.env` or any file containing API keys
-- Change `TRADING_MODE` from paper to live
-- Modify guard rules without explicit written approval
-- Auto-merge GitHub PRs
-- Execute trades directly (always goes through guard engine)
-- Install packages without approval and security review
-- Delete data files in `data/memory/` or `data/journal/`
-- Expose API keys in logs, Discord messages, or commit messages
-
----
-
-## File structure — what lives where
+## Architecture Overview
 
 ```
-configs/
-  agent1_params.json     <- Agent 1 strategy params (self-improve edits these)
-  agent2_params.json     <- Agent 2 strategy params
-  guard_config.json      <- Trading rules — APPROVAL REQUIRED to change
-  context_weights.json   <- Signal weights (auto-tuned by correlation_analyzer)
-  watchlist.json         <- Symbols with sector classification
-  strategies.json        <- Strategy definitions
-
-services/               <- Intelligence layer (mounted read-only into orchestrator)
-  market_data.py        <- VIX, options chain, IV rank, strike finder
-  macro_data.py         <- FRED + Finnhub
-  sentiment_data.py     <- Put/call ratio, Fear&Greed, VIX term structure
-  flow_detector.py      <- Vol/OI unusual activity + dark pool proxy
-  context_builder.py    <- Pre-trade score 0-100
-  backtester.py         <- Validates param changes before PR creation
-  correlation_analyzer.py <- Signal weight auto-tuning
-  health_monitor.py     <- All health checks
-  cto_agent.py          <- Tech Intelligence Agent (GitHub/arXiv scanner)
-  cto_report.py         <- Weekly CTO reliability report
-
-orchestrator/
-  scheduler.py          <- All 12 cron jobs
-  agent1_iron_condor.py <- Agent 1: 0DTE SPY iron condors
-  agent2_covered_call.py <- Agent 2: weekly covered calls + roll logic
-  self_improve.py       <- PR generation + backtest gate
-
-discord-bot/
-  memory.py             <- Persistent memory
-  cogs/
-    trading.py          <- /buy /sell /journal /performance /lessons
-    infra_agent.py      <- /health /deploy /logs /restart /git
-    chat_agent.py       <- #chat + CTO on-demand
-    options_analysis.py <- /greeks /bull_put /iron_condor
-
-guard-engine/
-  guards.py             <- 16 rules, 44 tests — most critical file
-
-data/
-  memory/paper/         <- agent journals + lessons
-  memory/shared/        <- shared lessons, decisions, events
-  journal/              <- EOD scores, backtest results
-  cache/                <- market data cache files
+Amit (strategy, approvals via phone/Discord)
+  |
+  +-- Cowork (development — you)
+  |
+  +-- VPS (87.99.141.55 / Tailscale 100.84.147.23)
+        |
+        +-- KARNA (OpenClaw agent, Claude Sonnet 4.6)
+        |   +-- Discord bot: #karna-command, #karna-approvals, etc.
+        |
+        +-- QuantAI Pipeline (Python cron, every 15 min during 9-16 ET Mon-Fri)
+        |   +-- market_intelligence.py (yfinance: VIX, prices, technicals)
+        |   +-- scan_options.py (78 tickers x 4 strategies, SLOW: 10-15 min)
+        |   +-- debate_chamber.py (Bull/Bear/Judge LLM debate)
+        |   +-- autonomous_execution.py (mleg orders to Alpaca, journal, sync)
+        |
+        +-- LiteLLM (Docker, localhost:4000)
+        +-- Dashboard (localhost:8080, Tailscale: https://quantai.tail1465ff.ts.net/)
+        +-- Docker legacy (trader-orchestrator, trader-discord, trader-cto, trader-guards)
 ```
 
----
+## Key File Paths (relative to /home/trader/QuantAI/)
 
-## Scheduler — 12 jobs (all times ET)
+### Scripts
+- `v2/shared-data/scripts/run_pipeline.py` — Main cron entry point
+- `v2/shared-data/scripts/market_intelligence.py` — Market data
+- `v2/shared-data/scripts/scan_options.py` — Options scanner
+- `v2/shared-data/scripts/debate_chamber.py` — Trade debate
+- `v2/shared-data/scripts/autonomous_execution.py` — Order execution + journaling
+- `v2/shared-data/scripts/system_test.py` — 43-check health test
 
-| Time | Job | Days |
-|---|---|---|
-| 6:00 AM | CTO Tech Intelligence Scan | Monday |
-| 6:30 AM | Morning Brief + Auto-Proposals | Mon-Fri |
-| 8:00 AM | Daily Digest | Mon-Fri |
-| 9:50 AM | Agent 1: Entry 1 | Mon-Fri |
-| 10:00 AM | Agent 2: Weekly CC Scan | Monday |
-| 11:30 AM | Agent 1: Entry 2 (conditional) | Mon-Fri |
-| Every 5 min | Agent 1 Monitor + Health Check | Market hours |
-| 4:30 PM | EOD Scoring + Lessons + Self-Improve | Mon-Fri |
-| 4:45 PM | Weekly Review + Correlation + CTO Report | Friday |
+### Runtime Data (absolute paths on VPS)
+- `/root/quantai-v2/shared-data/journal/paper/trades.jsonl` — Trade journal
+- `/root/quantai-v2/shared-data/cache/` — Intelligence, debate, scan results
+- `/root/quantai-v2/shared-data/logs/pipeline.log` — Pipeline log
 
----
+### Dashboard
+- `/home/trader/dashboard/` — Generator + collectors
+- `/home/trader/dashboard/state/` — JSON state files
 
-## Known weak points
+### Docs
+- `docs/quantai-knowledge.md` — Living knowledge base
 
-1. Empty options chain — Alpaca paper returns 0 contracts for 0DTE sometimes
-2. Cache staleness — normal before 6:30 AM, not during market hours
-3. Import paths — discord-bot does NOT have services/ mounted
-4. Silent crashes — APScheduler says "executed successfully" even on early return
-5. Guard 422 — means guard is working correctly, not an error
+## Current State (April 16, 2026)
 
----
+- Paper trading on Alpaca (~$99,368 equity)
+- 0 open positions (closed for strategy rework)
+- Pipeline works end-to-end: scan, debate, execute, journal, sync
+- 42/43 system tests passing
+- Dashboard live at https://quantai.tail1465ff.ts.net/
 
-## How to investigate a problem
+## Alpaca API Gotchas
 
-1. `docker logs trader-orchestrator --since 2h 2>&1 | grep -E "ERROR|error|Traceback|failed"`
-2. `docker logs trader-orchestrator 2>&1 | grep "2026-MM-DD HH:MM"`
-3. `ls -la /home/trader/QuantAI/data/memory/paper/`
-4. Read the actual file before proposing any fix
+- mleg orders REQUIRE top-level `"qty": "1"` in payload
+- mleg orders REJECT `"position_intent"` — never include it
+- Options chain: `paper-api.alpaca.markets/v2/options/contracts`
 
----
+## Cron Schedule
 
-## Security rules
+```
+*/15 9-16 * * 1-5   run_pipeline.py
+5 16 * * 1-5        run_pipeline.py eod
+30 9 * * 1-5        pre_trade_check.py
+* * * * *           collect_system.py
+* * * * *           collect_karna.py
+* * * * *           collect_quantai.py
+```
 
-- Stars >500, last commit <6 months, no open CVEs before any new library
-- Pin all versions (== not >=)
-- No auto-install — propose + security assessment + wait for approval
-- New integrations in services/ only
-- Run pip audit before live trading
+## What Needs Building (priority order)
 
----
+1. Heartbeat monitoring (Phase B)
+2. Position threshold monitor (Slice D)
+3. Strategy rework (awaiting Amit's direction)
+4. Error taxonomy + runbooks (Phase E)
 
-## Trade proposal rules
+## Git Rules
 
-Every proposed trade MUST pass guard /check, include max_loss_pct,
-include thesis + invalidation condition, be paper only until validated.
+- **Local `main` on this VPS is the source of truth.** `origin/main` on GitHub is stale and not maintained.
+- Do not `git pull`, `git fetch && merge`, `git rebase`, or `git push` (force or otherwise) against `origin/main`. The two histories diverged 42 local vs 40 remote (common ancestor `c91c801`); ~12 commit pairs are patch-equivalent and ~75 files differ — automatic reconciliation is unsafe.
+- All new work commits to local `main` (or feature branches merged into local `main`). Treat the GitHub remote as a frozen archive.
+- Feature branches, never force-push main.
+- `bash /home/trader/QuantAI/scripts/sync_workspaces.sh` after workspace changes.
 
----
+## Design Principles
 
-## Current state
+- LLMs only where judgment needed. Python for mechanical work.
+- Cost conscious: cheap models for cheap tasks.
+- Data sovereignty: everything on VPS, no external services beyond LLM providers.
+- Approval gates: paper trades auto-execute, code changes need review.
 
-- Mode: PAPER | Auto: ON | Account: $20k | Cost: ~$25/mo
-- Live trading: NOT YET (need 40+ trades, 60%+ win rate)
-- Not yet built: Market Intelligence Agent, Pattern Agent, NautilusTrader
+## graphify
 
-## When unclear — always ask first
+This project has a graphify knowledge graph at graphify-out/.
 
-Post to #chat: what you're planning, what could go wrong, wait for approval.
-Never guess on trading-related changes.
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

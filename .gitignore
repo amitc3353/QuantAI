@@ -17,3 +17,9 @@ build/
 .DS_Store
 *.swp
 *.swo
+
+# graphify build artifacts
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/.graphify_python
