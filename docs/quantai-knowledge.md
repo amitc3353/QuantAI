@@ -385,3 +385,53 @@ grep -rn "anthropic.Anthropic\|api.anthropic.com" v2/shared-data/scripts/
 - ClawRoute's `routing_log` has no `cache_creation_input_tokens` /
   `cache_read_input_tokens` columns yet (Phase B3) — caching savings are
   invisible until that lands.
+
+---
+
+## Cost observability (Phase B5 — built 2026-04-25)
+
+### What it does
+
+Reads ClawRoute's `routing_log` every 15 minutes, computes cost metrics,
+and writes `/var/dashboard/state/clawroute.json`. The dashboard System tab
+shows two new cards: **ClawRoute — Today** and **ClawRoute — 7-Day Rolling**.
+
+Posts a Discord alert to `DISCORD_WEBHOOK_ALERTS` (falls back to
+`DISCORD_WEBHOOK_CHAT`) when today's spend exceeds 2× the 7-day daily
+average (once ≥3 days of baseline data exist), or when the daily budget
+is ≥80% consumed.
+
+### Components
+
+- `/var/dashboard/collect_clawroute.py` — root cron, `*/15 * * * *`.
+  Reads DB directly (no sudo needed since it runs as root).
+  Source copy at `/home/trader/dashboard/collect_clawroute.py`.
+- `/var/dashboard/state/clawroute.json` — state file shape:
+  ```json
+  {
+    "last_updated": "...", "status": "ok|warning|error|idle",
+    "data": {
+      "clawroute_up": true, "daily_budget_usd": 5.0,
+      "today": {"spend_usd": 0.000017, "savings_usd": 0.000326,
+                "calls": 11, "by_tier": {"heartbeat": 0.000012},
+                "escalation_rate_pct": 0.0, "avg_confidence": 0.805,
+                "avg_response_ms": 430, "budget_pct": 0.0},
+      "7d": {"spend_usd": ..., "daily_avg_usd": ...,
+             "calls": ..., "days_with_data": 1}
+    }, "alerts": []
+  }
+  ```
+- Dashboard `index.html` — `ClawRouteCostCard` component in System tab.
+
+### Verifying
+
+```bash
+sudo python3 /var/dashboard/collect_clawroute.py
+cat /var/dashboard/state/clawroute.json | python3 -m json.tool
+# Dashboard System tab at https://quantai.tail1465ff.ts.net/
+```
+
+### Daily budget
+
+`DAILY_BUDGET_USD = 5.0` hardcoded (paper mode). Change to `20.0` when
+live trading begins. Phase B4's kill-switch work will add auto-flip.
