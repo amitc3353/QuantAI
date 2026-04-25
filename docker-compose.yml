@@ -77,23 +77,23 @@ services:
   # ============================================
   # Alpaca MCP Server — Broker bridge
   # ============================================
-  alpaca-mcp:
-    build:
-      context: ./services/alpaca-mcp
-      dockerfile: Dockerfile
-    container_name: trader-alpaca
-    restart: unless-stopped
-    environment:
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
-      - ALPACA_PAPER_TRADE=${ALPACA_PAPER:-true}
-    networks:
-      - trader-net
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+ # alpaca-mcp:
+  #  build:
+   #   context: ./services/alpaca-mcp
+    #  dockerfile: Dockerfile
+   # container_name: trader-alpaca
+   # restart: unless-stopped
+   # environment:
+    #  - ALPACA_API_KEY=${ALPACA_API_KEY}
+     # - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+     # - ALPACA_PAPER_TRADE=${ALPACA_PAPER:-true}
+   # networks:
+    #  - trader-net
+   # healthcheck:
+    #  test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+    #  interval: 30s
+    #  timeout: 10s
+    #  retries: 3
 
   # ============================================
   # CTO Listener — Claude Code Task Runner
@@ -106,10 +106,8 @@ services:
       dockerfile: Dockerfile.cto
     container_name: trader-cto
     restart: unless-stopped
+    env_file: .env
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DISCORD_WEBHOOK_CHAT=${DISCORD_WEBHOOK_CHAT}
-      - DISCORD_WEBHOOK_SYSTEM=${DISCORD_WEBHOOK_SYSTEM}
       - CTO_QUEUE_FILE=/app/data/cto_queue.json
       - CTO_PROJECT_DIR=/app/project
       - CTO_POLL_INTERVAL=2
