@@ -388,7 +388,7 @@ grep -rn "anthropic.Anthropic\|api.anthropic.com" v2/shared-data/scripts/
   bind-mount their source from the host. Their 7 LLM call sites still call
   Anthropic directly. Migration is a separate task (image rebuilds + Docker
   network reconfig so containers can reach ClawRoute on the host).
-- ClawRoute itself has no daily spend cap or kill switch yet (Phase B4).
+- **Phase B4 shipped 2026-04-25** — daily spend cap, kill switch, and 80% Discord alert are live in ClawRoute.
 - ClawRoute's `routing_log` has no `cache_creation_input_tokens` /
   `cache_read_input_tokens` columns yet (Phase B3) — caching savings are
   invisible until that lands.
@@ -441,4 +441,42 @@ cat /var/dashboard/state/clawroute.json | python3 -m json.tool
 ### Daily budget
 
 `DAILY_BUDGET_USD = 5.0` hardcoded (paper mode). Change to `20.0` when
-live trading begins. Phase B4's kill-switch work will add auto-flip.
+live trading begins. See Phase B4 section below.
+
+---
+
+## Daily budget cap + kill switch (Phase B4 — built 2026-04-25)
+
+Three mechanisms in ClawRoute's request handler (`src/server.ts`):
+
+### 1. Operator kill switch
+Create the file `/home/openclaw/.openclaw/KILL_SWITCH` → every LLM call
+returns HTTP 503 immediately (no LLM contact). Remove the file to resume.
+```bash
+sudo touch /home/openclaw/.openclaw/KILL_SWITCH   # halt
+sudo rm   /home/openclaw/.openclaw/KILL_SWITCH   # resume
+```
+
+### 2. Daily spend cap
+`budget.dailyUsd = 5.0` in `config/default.json` (paper mode).
+When today's `SUM(actual_cost_usd)` in `routing_log` ≥ cap, every
+request returns HTTP 429 with `code: daily_budget_exhausted`.
+Resets automatically at UTC midnight.
+
+**To change the cap:**
+- Edit `/home/openclaw/.openclaw/workspace/router/config/default.json`
+  → `"budget": {"dailyUsd": 20.0, ...}`
+- Or set env var `CLAWROUTE_DAILY_BUDGET_USD=20.0` in
+  `/etc/karna/secrets.env` (no rebuild needed for env var change, just `systemctl restart clawroute`)
+- Rebuild required for config.json change: `cd /home/openclaw/.openclaw/workspace/router && sudo -u openclaw npm run build && sudo systemctl restart clawroute`
+
+### 3. 80% Discord alert
+When today's spend crosses 80% of the daily cap, ClawRoute posts to
+`DISCORD_WEBHOOK_ALERTS` (loaded from `/etc/karna/secrets.env`).
+At most one alert per UTC day.
+
+### How it was tested
+- Kill switch: `sudo touch KILL_SWITCH` → verified HTTP 503 → `sudo rm KILL_SWITCH`
+- Budget config: verified via `/api/config` endpoint shows `dailyUsd: 5`
+- Discord: `discordWebhook: SET` confirmed after DISCORD_WEBHOOK_ALERTS added to secrets.env
+- Normal routing: still routes to Groq HEARTBEAT post-deployment
