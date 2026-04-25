@@ -336,18 +336,25 @@ direct Anthropic API. Use only during incident response when ClawRoute is
 down. The shim picks up the env var at module-import time, so the var must
 be set in the cron entry / systemd unit / shell, not at runtime.
 
-### Tier classification (current ClawRoute config)
+### Tier classification (current ClawRoute config — updated 2026-04-25)
 
-| Tier | Primary | Notes |
-|---|---|---|
-| HEARTBEAT | `gemini-2.5-flash-lite` | <30 char messages, status pings |
-| SIMPLE | `deepseek/deepseek-chat` | short questions (V3, deprecating 2026-07-24) |
-| MODERATE | `gemini-2.5-flash` | default |
-| COMPLEX | `claude-sonnet-4-6` | tools present, analytical keywords, >8 messages |
-| FRONTIER | `claude-sonnet-4-6` | code blocks, tool_choice set, >8K context |
+| Tier | Primary | Fallback | Notes |
+|---|---|---|---|
+| HEARTBEAT | `gemini-2.5-flash-lite` | `deepseek-v4-flash` | <30 char messages, status pings |
+| SIMPLE | `deepseek-v4-flash` | `gemini-2.5-flash` | 30-80 char questions (V4, migrated 2026-04-25) |
+| MODERATE | `gemini-2.5-flash` | `claude-haiku-4-5` | default tier |
+| COMPLEX | `claude-sonnet-4-6` | `gemini-2.5-flash` | tools present, analytical keywords |
+| FRONTIER | `claude-sonnet-4-6` | `deepseek-v4-flash` | code blocks, tool_choice, >8K context |
 
-The classifier is in ClawRoute's source. Tweaks to thresholds wait until
-1+ week of populated `routing_log` data.
+**Groq Llama 4 Scout** is registered in ClawRoute's model registry as
+`groq/meta-llama/llama-4-scout-17b-16e-instruct` ($0.11/$0.34 per 1M).
+It is ready to use but HEARTBEAT primary swap to Groq is pending
+`GROQ_API_KEY` being added to `/etc/systemd/system/clawroute.service`.
+Once the key is added: restart clawroute, then update `config/default.json`
+heartbeat primary to `groq/meta-llama/llama-4-scout-17b-16e-instruct`.
+
+The classifier is in ClawRoute's source. Tier-threshold retuning deferred
+until ≥1 week of populated `routing_log` data.
 
 ### ClawRoute quirks (worked around in `_llm_client.py`)
 

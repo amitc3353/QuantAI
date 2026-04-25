@@ -106,6 +106,14 @@ an incident-response escape valve.
 - ClawRoute tier-threshold retuning (defer until 1+ week of populated data).
 - Hardening the embedded API keys in `clawroute.service` / `openclaw.service`
   systemd units and the LiteLLM `docker run -e` flags (separate task).
-- DeepSeek V3→V4 cutover and Groq Llama 4 Scout addition (Phase B2).
 - Daily spend cap + kill switch (Phase B4).
-- Cost observability cron (Phase B5).
+
+**Phase B2 (shipped 2026-04-25):** DeepSeek V3→V4 migrated. ClawRoute
+`config/default.json` updated: SIMPLE primary is now `deepseek/deepseek-v4-flash`,
+HEARTBEAT/FRONTIER fallbacks also switched to V4. Groq Llama 4 Scout
+(`$0.11/$0.34/1M`) added to ClawRoute source + model registry (TypeScript
+rebuild done). HEARTBEAT Groq swap pending `GROQ_API_KEY` in clawroute.service.
+
+**Phase B5 (shipped 2026-04-25):** Cost cron + dashboard cards live.
+`/var/dashboard/collect_clawroute.py` runs every 15 min, writes
+`clawroute.json`, Discord-alerts on spend spikes.
