@@ -11,6 +11,7 @@ import json, os, sys, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from _llm_client import Client
+from _debate_cases import build_case
 
 # Auto-load .env from repo root
 import pathlib
@@ -263,21 +264,9 @@ for prop in proposals:
         f"Market: VIX {macro.get('vix',0):.1f} ({macro.get('vix_regime','?')})"
     )
 
-    bull_resp = client.messages.create(
-        model=HAIKU, max_tokens=350,
-        system="You are the Bull Agent. Make the STRONGEST 3-5 bullet-point case FOR this trade. Use specific numbers. Be direct.",
-        messages=[{"role":"user","content":trade_desc}]
-    )
-    time.sleep(0.5)
-
-    bear_resp = client.messages.create(
-        model=HAIKU, max_tokens=350,
-        system="You are the Bear Agent. Make the STRONGEST 3-5 bullet-point case AGAINST this trade. Identify every real risk. Be brutal and specific.",
-        messages=[{"role":"user","content":trade_desc}]
-    )
-    time.sleep(0.5)
-
-    bull_bear_results.append((bull_resp.content[0].text.strip(), bear_resp.content[0].text.strip()))
+    bull_case = build_case("bull", prop, macro, regime, flags)
+    bear_case = build_case("bear", prop, macro, regime, flags)
+    bull_bear_results.append((bull_case, bear_case))
     print(f"[debate]   {prop.get('id','?')} {prop.get('symbol','?')} — Bull/Bear done")
 
 # ─────────────────────────────────────────────────────────────────────

@@ -142,22 +142,41 @@ else:
     current_config = {}
 
 # ─────────────────────────────────────────────────────────────────────
-# STEP 1: OBSERVE
+# STEP 1: OBSERVE (pure-Python — no LLM token cost)
 # ─────────────────────────────────────────────────────────────────────
+def _compute_observations(entries, score):
+    if not entries:
+        return {"correction_needed": False, "trades_today": 0}
+    closed = [e for e in entries if e.get("status") == "CLOSED"]
+    stop_outs          = sum(1 for e in closed if e.get("exit_reason") in ("stop_loss", "stop_out", "hard_stop"))
+    profit_targets_hit = sum(1 for e in closed if e.get("exit_reason") in ("profit_target", "profit_target_hit", "take_profit"))
+    time_closes        = sum(1 for e in closed if e.get("exit_reason") in ("hard_close_15_30", "time_close", "expiry", "hard_close"))
+    winners            = sum(1 for e in closed if (e.get("pnl") or 0) > 0)
+    win_rate           = winners / len(closed) if closed else 0.0
+    credits            = [abs(e.get("estimated_credit", 0)) for e in entries if e.get("estimated_credit")]
+    avg_credit_cents   = int(sum(credits) / len(credits) * 100) if credits else 0
+    obs = []
+    if stop_outs:           obs.append(f"{stop_outs}/{len(entries)} trades hit stop loss")
+    if profit_targets_hit:  obs.append(f"{profit_targets_hit}/{len(entries)} trades hit profit target")
+    if time_closes:         obs.append(f"{time_closes} positions closed at hard time stop (15:30)")
+    if closed:              obs.append(f"Win rate: {win_rate:.0%} ({winners}/{len(closed)} closed trades profitable)")
+    if avg_credit_cents:    obs.append(f"Average credit/debit: ${avg_credit_cents/100:.2f}")
+    if not obs:             obs.append(f"EOD score {score:.0f} — {len(entries)} trades recorded")
+    correction = (win_rate < 0.5 and len(closed) >= 2) or stop_outs > 1 or score < 70
+    if stop_outs > 1:                        issue = "high_stop_loss_rate"
+    elif win_rate < 0.5 and len(closed) >= 2: issue = "low_win_rate"
+    elif time_closes > 1:                     issue = "multiple_time_closes"
+    elif score < 70:                          issue = "low_eod_score"
+    else:                                     issue = "none"
+    return {
+        "win_rate_today": round(win_rate, 2), "trades_today": len(entries),
+        "stop_outs": stop_outs, "profit_targets_hit": profit_targets_hit,
+        "time_closes": time_closes, "avg_credit_cents": avg_credit_cents,
+        "observations": obs, "correction_needed": correction, "primary_issue": issue,
+    }
+
 print("[evolution] Step 1: Observing...")
-obs_resp = client.messages.create(
-    model=HAIKU, max_tokens=600,
-    system="""Extract structured observations from today's trade journal.
-Output ONLY valid JSON:
-{"win_rate_today":0.67,"trades_today":3,"stop_outs":1,"profit_targets_hit":2,"time_closes":0,"avg_credit_cents":72,"observations":["Entry 1 won 2/2. Entry 2 lost 1/1 (credit too thin at $0.45)."],"correction_needed":true,"primary_issue":"entry_2_credit_too_thin"}""",
-    messages=[{"role":"user","content":f"Today's trades:\n{json.dumps(today_entries,indent=2)}\n\nEOD Score: {eod_score}"}]
-)
-try:
-    obs_raw = obs_resp.content[0].text.strip().replace("```json","").replace("```","")
-    observation = json.loads(obs_raw)
-except Exception as e:
-    print(f"[evolution] Observe parse error: {e}")
-    observation = {"correction_needed": False}
+observation = _compute_observations(today_entries, eod_score)
 
 # Save observation
 with open(f"{LOGS}/evolution_observations.jsonl","a") as f:
