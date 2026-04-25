@@ -389,9 +389,9 @@ grep -rn "anthropic.Anthropic\|api.anthropic.com" v2/shared-data/scripts/
   Anthropic directly. Migration is a separate task (image rebuilds + Docker
   network reconfig so containers can reach ClawRoute on the host).
 - **Phase B4 shipped 2026-04-25** — daily spend cap, kill switch, and 80% Discord alert are live in ClawRoute.
-- ClawRoute's `routing_log` has no `cache_creation_input_tokens` /
-  `cache_read_input_tokens` columns yet (Phase B3) — caching savings are
-  invisible until that lands.
+- **Phase B3 shipped 2026-04-25** — `routing_log` now has `cache_creation_input_tokens` and `cache_read_input_tokens` columns. Caching savings are now tracked.
+- **Phase A3 shipped 2026-04-25** — All Anthropic calls through ClawRoute now inject `cache_control: {type: "ephemeral"}` on the system message and send `anthropic-beta: prompt-caching-2024-07-31`. Cache tokens appear in `routing_log` once system prompts exceed Anthropic's 1024-token cache minimum.
+- **ANTHROPIC_API_KEY in `/etc/karna/secrets.env`** was stale. Fixed 2026-04-25 — synced from QuantAI `.env`. ClawRoute now routes Anthropic COMPLEX/FRONTIER calls successfully.
 
 ---
 
