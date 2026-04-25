@@ -9,7 +9,7 @@ Usage: python3 self_evolution.py [eod_score] [--consolidate]
 import json, os, sys, re, subprocess
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import anthropic
+from _llm_client import Client
 
 # Auto-load .env from repo root
 import pathlib
@@ -37,7 +37,7 @@ os.makedirs(LOGS, exist_ok=True)
 eod_score    = float(sys.argv[1]) if len(sys.argv) > 1 else 100.0
 consolidate  = "--consolidate" in sys.argv
 
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
+client = Client()
 SONNET = "claude-sonnet-4-5"
 HAIKU  = "claude-haiku-4-5-20251001"
 

@@ -10,7 +10,7 @@ Usage: python3 debate_chamber.py [pre_market|mid_session]
 import json, os, sys, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import anthropic
+from _llm_client import Client
 
 # Auto-load .env from repo root
 import pathlib
@@ -37,7 +37,7 @@ os.makedirs(LOGS, exist_ok=True)
 now_et = datetime.now(ET)
 hour = now_et.hour
 session = "pre_market" if hour < 9 else "morning" if hour < 12 else "afternoon" if hour < 15 else "end_of_day"
-client  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+client = Client()
 
 SONNET = "claude-sonnet-4-5"
 HAIKU  = "claude-haiku-4-5-20251001"
