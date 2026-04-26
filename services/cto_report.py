@@ -153,8 +153,8 @@ def collect_eod_scores(days: int = 7) -> dict:
         except Exception:
             continue
 
-    # Compute averages
-    for key in scores:
+    # Compute averages — iterate over a snapshot to avoid mutating dict mid-loop
+    for key in list(scores):
         valid = [s["score"] for s in scores[key] if s.get("score") is not None]
         scores[f"{key}_avg"] = round(sum(valid) / len(valid), 1) if valid else None
 

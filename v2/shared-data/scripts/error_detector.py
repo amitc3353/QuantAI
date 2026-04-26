@@ -218,34 +218,30 @@ def mark_alerted(key, dedup):
 
 # --- Discord ---------------------------------------------------------
 
-WEBHOOK_ENV_BY_CHANNEL = {
-    "logs": ("DISCORD_WEBHOOK_LOGS", "DISCORD_WEBHOOK_CHAT"),
-    "approvals": ("DISCORD_WEBHOOK_APPROVALS", "DISCORD_WEBHOOK_CHAT"),
-    "alerts": ("DISCORD_WEBHOOK_ALERTS", "DISCORD_WEBHOOK_CHAT"),
-}
+# Two webhooks:
+#   DISCORD_WEBHOOK_CHAT   → informational (known + auto-fixed errors)
+#   DISCORD_WEBHOOK_ALERTS → unknown + critical errors (#alerts channel)
+# If DISCORD_WEBHOOK_ALERTS is unset, alerts fall back to DISCORD_WEBHOOK_CHAT.
 
-
-def post_discord(channel, msg):
-    """Post to a logical channel; channel-specific env var wins, else CHAT webhook."""
-    envs = WEBHOOK_ENV_BY_CHANNEL.get(channel, ("DISCORD_WEBHOOK_CHAT",))
-    url = ""
-    for e in envs:
-        url = os.environ.get(e, "")
-        if url:
-            break
+def post_discord(level, msg):
+    """level is 'chat' (informational) or 'alert' (unknown/critical)."""
+    chat_url = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
+    alert_url = os.environ.get("DISCORD_WEBHOOK_ALERTS", "") or chat_url
+    url = alert_url if level == "alert" else chat_url
     if not url:
-        log(f"WARN: no Discord webhook configured (tried {envs}); skipping post")
+        log("WARN: no Discord webhook configured (DISCORD_WEBHOOK_CHAT unset); skipping post")
         return False
     if DRY_RUN:
-        log(f"[DRY] would post [#{channel}]: {msg[:120]}")
+        log(f"[DRY] would post [{level}]: {msg[:120]}")
         return True
-    payload = json.dumps({"content": f"[#{channel}] {msg}"}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    prefix = "🚨" if level == "alert" else "📋"
+    payload = json.dumps({"content": f"{prefix} {msg}"}).encode()
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "User-Agent": "QuantAI-ErrorDetector/1.0"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status in (200, 204)
     except Exception as e:
-        log(f"WARN: Discord POST failed ({channel}): {e}")
+        log(f"WARN: Discord POST failed ({level}): {e}")
         return False
 
 
@@ -343,20 +339,19 @@ def handle_known(entry, info, catalog_map, dedup, dashboard_events):
 
     action_result = None
     action_detail = ""
+    severity = entry.get("severity", "?")
     if action in AUTO_ACTIONS:
         action_result, action_detail = AUTO_ACTIONS[action](entry, line)
-        channel = "logs"
         if should_alert(f"known:{eid}", dedup):
-            post_discord(channel, f"auto-fixed known error `{eid}` ({action}): {action_detail}. Line: {line[:200]}")
+            post_discord("chat", f"auto-fixed known error `{eid}` ({action}): {action_detail}. Line: {line[:200]}")
             mark_alerted(f"known:{eid}", dedup)
     elif action == "none":
-        channel = "approvals"
+        # Critical known errors escalate to #alerts; lesser severities stay informational.
+        level = "alert" if severity == "critical" else "chat"
         if should_alert(f"known:{eid}", dedup):
             runbook = entry.get("runbook", "")
-            post_discord(channel, f"known error `{eid}` (severity={entry.get('severity','?')}). Runbook: `{runbook}`. Line: {line[:200]}")
+            post_discord(level, f"known error `{eid}` (severity={severity}). Runbook: `{runbook}`. Line: {line[:200]}")
             mark_alerted(f"known:{eid}", dedup)
-    else:
-        channel = "logs"
 
     # update catalog aggregates
     target = catalog_map.get(eid)
@@ -386,7 +381,7 @@ def handle_unknown(signature, info, dedup, dashboard_events):
     count = info["count"]
     key = f"unknown:{signature[:100]}"
     if should_alert(key, dedup):
-        post_discord("alerts", f"UNKNOWN error detected (source={source}, seen {count}x this window). Needs investigation: {line[:300]}")
+        post_discord("alert", f"UNKNOWN error detected (source={source}, seen {count}x this window). Needs investigation: {line[:300]}")
         mark_alerted(key, dedup)
 
     dashboard_events.append({
