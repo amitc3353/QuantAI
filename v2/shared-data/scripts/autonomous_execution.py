@@ -1,5 +1,6 @@
 
 import logging
+import sys
 sys.path.insert(0, '/home/trader/QuantAI/v2/shared-data/scripts')
 from _logger import setup as _logger_setup
 _logger_setup('autonomous_execution')

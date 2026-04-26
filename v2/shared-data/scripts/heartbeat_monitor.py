@@ -44,13 +44,17 @@ COOLDOWN_FILE = BEAT_DIR / "alert_cooldown.json"
 
 STALE_MIN = 20       # pipeline beat older than this triggers alert
 COOLDOWN_MIN = 30    # minimum minutes between Discord alerts per beat name
+OFF_HOURS_LOG_INTERVAL_MIN = 60   # off-hours: log status line at most this often
+LOG_THROTTLE_FILE = Path("/tmp/quantai-heartbeat-last-log.json")
 
 
 def is_market_hours():
+    """NYSE equity options hours: 09:30 → 16:00 ET, Mon-Fri."""
     now = datetime.now(ET)
     if now.weekday() >= 5:
         return False
-    return 9 <= now.hour < 16
+    h, m = now.hour, now.minute
+    return (h == 9 and m >= 30) or (10 <= h < 16)
 
 
 def read_beat(name):
@@ -105,6 +109,45 @@ def post_discord(msg):
         logging.warning("Discord post failed (heartbeat alert)")
 
 
+def should_print_status(beat_status: str, market: bool) -> bool:
+    """Decide whether to print the pipeline-beat status line this cron tick.
+    During market hours: always print (every 2 min — no spam since the operator
+    cares about that data). Off-hours: print only on status change or once per
+    OFF_HOURS_LOG_INTERVAL_MIN.
+    Fail-open: any IO error returns True so we never silently lose forensic info.
+    """
+    if market:
+        return True
+    try:
+        if not LOG_THROTTLE_FILE.exists():
+            return True
+        data = json.loads(LOG_THROTTLE_FILE.read_text())
+        last_status = data.get("last_status")
+        last_iso = data.get("last_log_at")
+        if last_status != beat_status:
+            return True
+        if not last_iso:
+            return True
+        last = datetime.fromisoformat(last_iso)
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        elapsed_min = (datetime.now(timezone.utc) - last).total_seconds() / 60.0
+        return elapsed_min >= OFF_HOURS_LOG_INTERVAL_MIN
+    except Exception:
+        return True
+
+
+def record_log(beat_status: str):
+    """Persist the last-print timestamp + status. Failure is non-fatal."""
+    try:
+        LOG_THROTTLE_FILE.write_text(json.dumps({
+            "last_log_at": datetime.now(timezone.utc).isoformat(),
+            "last_status": beat_status,
+        }))
+    except Exception:
+        pass
+
+
 def main():
     BEAT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(ET)
@@ -122,9 +165,11 @@ def main():
         age_min = (now_utc - beat).total_seconds() / 60
         beat_status = "stale" if age_min > STALE_MIN else "ok"
 
-    print(f"[{now.strftime('%H:%M ET')}] pipeline beat={beat_status}"
-          + (f" age={age_min:.1f}m" if age_min is not None else "")
-          + f" market={market}")
+    if should_print_status(beat_status, market):
+        print(f"[{now.strftime('%H:%M ET')}] pipeline beat={beat_status}"
+              + (f" age={age_min:.1f}m" if age_min is not None else "")
+              + f" market={market}")
+        record_log(beat_status)
 
     # --- Alert if stale/missing during market hours ---
     if market and beat_status in ("missing", "stale") and cooldown_ok("pipeline"):

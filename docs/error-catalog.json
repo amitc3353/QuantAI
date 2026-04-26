@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-04-26T11:45:01.411256-04:00",
+  "last_updated": "2026-04-26",
   "description": "QuantAI error catalog. Each entry classifies a known error pattern, links to a runbook, and optionally specifies an auto-fix action. Patterns are case-insensitive substrings unless the entry sets is_regex=true. Categories: recurring (seen 3+ times), novel (seen once), transient (self-heals). Auto-actions: retry, restart_service, skip, none.",
   "errors": [
     {
@@ -61,12 +61,12 @@
     },
     {
       "id": "pipeline-silent-stale",
-      "pattern": "pipeline beat=stale",
-      "is_regex": false,
+      "pattern": "pipeline beat=(stale|missing).*market=True",
+      "is_regex": true,
       "category": "recurring",
       "severity": "critical",
       "auto_action": "none",
-      "description": "Heartbeat monitor detected pipeline.beat older than 20m during market hours. Pipeline may have stopped firing.",
+      "description": "Heartbeat monitor detected pipeline.beat older than 20m DURING market hours. Pipeline may have stopped firing \u2014 actionable.",
       "runbook": "runbooks/runbook-pipeline-silent-fail.md",
       "first_seen": "2026-04-17",
       "last_seen": "2026-04-26",
@@ -450,6 +450,20 @@
       "last_seen": "2026-04-24",
       "occurrence_count": 3,
       "source": "learned"
+    },
+    {
+      "id": "pipeline-stale-off-hours",
+      "pattern": "pipeline beat=(stale|missing).*market=False",
+      "is_regex": true,
+      "category": "informational",
+      "severity": "info",
+      "auto_action": "none",
+      "description": "Pipeline beat is stale because market is closed. Expected \u2014 not an incident.",
+      "runbook": "",
+      "first_seen": "2026-04-26",
+      "last_seen": "2026-04-26",
+      "occurrence_count": 0,
+      "source": "seeded:heartbeat.log"
     }
   ]
 }

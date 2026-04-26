@@ -1,5 +1,6 @@
 
 import logging
+import sys
 sys.path.insert(0, '/home/trader/QuantAI/v2/shared-data/scripts')
 from _logger import setup as _logger_setup
 _logger_setup('position_monitor')
@@ -492,6 +493,24 @@ def main():
         }
         closed_trades.append((t, reason, pnl))
         attempts.pop(tid, None)
+        # Code-resolve the centralized-logger entries for the close-failure pattern.
+        # If the close succeeded, those errors are stale by definition. If they
+        # recur, the resurfacing rule creates fresh rows.
+        try:
+            sys.path.insert(0, '/var/dashboard')
+            from lib_errors import resolve_catalog
+            resolve_catalog("recurring-3c6683b1", by="code")  # underlying mleg-legs error
+            # Per-symbol echoes (A008/A009/A010 mapped 1:1 from earlier session)
+            tid_to_catalog = {
+                "A008": "recurring-74290d3d",
+                "A009": "recurring-09cfb5d0",
+                "A010": "recurring-2cf36ff6",
+            }
+            cat_id = tid_to_catalog.get(tid)
+            if cat_id:
+                resolve_catalog(cat_id, by="code")
+        except Exception as _resolve_err:
+            log(f"  WARN: resolve_catalog after close failed: {_resolve_err}")
 
     if market_open:
         _save_close_attempts(attempts)
