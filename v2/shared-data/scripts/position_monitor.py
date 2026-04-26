@@ -1,3 +1,9 @@
+
+import logging
+sys.path.insert(0, '/home/trader/QuantAI/v2/shared-data/scripts')
+from _logger import setup as _logger_setup
+_logger_setup('position_monitor')
+
 #!/usr/bin/env python3
 """
 QuantAI Position Threshold Monitor (Slice D)
@@ -45,7 +51,7 @@ ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
 ALPACA_BASE   = "https://paper-api.alpaca.markets"
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
 
 JOURNAL   = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
@@ -251,6 +257,7 @@ def place_close_order(trade, legs):
             return result
         msg = result.get("message", str(result))[:200]
         log(f"  Close order FAILED {r.status_code} ({len(legs)}-leg): {msg}")
+        logging.error("Close order FAILED %s (%d-leg): %s", r.status_code, len(legs), msg[:160])
         return None
     except Exception as e:
         log(f"  Close order exception: {e}")
@@ -443,6 +450,7 @@ def main():
         legs = build_closing_legs(t, alpaca_pos)
         if not legs:
             log(f"  No active Alpaca legs for {tid} — already closed on broker; marking journal CLOSED")
+            logging.warning("No active Alpaca legs for %s — broker already closed (journal repaired)", tid)
             credit = abs(t.get("estimated_credit") or 0)
             pnl_pct = round(pnl / credit, 4) if credit else 0.0
             journal_updates[tid] = {
@@ -461,8 +469,10 @@ def main():
         if order is None:
             attempts[tid] = prior + 1
             log(f"  Close order failed for {tid} (attempt {attempts[tid]}/{MAX_CLOSE_ATTEMPTS}) — will retry next cycle")
+            logging.warning("Close order failed for %s (attempt %d/%d)", tid, attempts[tid], MAX_CLOSE_ATTEMPTS)
             if attempts[tid] >= MAX_CLOSE_ATTEMPTS:
                 log(f"  GIVING UP on {tid} after {MAX_CLOSE_ATTEMPTS} attempts — manual review needed")
+                logging.error("Position close gave up after %d attempts on %s — manual review", MAX_CLOSE_ATTEMPTS, tid)
                 post_discord(
                     f"⚠️ Position close gave up after {MAX_CLOSE_ATTEMPTS} attempts: "
                     f"`{tid}` {t.get('symbol','?')} {(t.get('strategy') or '').upper()} — manual review"

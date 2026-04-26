@@ -218,7 +218,7 @@ def mark_alerted(key, dedup):
 
 # --- Discord ---------------------------------------------------------
 
-# Discord posting via bot token (DISCORD_TOKEN_ORCHESTRATOR + DISCORD_CHANNEL_ALERTS).
+# Discord posting via bot token (DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ALERTS).
 # Webhooks are decommissioned. All levels post to the same channel; the prefix
 # emoji distinguishes informational from critical at a glance.
 

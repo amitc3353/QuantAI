@@ -1,7 +1,7 @@
 """Single Discord posting surface for v2 cron scripts. Bot-token only.
 
 Use post_to_channel(channel_id, msg) from any v2 cron script. Reads the
-DISCORD_TOKEN_ORCHESTRATOR env var (same token the v2 scripts already use
+DISCORD_BOT_TOKEN env var (same token the v2 scripts already use
 for direct bot posting). No webhook fallback — webhooks are decommissioned.
 
 Returns True on a 2xx response, False otherwise (caller decides whether to log).
@@ -9,7 +9,7 @@ Returns True on a 2xx response, False otherwise (caller decides whether to log).
 import os
 import requests
 
-_BOT_TOKEN = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
+_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 
 
 def post_to_channel(channel_id: str, msg: str) -> bool:

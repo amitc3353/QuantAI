@@ -1,3 +1,9 @@
+
+import logging
+sys.path.insert(0, '/home/trader/QuantAI/v2/shared-data/scripts')
+from _logger import setup as _logger_setup
+_logger_setup('autonomous_execution')
+
 #!/usr/bin/env python3
 """
 QuantAI Autonomous Execution Engine
@@ -48,7 +54,7 @@ LOGS    = "/root/quantai-v2/shared-data/logs"
 SCRIPTS = "/home/trader/QuantAI/v2/shared-data/scripts"
 
 # Alert channel — post trade notifications here
-DISCORD_BOT_TOKEN    = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
+DISCORD_BOT_TOKEN    = os.environ.get("DISCORD_BOT_TOKEN", "")
 DISCORD_ALERTS_CH    = os.environ["DISCORD_CHANNEL_ALERTS"]
 
 os.makedirs(LOGS, exist_ok=True)
@@ -649,6 +655,7 @@ def run():
         guard_ok, reason = check_guards(trade, intel)
         if not guard_ok:
             log(f"  ❌ REJECTED: {reason}")
+            logging.warning("Trade rejected: %s", reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": reason})
             continue
 

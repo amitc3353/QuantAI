@@ -1,3 +1,10 @@
+
+import logging
+import sys
+sys.path.insert(0, '/home/trader/QuantAI/v2/shared-data/scripts')
+from _logger import setup as _logger_setup
+_logger_setup('heartbeat_monitor')
+
 #!/usr/bin/env python3
 """
 QuantAI Heartbeat Monitor
@@ -92,10 +99,10 @@ def post_discord(msg):
     from _discord import post_to_channel
     ch = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
     if not ch:
-        print("WARN: DISCORD_CHANNEL_ALERTS not set, skipping alert")
+        logging.warning("DISCORD_CHANNEL_ALERTS not set; alert skipped")
         return
     if not post_to_channel(ch, msg):
-        print("WARN: Discord post failed")
+        logging.warning("Discord post failed (heartbeat alert)")
 
 
 def main():

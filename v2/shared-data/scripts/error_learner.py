@@ -213,24 +213,51 @@ def post_discord(msg):
 
 def main():
     log(f"error_learner start {'[DRY-RUN]' if DRY_RUN else ''}")
-    cutoff = now_et() - timedelta(days=LOOKBACK_DAYS)
 
-    # 1. Collect candidate error lines across logs.
-    lines = []
-    for p in LOGS:
-        lines.extend(tail_since(p, cutoff))
-    error_lines = [ln for ln in lines if looks_like_error(ln)]
-    log(f"candidate error lines in last {LOOKBACK_DAYS}d: {len(error_lines)}")
+    # Source data: /var/dashboard/errors.db, populated by collect_errors.py every
+    # 2 minutes. We read all events from the last LOOKBACK_DAYS and group by
+    # signature_hash. Pre-2026-04-26 this script tail-parsed text logs; we
+    # migrated to the DB so the learner sees journalctl + docker + syslog +
+    # pyapp_inbox events alongside text logs.
+    import sqlite3
+    DB_PATH = "/var/dashboard/errors.db"
+    if not os.path.exists(DB_PATH):
+        log(f"WARN: {DB_PATH} missing — collector hasn't run yet. Exiting.")
+        return
 
-    # 2. Signature-count everything.
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        # Sum occurrences across all events with matching signature in the window.
+        rows = conn.execute(
+            """
+            SELECT signature, signature_hash,
+                   SUM(count) AS occurrences,
+                   MAX(message) AS sample,
+                   MAX(catalog_id) AS catalog_id
+            FROM events
+            WHERE last_seen >= datetime('now', ? )
+            GROUP BY signature_hash
+            ORDER BY occurrences DESC
+            """,
+            (f'-{LOOKBACK_DAYS} days',)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    log(f"distinct signatures in last {LOOKBACK_DAYS}d (from DB): {len(rows)}")
+
+    # Build a fake sig_counts/sig_sample so the rest of the code is untouched.
     sig_counts = Counter()
     sig_sample = {}
-    for ln in error_lines:
-        sig = line_signature(ln)
+    sig_already_known = {}  # signature → bool (catalog_id present in DB row?)
+    for r in rows:
+        sig = r["signature"] or ""
         if not sig:
             continue
-        sig_counts[sig] += 1
-        sig_sample.setdefault(sig, ln)
+        sig_counts[sig] = int(r["occurrences"] or 0)
+        sig_sample[sig] = r["sample"] or ""
+        sig_already_known[sig] = bool(r["catalog_id"])
 
     # 3. Bucket against the catalog.
     cat = load_catalog()
@@ -242,8 +269,13 @@ def main():
     new_novel = []                # list of (sig, count, sample)
 
     for sig, count in sig_counts.most_common():
-        # Match catalog patterns against the raw sample (preserves exact
-        # numbers/paths) rather than the mangled signature.
+        # If the collector already matched this signature against the catalog,
+        # we trust that label — no need to re-scan patterns. Otherwise, try our
+        # own match here (the catalog might have been updated since).
+        if sig_already_known.get(sig):
+            # Bump the most-recent matching entry. Fall through to match_catalog
+            # so we know which entry id to bump.
+            pass
         hit = match_catalog(sig_sample[sig], entries)
         if hit:
             known_bumps[hit["id"]] += count
@@ -315,7 +347,7 @@ def main():
     lines_out = []
     lines_out.append(f"**QuantAI weekly error digest — {today}**")
     lines_out.append(
-        f"Window: last {LOOKBACK_DAYS}d. Lines scanned: {len(error_lines)}. "
+        f"Window: last {LOOKBACK_DAYS}d. Events: {sum(sig_counts.values())}. "
         f"Signatures: {len(sig_counts)}."
     )
     lines_out.append(

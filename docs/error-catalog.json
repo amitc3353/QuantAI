@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-04-26T01:50:01.946980-04:00",
+  "last_updated": "2026-04-26T11:45:01.411256-04:00",
   "description": "QuantAI error catalog. Each entry classifies a known error pattern, links to a runbook, and optionally specifies an auto-fix action. Patterns are case-insensitive substrings unless the entry sets is_regex=true. Categories: recurring (seen 3+ times), novel (seen once), transient (self-heals). Auto-actions: retry, restart_service, skip, none.",
   "errors": [
     {
@@ -70,7 +70,7 @@
       "runbook": "runbooks/runbook-pipeline-silent-fail.md",
       "first_seen": "2026-04-17",
       "last_seen": "2026-04-26",
-      "occurrence_count": 488918,
+      "occurrence_count": 518668,
       "source": "seeded:heartbeat.log"
     },
     {
@@ -112,7 +112,7 @@
       "runbook": "runbooks/runbook-market-intelligence-fail.md",
       "first_seen": "2026-04-15",
       "last_seen": "2026-04-26",
-      "occurrence_count": 3196,
+      "occurrence_count": 3434,
       "source": "seeded:pipeline.log"
     },
     {
@@ -224,7 +224,7 @@
       "runbook": "runbooks/runbook-close-order-failed.md",
       "first_seen": "2026-04-24",
       "last_seen": "2026-04-26",
-      "occurrence_count": 12130,
+      "occurrence_count": 15819,
       "source": "learned"
     },
     {
@@ -238,7 +238,7 @@
       "runbook": "runbooks/runbook-close-order-failed.md",
       "first_seen": "2026-04-24",
       "last_seen": "2026-04-26",
-      "occurrence_count": 12512,
+      "occurrence_count": 16320,
       "source": "learned"
     },
     {
@@ -252,7 +252,7 @@
       "runbook": "runbooks/runbook-close-order-failed.md",
       "first_seen": "2026-04-24",
       "last_seen": "2026-04-26",
-      "occurrence_count": 11977,
+      "occurrence_count": 15666,
       "source": "learned"
     },
     {

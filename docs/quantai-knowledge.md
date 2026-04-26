@@ -262,11 +262,16 @@ Auto-actions: `none` (human), `retry` (re-run retry_command after 60s), `skip` (
 **`v2/shared-data/scripts/add_error.py`** — CLI for manual catalog additions. Atomic write with `.bak` backup. Rejects duplicate ids unless `--force`.
 
 ### Discord routing (post-2026-04-26)
-All v2 cron scripts post via `_discord.post_to_channel(channel_id, msg)` using the bot token (`DISCORD_TOKEN_ORCHESTRATOR`) and a single channel (`DISCORD_CHANNEL_ALERTS`). The error_detector gates posts by severity:
-- `severity: "info"` or `"unknown"` → log locally only, no Discord post.
-- `severity: "warning"` → post once per `eid`, throttled at 60 minutes (DEDUP_MINUTES).
-- `severity: "critical"` → post immediately, dedup applies.
-- Unknown signatures with count < 2 in the window → log locally only (transient/noise filter).
+All v2 cron scripts post via `_discord.post_to_channel(channel_id, msg)` using the bot token (`DISCORD_BOT_TOKEN`) and a single channel (`DISCORD_CHANNEL_ALERTS`). Severity gating happens inside `/var/dashboard/collect_errors.py`:
+- `severity: "info"` → DB only, no Discord post.
+- `severity: "warning"` → post once per `eid`, throttled at 60 minutes.
+- `severity: "error"` → same as warning (60-min throttle).
+- `severity: "critical"` → post immediately, throttled at 5 minutes per `eid`.
+
+### Centralized error logger (post-2026-04-26)
+All errors and warnings across the VPS — systemd journals (clawroute, litellm, openclaw), Docker containers (trader-orchestrator/discord/cto/guards/litellm), QuantAI text logs, /var/log/{auth,kern,fail2ban,ufw}, and Python apps that opt into the `_logger.setup()` handler — are ingested into a single SQLite DB at **`/var/dashboard/errors.db`** every 2 minutes by `collect_errors.py`. Dashboard surfaces this at the **Errors** tab. Catalog matching attaches `catalog_id` + runbook link automatically. See `docs/runbooks/runbook-centralized-logger.md` for query examples and operations.
+
+The old `error_detector.py` (text-log-only) was archived to `v2/shared-data/scripts/legacy/`.
 
 ### Cron
 ```

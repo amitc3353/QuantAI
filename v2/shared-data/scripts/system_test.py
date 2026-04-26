@@ -57,7 +57,7 @@ check("ANTHROPIC_API_KEY set",    bool(os.environ.get("ANTHROPIC_API_KEY")))
 check("ALPACA_API_KEY set",       bool(os.environ.get("ALPACA_API_KEY")))
 check("ALPACA_SECRET_KEY set",    bool(os.environ.get("ALPACA_SECRET_KEY")))
 check("FINNHUB_API_KEY set",      bool(os.environ.get("FINNHUB_API_KEY")))
-check("DISCORD_TOKEN_ORCHESTRATOR set", bool(os.environ.get("DISCORD_TOKEN_ORCHESTRATOR")))
+check("DISCORD_BOT_TOKEN set", bool(os.environ.get("DISCORD_BOT_TOKEN")))
 check("GOOGLE_SHEET_ID set",      bool(os.environ.get("GOOGLE_SHEET_ID")))
 
 # ── 2. Python dependencies ────────────────────────────────────────────
