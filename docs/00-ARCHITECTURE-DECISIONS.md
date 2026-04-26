@@ -122,7 +122,7 @@ rebuild done). HEARTBEAT Groq swap pending `GROQ_API_KEY` in clawroute.service.
 
 ## ADR-004: Migrate from Alpaca to IBKR for options execution
 **Date:** 2026-04-26
-**Status:** Accepted — infrastructure installed; connection pending IP whitelist (see below)
+**Status:** Accepted — connection verified 2026-04-26
 
 **Context:** QuantAI's original execution broker is Alpaca paper trading. A live
 probe on 2026-04-26 confirmed that Alpaca paper returns HTTP 422 ("invalid
@@ -142,25 +142,24 @@ IB Gateway 10.37 was installed at `/opt/ibgateway/` and configured for paper mod
 is stored in `.env` as `IBKR_PASSWORD`, injected at runtime by
 `/opt/ibc/quantai_gateway_start.sh` via IBC's `--pw` argument.
 
-**Connection verification status (2026-04-26):** Blocked — IBKR's authentication
-server returns `NSErrorResponse.INVALID_USERNAME_OR_BAD_IP` for login attempts
-from VPS IP `87.99.141.55`. This is IBKR's IP-based login restriction. The VPS
-IP must be added to the account's Trusted IP Addresses list in IBKR Client Portal
-before IBC can authenticate. This is a one-time setup step requiring browser login
-by Amit at interactivebrokers.com → Settings → Security → Trusted IPs.
+**Connection verified 2026-04-26:** ib_insync 0.9.86 connects to `localhost:4002`,
+`managedAccounts()` returns `['DUP851506']`. Index option chains confirmed:
+XSP (47 expiries / 482 strikes), SPX (20 / 590), VIX (9 / 70).
+
+Root cause of initial failure: login username was misconfigured as the paper
+account number (`DUP851506`) instead of the IBKR login username. Fixed by adding
+`IBKR_USERNAME` to `.env` and reading it from the environment in the IBC wrapper.
 
 **Decision:** IBKR (via IB Gateway + ib_insync) becomes the execution broker for
 QuantAI. Alpaca paper remains the current active broker until a BrokerAdapter
 abstraction layer is built and the IBKR connection is verified. Migration is
 incremental:
 
-1. Phase 1 (this ADR): Gateway installed, CLAUDE.md updated, ADR documented.
-   Connection pending IP whitelist.
-2. Phase 2 (after IP whitelist): Verify ib_insync connects to localhost:4002,
-   confirm `managedAccounts()` returns `['DUP851506']`, test XSP/SPX/VIX chains.
-3. Phase 3 (next session): Build `broker.py` — pluggable BrokerAdapter with
-   `AlpacaBroker` and `IBKRBroker` implementations. `BROKER_TYPE=alpaca|ibkr`
-   env var controls which is active.
+1. Phase 1 (done 2026-04-26): Gateway installed, username fixed, connection verified.
+   ib_insync connects, XSP/SPX/VIX chains confirmed.
+2. Phase 2 (next session): Build `broker.py` — `AlpacaBroker` + `IBKRBroker` with
+   `BROKER_TYPE=alpaca|ibkr` env var switch. Run paper trades on IBKR in parallel.
+3. Phase 3: Validate IBKR paper execution in parallel with Alpaca for 1-2 weeks.
 4. Phase 4: Validate IBKR paper execution in parallel with Alpaca for 1-2 weeks.
 5. Phase 5 (when live trading approved): Switch `BROKER_TYPE` to `ibkr` on live
    account.

@@ -89,7 +89,7 @@ Amit (strategy, approvals via phone/Discord)
 - Pipeline works end-to-end: scan, debate, execute, journal, sync
 - 42/43 system tests passing
 - Dashboard live at https://quantai.tail1465ff.ts.net/
-- IB Gateway 10.37 installed at localhost:4002 (paper, DUP851506) — **pending IP whitelist** (see below)
+- IB Gateway 10.37 active at localhost:4002 (paper, DUP851506) — **verified 2026-04-26**
 
 ## Alpaca API Gotchas
 
@@ -102,33 +102,21 @@ Amit (strategy, approvals via phone/Discord)
 - Paper trading port: `localhost:4002`, clientId=1
 - Account: `DUP851506`
 - Service: `ibgateway.service` (systemd, enabled)
-- Started by: `/opt/ibc/quantai_gateway_start.sh` (reads `IBKR_PASSWORD` from `.env`)
-- **NEVER run `systemctl status ibgateway` or `ps aux | grep ibgateway`** — these leak `IBKR_PASSWORD` into terminal output.
+- Started by: `/opt/ibc/quantai_gateway_start.sh` (reads `IBKR_USERNAME` and `IBKR_PASSWORD` from `.env`)
+- **NEVER run `systemctl status ibgateway` or `ps aux | grep ibgateway`** — these leak credentials into terminal output.
 - Safe status check: `systemctl is-active ibgateway`
 - Safe log check: `journalctl -u ibgateway -n 30 --no-pager | grep -v -i 'pass\|pw=\|--user='`
+- Index options verified: XSP (47 expiries / 482 strikes), SPX (20/590), VIX (9/70)
 
-### IBKR Login — Action Required Before Service Can Connect
-
-Root cause diagnosed 2026-04-26: IBKR rejects VPS login with `NSErrorResponse.INVALID_USERNAME_OR_BAD_IP`.
-The VPS IP **87.99.141.55** must be whitelisted at the **login level** in IBKR Client Portal.
-
-**IBKR has two separate IP controls — we need the LOGIN-level one:**
-- ❌ Settings → API Settings → Trusted IPs — this gates TCP connections *after* login (not what we need)
-- ✅ **Settings → User Settings → Security → Trusted IPs** — this gates the login itself (required)
-
-**Amit: exact steps:**
-1. Log in at https://www.interactivebrokers.com/sso/Login
-2. Click username (top right) → **Settings** → **User Settings**
-3. Under **Security** section → **Trusted IPs**
-4. Add `87.99.141.55` → Save
-5. Wait **10–15 minutes** for propagation across IBKR auth servers
-6. Then: `sudo systemctl start ibgateway` on the VPS
-
-After whitelist propagates: verify with:
+### Connection probe (safe — no credentials in output)
 ```
 python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"
 ```
 Expected: `True ['DUP851506']`
+
+### Credential note
+Login username (`IBKR_USERNAME`) is the account login, not the paper account number DUP851506.
+Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runtime — never hardcoded.
 
 ## Cron Schedule
 
