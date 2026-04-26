@@ -133,6 +133,74 @@ CNN endpoint returns HTTP 418 ("I'm a teapot" — bot detection). Code falls bac
 - **Options chain endpoint:** `paper-api.alpaca.markets/v2/options/contracts` (not data.alpaca.markets/v1beta1)
 - **Paper account equity:** ~$99,368 (as of April 15)
 - **Chain 404 on some tickers:** Fallback to proposed strikes works but skips validation
+- **Index options unsupported:** SPX, XSP, VIX all return HTTP 422 — this is the migration driver for IBKR (see ADR-004)
+
+## Broker adapter (broker.py — built 2026-04-26)
+
+Pluggable abstraction so trading scripts can target Alpaca or IBKR transparently. Built in preparation for full migration off Alpaca; Alpaca paper stays live until callers (autonomous_execution, position_monitor) are wired through.
+
+### Files
+- `v2/shared-data/scripts/broker.py` — ABC, factory, OCC parser, AlpacaBroker (thin REST wrapper)
+- `v2/shared-data/scripts/_broker_ibkr.py` — IBKRBroker (lazy-imported; pays ~200ms ib_insync cost only when needed)
+- `v2/shared-data/scripts/test_broker.py` — print-based smoke test (42 checks, all passing 2026-04-26)
+
+### Selection
+- `BROKER_TYPE=alpaca` (default) | `ibkr`
+- `BROKER_DRY_RUN=1` forces all order-placing methods to log payload and return a dry-run sentinel — no network POSTs
+- `IBKR_HOST` / `IBKR_PORT` / `IBKR_CLIENT_ID` / `IBKR_ACCOUNT` env overrides (defaults: 127.0.0.1, 4002, 1, "")
+
+### Interface (BrokerBase)
+`connect`, `disconnect`, `get_account`, `get_positions`, `fetch_option_chain(symbol, dte_range, strike_range=None, include_quotes=False)`, `get_quote(symbol)` (underlying), `get_option_quote(occ)` (contract), `place_mleg_order(legs, qty, tif, client_order_id)`, `close_position(legs, qty, client_order_id)`, `get_order_status(order_id)`.
+
+All methods return `None` / `[]` on failure — never raise into callers.
+
+### Leg shape (boundary contract)
+Both adapters accept the existing Alpaca-shaped legs:
+```
+[{"ratio_qty": "1", "side": "buy"|"sell", "symbol": <OCC>}, ...]
+```
+OCC is the lossless format already in `trades.jsonl`. IBKRBroker parses OCC internally via `_parse_occ()`.
+
+### Index option routing (IBKR)
+- XSP → `Option(..., exchange="CBOE", tradingClass="XSP")`
+- SPX → `tradingClass="SPX"` (third-Friday monthlies) or `"SPXW"` (everything else); both surfaced from `reqSecDefOptParams`
+- VIX → `tradingClass="VIX"` or `"VIXW"`; exchange CBOE
+- Underlying lookup: `Index(symbol, "CBOE", "USD")` for index roots, `Stock(symbol, "SMART", "USD")` for equities
+
+### IBKR lifecycle
+- One `IB()` instance per process. Lazy-connect on first call. `atexit` handles disconnect.
+- Sync API: plain `ib.connect()` / `ib.disconnect()` — do NOT use `util.startLoop` (Jupyter-only) or `asyncio.run`.
+- Use `ib.sleep(N)` between `reqMktData` and reading tickers — `time.sleep()` won't pump the loop.
+- Connect retry: 3 attempts, 5s backoff. Disconnects half-connected sockets between attempts so a stale clientId doesn't poison subsequent retries.
+- 23:30–00:15 ET restart-window guard: refuses to connect during IB Gateway's nightly restart at 23:45 ET rather than retry-storming.
+- Force live data via `reqMarketDataType(1)`; logs WARNING once if fallback to delayed (type 3) is detected.
+
+### Order semantics
+- `place_mleg_order` is **never auto-retried**. Pass a deterministic `client_order_id`; on timeout, callers reconcile via `get_order_status` before resubmitting (avoids duplicate fills on combos).
+- AlpacaBroker preserves both quirks (top-level qty, no position_intent). 1-leg mleg falls back to a plain market order (Alpaca rejects 1-leg mleg).
+- IBKRBroker builds a `Bag` (combo) contract with `ComboLeg` per leg and submits via `placeOrder`. `orderRef` carries the `client_order_id` round-trip.
+
+### Normalized output shapes
+```
+account     {equity, buying_power, cash, options_buying_power, pattern_day_trader}
+position    {symbol (OCC), qty, side, avg_cost, current_price, unrealized_pnl, market_value}
+chain_entry {symbol (OCC), underlying, strike, expiry (YYYY-MM-DD), right (C|P),
+             bid, ask, mid, last, delta, gamma, theta, vega, open_interest, volume}
+quote       {bid, ask, last, mid}    # mid only when bid>0 and ask>bid
+order       {order_id, status, filled_qty, avg_fill_price, client_order_id}
+```
+Greek/quote fields are `None` when the broker can't supply (Alpaca's `/v2/options/contracts` returns no Greeks).
+
+### Smoke-test results (2026-04-26)
+- AlpacaBroker SPY chain (1-30 DTE): 3,874 contracts
+- IBKRBroker SPY chain: 242,840 (cross-exchange duplicates), XSP: 20,244, SPX: 29,362 (both SPX and SPXW present), VIX: 680
+- All 42 checks pass; managed account `DUP851506` confirmed
+
+### What's NOT done yet (next session)
+- Wiring `get_broker()` into `autonomous_execution.py` and `position_monitor.py`
+- Real (non-dry-run) order submission via IBKRBroker
+- Strategy-level position grouping (stays in `position_monitor`'s journal logic)
+- Agent Beta integration
 
 ## Dashboard v2 (built 2026-04-17)
 - **Location:** `/var/dashboard/index.html` (served), mirrored collectors in `/home/trader/dashboard/` (not served)
