@@ -133,6 +133,15 @@ def _safe_int(x) -> Optional[int]:
         return None
 
 
+def _to_float(x) -> Optional[float]:
+    if x is None or x == "":
+        return None
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
 # ── Abstract base ──────────────────────────────────────────────────────────────
 
 
@@ -263,6 +272,15 @@ class AlpacaBroker(BrokerBase):
                     j.get("options_buying_power", j.get("buying_power", 0))
                 ),
                 "pattern_day_trader": bool(j.get("pattern_day_trader", False)),
+                # Alpaca-specific extras: surfaced for collect_alpaca.py and
+                # pre_trade_check.py. IBKRBroker returns None for all of these.
+                "last_equity": _to_float(j.get("last_equity")),
+                "portfolio_value": _to_float(j.get("portfolio_value")),
+                "long_market_value": _to_float(j.get("long_market_value")),
+                "short_market_value": _to_float(j.get("short_market_value")),
+                "account_status": j.get("status"),
+                "trading_blocked": bool(j.get("trading_blocked", False)),
+                "options_approved_level": _safe_int(j.get("options_approved_level")),
             }
         except Exception as e:
             logging.error("AlpacaBroker.get_account failed: %s", e)

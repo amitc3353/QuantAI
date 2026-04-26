@@ -45,12 +45,10 @@ except ImportError:
     print("ERROR: requests library not installed. Run: pip install requests")
     sys.exit(1)
 
+from broker import get_broker
+
 ET = ZoneInfo("America/New_York")
 DRY_RUN = "--dry-run" in sys.argv
-
-ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
-ALPACA_BASE   = "https://paper-api.alpaca.markets"
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
@@ -65,14 +63,6 @@ DASH_FILE = Path("/var/dashboard/state/quantai-positions.json")
 def log(msg):
     ts = datetime.now(ET).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}")
-
-
-def hdrs():
-    return {
-        "APCA-API-KEY-ID": ALPACA_KEY,
-        "APCA-API-SECRET-KEY": ALPACA_SECRET,
-        "Content-Type": "application/json",
-    }
 
 
 def build_occ(underlying, expiry_str, opt_type, strike):
@@ -169,15 +159,33 @@ def rewrite_journal_atomic(updates):
 # ── Alpaca ─────────────────────────────────────────────────────────────────────
 
 def fetch_alpaca_positions():
-    """GET /v2/positions → {occ_symbol: position_dict} or None on error.
+    """Fetch open positions through the active broker.
+
+    Returns {occ_symbol: position_dict} or None on error.
     None means skip this cycle entirely — do not write zero-P&L dashboard.
+
+    Position dicts use the broker's normalized shape, with `unrealized_pl`
+    aliased onto `unrealized_pnl` for compatibility with compute_trade_pnl().
     """
     try:
-        r = requests.get(f"{ALPACA_BASE}/v2/positions", headers=hdrs(), timeout=15)
-        if r.status_code != 200:
-            log(f"Alpaca /positions returned {r.status_code}: {r.text[:120]}")
+        broker = get_broker()
+        # Connect failure → None (skip cycle). The broker logs the underlying error.
+        if not broker.connect():
+            log("Broker connect failed; skipping cycle")
             return None
-        return {p["symbol"]: p for p in r.json()}
+        positions = broker.get_positions()
+        if positions is None:
+            return None
+        out = {}
+        for p in positions:
+            sym = p.get("symbol", "")
+            if not sym:
+                continue
+            entry = dict(p)
+            # Legacy alias used by compute_trade_pnl().
+            entry["unrealized_pl"] = p.get("unrealized_pnl", 0)
+            out[sym] = entry
+        return out
     except Exception as e:
         log(f"fetch_alpaca_positions failed: {e}")
         return None
@@ -218,8 +226,8 @@ def build_closing_legs(trade, alpaca_pos):
 
 
 def place_close_order(trade, legs):
-    """Place close order. Uses mleg for 2-4 legs, single-leg order for exactly 1.
-    Returns order dict on success, None on failure (caller logs).
+    """Place a close order through the active broker. 1 leg → plain order;
+    2-4 legs → mleg combo. Returns order dict on success, None on failure.
     """
     if DRY_RUN:
         log(f"  [DRY RUN] Would close {trade['id']} with {len(legs)} legs:")
@@ -227,42 +235,24 @@ def place_close_order(trade, legs):
             log(f"    {leg['side'].upper()} {leg['symbol']}")
         return {"id": "dry-run", "status": "simulated"}
 
-    if len(legs) == 1:
-        # Single-leg close — use plain market order, not mleg (Alpaca rejects 1-leg mleg).
-        leg = legs[0]
-        payload = {
-            "symbol":         leg["symbol"],
-            "qty":            "1",
-            "side":           leg["side"],
-            "type":           "market",
-            "time_in_force":  "day",
-        }
-    elif 2 <= len(legs) <= 4:
-        payload = {
-            "qty": "1",
-            "type": "market",
-            "time_in_force": "day",
-            "order_class": "mleg",
-            "legs": legs,
-        }
-    else:
+    if not (1 <= len(legs) <= 4):
         log(f"  Close order skipped: unexpected leg count {len(legs)} for {trade.get('id','?')}")
         return None
 
+    import time as _t
+    coid = f"close-{trade.get('id','?')}-{int(_t.time())}"
     try:
-        r = requests.post(f"{ALPACA_BASE}/v2/orders", headers=hdrs(),
-                          json=payload, timeout=20)
-        result = r.json()
-        if r.status_code in (200, 201):
-            log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''}): {result.get('id','?')[:8]}")
-            return result
-        msg = result.get("message", str(result))[:200]
-        log(f"  Close order FAILED {r.status_code} ({len(legs)}-leg): {msg}")
-        logging.error("Close order FAILED %s (%d-leg): %s", r.status_code, len(legs), msg[:160])
-        return None
+        result = get_broker().close_position(legs, qty=1, client_order_id=coid)
     except Exception as e:
         log(f"  Close order exception: {e}")
         return None
+    if result is None:
+        log(f"  Close order FAILED ({len(legs)}-leg): broker returned None")
+        logging.error("Close order FAILED %d-leg: broker returned None", len(legs))
+        return None
+    order_id = (result.get("order_id") or "")[:8]
+    log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''}): {order_id}")
+    return {"id": result.get("order_id", ""), "status": result.get("status", "submitted")}
 
 
 # ── Exit logic ─────────────────────────────────────────────────────────────────
@@ -407,10 +397,10 @@ def main():
 
     alpaca_pos = fetch_alpaca_positions()
     if alpaca_pos is None:
-        log("Alpaca API unavailable — skipping cycle (dashboard not updated)")
+        log("Broker API unavailable — skipping cycle (dashboard not updated)")
         return
 
-    log(f"Alpaca: {len(alpaca_pos)} option position(s) found")
+    log(f"Broker: {len(alpaca_pos)} option position(s) found")
 
     # Build P&L map
     pnl_map = {}

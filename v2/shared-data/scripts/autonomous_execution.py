@@ -28,6 +28,8 @@ import json, os, sys, time, requests
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
+from broker import get_broker
+
 # Auto-load .env
 import pathlib as _pl
 for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.env")]:
@@ -43,11 +45,6 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
 ET          = ZoneInfo("America/New_York")
 DRY_RUN     = "--check-only" in sys.argv
 MONITOR_ONLY= "--monitor-only" in sys.argv
-
-ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
-ALPACA_BASE   = "https://paper-api.alpaca.markets"
-ALPACA_DATA   = "https://data.alpaca.markets"
 
 CACHE   = "/root/quantai-v2/shared-data/cache"
 JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
@@ -76,13 +73,6 @@ MANUAL_ONLY = {"covered_call", "collar", "cash_secured_put", "covered_strangle"}
 
 def log(msg):
     print(f"[{datetime.now(ET).strftime('%H:%M:%S')}] {msg}")
-
-def hdrs():
-    return {
-        "APCA-API-KEY-ID": ALPACA_KEY,
-        "APCA-API-SECRET-KEY": ALPACA_SECRET,
-        "Content-Type": "application/json",
-    }
 
 def post_discord(msg, channel_id=None):
     """Post a message to Discord via bot token. Falls back to webhook if set."""
@@ -198,32 +188,21 @@ def resolve_expiry(expiry_str):
 
 # ── Strike selection — query Alpaca chain first ───────────────────────
 def get_available_strikes(symbol, option_type, expiry):
-    """
-    Query Alpaca options contracts for available strikes on a given expiry.
-    Returns sorted list of available strikes, or empty list on failure.
+    """Query the active broker for available strikes on a given expiry.
+    Returns sorted list of strikes, or empty list on failure.
     """
     if DRY_RUN:
         return []
     try:
-        params = {
-            "underlying_symbols": symbol,
-            "expiration_date": expiry,
-            "type": option_type.lower(),
-            "status": "active",
-            "limit": 200,
-        }
-        r = requests.get(
-            f"{ALPACA_BASE}/v2/options/contracts",
-            headers=hdrs(),
-            params=params,
-            timeout=15
-        )
-        if r.status_code != 200:
-            log(f"  Chain query {r.status_code}: {r.text[:100]}")
+        d = datetime.strptime(expiry, "%Y-%m-%d").date()
+        dte = (d - date.today()).days
+        if dte < 0:
             return []
-        contracts = r.json().get("option_contracts", [])
-        strikes = sorted([float(c.get("strike_price", 0)) for c in contracts])
-        return strikes
+        right = "C" if option_type.lower().startswith("c") else "P"
+        chain = get_broker().fetch_option_chain(symbol, dte_range=(dte, dte))
+        strikes = sorted({float(c["strike"]) for c in chain
+                          if c.get("right") == right and c.get("expiry") == expiry})
+        return list(strikes)
     except Exception as e:
         log(f"  Chain query failed: {e}")
         return []
@@ -280,33 +259,15 @@ def place_mleg_order(symbol, legs_config, strategy_name):
             log(f"    {leg['side'].upper()} {leg['symbol']}")
         return {"id": "dry-run", "status": "simulated"}
 
-    payload = {
-        "qty": "1",
-        "type": "market",
-        "time_in_force": "day",
-        "order_class": "mleg",
-        "legs": legs_config,
-    }
-
-    try:
-        r = requests.post(
-            f"{ALPACA_BASE}/v2/orders",
-            headers=hdrs(),
-            json=payload,
-            timeout=20
-        )
-        result = r.json()
-        if r.status_code in (200, 201):
-            order_id = result.get("id", "?")[:8]
-            log(f"  ✅ mleg order placed | ID: {order_id}")
-            return result
-        else:
-            msg = result.get("message", str(result))[:150]
-            log(f"  ❌ mleg order failed: {msg}")
-            return None
-    except Exception as e:
-        log(f"  ❌ mleg exception: {e}")
+    coid = f"{strategy_name[:30]}-{int(time.time())}"
+    result = get_broker().place_mleg_order(legs_config, qty=1, client_order_id=coid)
+    if result is None:
+        log("  ❌ mleg order failed (broker returned None)")
         return None
+    order_id = (result.get("order_id") or "")[:8]
+    log(f"  ✅ mleg order placed | ID: {order_id}")
+    # Preserve the legacy {id, status} shape for downstream callers/journaling.
+    return {"id": result.get("order_id", ""), "status": result.get("status", "submitted")}
 
 # ── Strategy execution builders ───────────────────────────────────────
 def execute_bull_put_spread(symbol, trade, expiry):

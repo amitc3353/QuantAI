@@ -163,6 +163,15 @@ class IBKRBroker(BrokerBase):
                     or by_tag.get("BuyingPower")
                 ),
                 "pattern_day_trader": str(by_tag.get("DayTradesRemaining", "")) == "0",
+                # Alpaca-specific extras — IBKR doesn't expose these in the
+                # same form. None signals "not applicable" to callers.
+                "last_equity": None,
+                "portfolio_value": _to_float(by_tag.get("NetLiquidation")),
+                "long_market_value": _to_float(by_tag.get("StockMarketValue")),
+                "short_market_value": None,
+                "account_status": by_tag.get("AccountReady"),
+                "trading_blocked": None,
+                "options_approved_level": None,
             }
         except Exception as e:
             logging.error("IBKRBroker.get_account failed: %s", e)

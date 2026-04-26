@@ -30,11 +30,12 @@ REPO     = "/root/quantai-v2/v2/shared-data/scripts"
 CACHE    = "/root/quantai-v2/shared-data/cache"
 JOURNAL  = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 
-ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
-ALPACA_BASE   = "https://paper-api.alpaca.markets"
-BOT_TOKEN     = os.environ.get("DISCORD_BOT_TOKEN", "")
-INFRA_CH      = os.environ.get("DISCORD_CHANNEL_INFRA", "")
+sys.path.insert(0, SCRIPTS)
+from broker import get_broker
+
+BROKER_TYPE = os.environ.get("BROKER_TYPE", "alpaca").lower()
+BOT_TOKEN   = os.environ.get("DISCORD_BOT_TOKEN", "")
+INFRA_CH    = os.environ.get("DISCORD_CHANNEL_INFRA", "")
 
 now   = datetime.now(ET)
 today = date.today()
@@ -79,26 +80,27 @@ for script in ["autonomous_execution.py", "run_pipeline.py", "debate_chamber.py"
     else:
         fail(f"{script} SYNTAX ERROR: {r.stderr.decode()[:80]}")
 
-# ── 3. Alpaca API ─────────────────────────────────────────────────────
+# ── 3. Broker API ─────────────────────────────────────────────────────
 try:
-    r = requests.get(f"{ALPACA_BASE}/v2/account",
-                     headers={"APCA-API-KEY-ID": ALPACA_KEY,
-                               "APCA-API-SECRET-KEY": ALPACA_SECRET},
-                     timeout=10)
-    if r.status_code == 200:
-        acct = r.json()
-        equity = float(acct.get("equity", 0))
-        trading_blocked = acct.get("trading_blocked", False)
-        options_level   = acct.get("options_approved_level", 0)
-        ok(f"Alpaca connected — equity ${equity:,.0f} | options level {options_level}")
-        if trading_blocked:
-            fail("Alpaca trading is BLOCKED")
-        if options_level < 2:
-            fail(f"Alpaca options level {options_level} — need level 2+ for spreads")
+    broker = get_broker()
+    if not broker.connect():
+        fail(f"{BROKER_TYPE} broker connect failed")
     else:
-        fail(f"Alpaca API error {r.status_code}: {r.text[:80]}")
+        acct = broker.get_account()
+        if not acct:
+            fail(f"{BROKER_TYPE} broker get_account returned None")
+        else:
+            equity = float(acct.get("equity") or 0)
+            options_level = acct.get("options_approved_level")
+            level_str = f"options level {options_level}" if options_level is not None else "options level n/a"
+            ok(f"{BROKER_TYPE.title()} connected — equity ${equity:,.0f} | {level_str}")
+            # Alpaca-specific gates: skip cleanly when broker doesn't expose them.
+            if acct.get("trading_blocked") is True:
+                fail("Trading is BLOCKED on this account")
+            if options_level is not None and options_level < 2:
+                fail(f"Options level {options_level} — need level 2+ for spreads")
 except Exception as e:
-    fail(f"Alpaca connection failed: {e}")
+    fail(f"Broker connection failed: {e}")
 
 # ── 4. Daily state check ──────────────────────────────────────────────
 state_path = f"{CACHE}/daily_state.json"

@@ -1,5 +1,5 @@
 # QuantAI Knowledge Base
-Last updated: 2026-04-15 by Amit + Claude
+Last updated: 2026-04-26 by Amit + Claude
 
 ## What QuantAI is
 Autonomous options trading system. Paper trading on Alpaca ($99,368 equity). Two agent strategies (Alpha, Beta) plus manual SOFI collar. Goal: $3-10k/month income at $150k deployed. Currently in paper trading validation phase — 0/10 pre-live checklist items complete.
@@ -196,8 +196,24 @@ Greek/quote fields are `None` when the broker can't supply (Alpaca's `/v2/option
 - IBKRBroker SPY chain: 242,840 (cross-exchange duplicates), XSP: 20,244, SPX: 29,362 (both SPX and SPXW present), VIX: 680
 - All 42 checks pass; managed account `DUP851506` confirmed
 
-### What's NOT done yet (next session)
-- Wiring `get_broker()` into `autonomous_execution.py` and `position_monitor.py`
+### Pipeline wiring (completed 2026-04-26)
+`get_broker()` wired into all four callers:
+- `autonomous_execution.py` — replaces direct Alpaca REST calls for orders
+- `position_monitor.py` — positions + close orders go through broker adapter
+- `pre_trade_check.py` — broker connect + account check
+- `dashboard/collect_alpaca.py` — uses broker.get_account(); IBKR surfaces nulls for Alpaca-specific fields (last_equity, day_pnl)
+
+### BROKER_TYPE=ibkr full verification (2026-04-26)
+All tests with `sudo BROKER_TYPE=ibkr`:
+- `system_test.py`: **43/43 passed**
+- `pre_trade_check.py`: **19/19 — GO** (`Ibkr connected — equity $1,000,000`)
+- `position_monitor.py --dry-run`: clean (no open positions)
+- `autonomous_execution.py --check-only`: clean (market closed)
+- `collect_alpaca.py`: state written, equity=1000000, day_pnl=null (IBKR expected)
+- Dashboard errors: 0 broker-related errors
+- `ibgateway.service`: active
+
+### What's NOT done yet
 - Real (non-dry-run) order submission via IBKRBroker
 - Strategy-level position grouping (stays in `position_monitor`'s journal logic)
 - Agent Beta integration
