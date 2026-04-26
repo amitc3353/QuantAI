@@ -57,7 +57,7 @@ LOGS = {
 
 DASHBOARD_STATE = Path("/var/dashboard/state/quantai-errors.json")
 DEDUP_FILE = Path("/tmp/quantai-error-dedup.json")
-DEDUP_MINUTES = 30
+DEDUP_MINUTES = 60
 TAIL_LINES = 500
 
 DRY_RUN = "--dry-run" in sys.argv
@@ -218,31 +218,22 @@ def mark_alerted(key, dedup):
 
 # --- Discord ---------------------------------------------------------
 
-# Two webhooks:
-#   DISCORD_WEBHOOK_CHAT   → informational (known + auto-fixed errors)
-#   DISCORD_WEBHOOK_ALERTS → unknown + critical errors (#alerts channel)
-# If DISCORD_WEBHOOK_ALERTS is unset, alerts fall back to DISCORD_WEBHOOK_CHAT.
+# Discord posting via bot token (DISCORD_TOKEN_ORCHESTRATOR + DISCORD_CHANNEL_ALERTS).
+# Webhooks are decommissioned. All levels post to the same channel; the prefix
+# emoji distinguishes informational from critical at a glance.
 
 def post_discord(level, msg):
-    """level is 'chat' (informational) or 'alert' (unknown/critical)."""
-    chat_url = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    alert_url = os.environ.get("DISCORD_WEBHOOK_ALERTS", "") or chat_url
-    url = alert_url if level == "alert" else chat_url
-    if not url:
-        log("WARN: no Discord webhook configured (DISCORD_WEBHOOK_CHAT unset); skipping post")
+    """level is 'chat' (informational), 'alert' (unknown/critical), or 'critical'."""
+    from _discord import post_to_channel
+    ch = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
+    if not ch:
+        log("WARN: DISCORD_CHANNEL_ALERTS not set; skipping post")
         return False
     if DRY_RUN:
         log(f"[DRY] would post [{level}]: {msg[:120]}")
         return True
-    prefix = "🚨" if level == "alert" else "📋"
-    payload = json.dumps({"content": f"{prefix} {msg}"}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "User-Agent": "QuantAI-ErrorDetector/1.0"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status in (200, 204)
-    except Exception as e:
-        log(f"WARN: Discord POST failed ({level}): {e}")
-        return False
+    prefix = "🚨" if level in ("alert", "critical") else "📋"
+    return post_to_channel(ch, f"{prefix} {msg}")
 
 
 # --- Auto-fix actions ------------------------------------------------
@@ -340,15 +331,17 @@ def handle_known(entry, info, catalog_map, dedup, dashboard_events):
     action_result = None
     action_detail = ""
     severity = entry.get("severity", "?")
+    # Suppress info/unknown severity from Discord — log locally only.
+    discord_eligible = severity in ("warning", "critical")
     if action in AUTO_ACTIONS:
         action_result, action_detail = AUTO_ACTIONS[action](entry, line)
-        if should_alert(f"known:{eid}", dedup):
+        if discord_eligible and should_alert(f"known:{eid}", dedup):
             post_discord("chat", f"auto-fixed known error `{eid}` ({action}): {action_detail}. Line: {line[:200]}")
             mark_alerted(f"known:{eid}", dedup)
     elif action == "none":
-        # Critical known errors escalate to #alerts; lesser severities stay informational.
-        level = "alert" if severity == "critical" else "chat"
-        if should_alert(f"known:{eid}", dedup):
+        # Critical known errors escalate; warnings post once per dedup window; info/unknown are silent.
+        if discord_eligible and should_alert(f"known:{eid}", dedup):
+            level = "alert" if severity == "critical" else "chat"
             runbook = entry.get("runbook", "")
             post_discord(level, f"known error `{eid}` (severity={severity}). Runbook: `{runbook}`. Line: {line[:200]}")
             mark_alerted(f"known:{eid}", dedup)
@@ -380,7 +373,9 @@ def handle_unknown(signature, info, dedup, dashboard_events):
     source = info["source"]
     count = info["count"]
     key = f"unknown:{signature[:100]}"
-    if should_alert(key, dedup):
+    # Single-occurrence transients don't fire Discord — they often self-clear.
+    # Only alert when the same signature has appeared ≥2 times in this window.
+    if count >= 2 and should_alert(key, dedup):
         post_discord("alert", f"UNKNOWN error detected (source={source}, seen {count}x this window). Needs investigation: {line[:300]}")
         mark_alerted(key, dedup)
 

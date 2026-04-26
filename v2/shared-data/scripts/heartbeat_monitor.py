@@ -89,17 +89,13 @@ def record_cooldown(name):
 
 
 def post_discord(msg):
-    url = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    if not url:
-        print("WARN: DISCORD_WEBHOOK_CHAT not set, skipping alert")
+    from _discord import post_to_channel
+    ch = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
+    if not ch:
+        print("WARN: DISCORD_CHANNEL_ALERTS not set, skipping alert")
         return
-    try:
-        import requests
-        r = requests.post(url, json={"content": msg}, timeout=10)
-        if r.status_code not in (200, 204):
-            print(f"WARN: Discord returned {r.status_code}")
-    except Exception as e:
-        print(f"WARN: Discord post failed: {e}")
+    if not post_to_channel(ch, msg):
+        print("WARN: Discord post failed")
 
 
 def main():

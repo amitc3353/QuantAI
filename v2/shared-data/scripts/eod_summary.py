@@ -26,19 +26,17 @@ for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.e
 
 ET = ZoneInfo("America/New_York")
 JOURNAL  = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
-WEBHOOK  = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
+DISCORD_CHANNEL = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
 today    = date.today().isoformat()
 
 def post(msg):
-    if not WEBHOOK:
+    from _discord import post_to_channel
+    if not DISCORD_CHANNEL:
         print(msg)
         return
-    try:
-        # Split into chunks if needed
-        for chunk in [msg[i:i+1900] for i in range(0, len(msg), 1900)]:
-            requests.post(WEBHOOK, json={"content": chunk}, timeout=8)
-    except Exception as e:
-        print(f"Discord post failed: {e}")
+    for chunk in [msg[i:i+1900] for i in range(0, len(msg), 1900)]:
+        if not post_to_channel(DISCORD_CHANNEL, chunk):
+            print(f"Discord post failed (chunk len={len(chunk)})")
 
 def format_trade(t):
     """One-line trade summary."""

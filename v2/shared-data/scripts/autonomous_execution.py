@@ -41,7 +41,6 @@ ALPACA_KEY    = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
 ALPACA_BASE   = "https://paper-api.alpaca.markets"
 ALPACA_DATA   = "https://data.alpaca.markets"
-DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
 
 CACHE   = "/root/quantai-v2/shared-data/cache"
 JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
@@ -94,13 +93,6 @@ def post_discord(msg, channel_id=None):
                 timeout=8
             )
             return
-        except:
-            pass
-    # Fallback: webhook
-    webhook = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
-    if webhook:
-        try:
-            requests.post(webhook, json={"content": msg[:1900]}, timeout=8)
         except:
             pass
 

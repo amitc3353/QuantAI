@@ -47,7 +47,6 @@ ALPACA_BASE   = "https://paper-api.alpaca.markets"
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_TOKEN_ORCHESTRATOR", "")
 DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
-DISCORD_WEBHOOK   = os.environ.get("DISCORD_WEBHOOK_CHAT", "")
 
 JOURNAL   = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 SCRIPTS   = "/home/trader/QuantAI/v2/shared-data/scripts"
@@ -76,6 +75,42 @@ def build_occ(underlying, expiry_str, opt_type, strike):
     ymd = expiry_str.replace("-", "")[2:]  # "2026-06-18" → "260618"
     cp  = "C" if opt_type.lower().startswith("c") else "P"
     return f"{underlying}{ymd}{cp}{int(round(float(strike) * 1000)):08d}"
+
+
+# Close-attempt tracking — bounded retries per trade so a stuck close (e.g. partial
+# leg state on Alpaca) doesn't fire every 2 minutes forever.
+CLOSE_ATTEMPTS_FILE = "/root/quantai-v2/shared-data/cache/close_attempts.json"
+MAX_CLOSE_ATTEMPTS = 5
+
+
+def _load_close_attempts():
+    try:
+        with open(CLOSE_ATTEMPTS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _save_close_attempts(data):
+    try:
+        os.makedirs(os.path.dirname(CLOSE_ATTEMPTS_FILE), exist_ok=True)
+        with open(CLOSE_ATTEMPTS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        log(f"  WARN: failed to persist close-attempt counters: {e}")
+
+
+def is_market_open(now=None):
+    """Equity options trade 09:30–16:00 ET on weekdays."""
+    n = now or datetime.now(ET)
+    if n.weekday() >= 5:
+        return False
+    h, m = n.hour, n.minute
+    if h < 9 or (h == 9 and m < 30):
+        return False
+    if h >= 16:
+        return False
+    return True
 
 
 # ── Journal ────────────────────────────────────────────────────────────────────
@@ -176,28 +211,46 @@ def build_closing_legs(trade, alpaca_pos):
 
 
 def place_close_order(trade, legs):
-    """Place market mleg close order. Returns order dict on success, None on failure."""
+    """Place close order. Uses mleg for 2-4 legs, single-leg order for exactly 1.
+    Returns order dict on success, None on failure (caller logs).
+    """
     if DRY_RUN:
         log(f"  [DRY RUN] Would close {trade['id']} with {len(legs)} legs:")
         for leg in legs:
             log(f"    {leg['side'].upper()} {leg['symbol']}")
         return {"id": "dry-run", "status": "simulated"}
-    payload = {
-        "qty": "1",
-        "type": "market",
-        "time_in_force": "day",
-        "order_class": "mleg",
-        "legs": legs,
-    }
+
+    if len(legs) == 1:
+        # Single-leg close — use plain market order, not mleg (Alpaca rejects 1-leg mleg).
+        leg = legs[0]
+        payload = {
+            "symbol":         leg["symbol"],
+            "qty":            "1",
+            "side":           leg["side"],
+            "type":           "market",
+            "time_in_force":  "day",
+        }
+    elif 2 <= len(legs) <= 4:
+        payload = {
+            "qty": "1",
+            "type": "market",
+            "time_in_force": "day",
+            "order_class": "mleg",
+            "legs": legs,
+        }
+    else:
+        log(f"  Close order skipped: unexpected leg count {len(legs)} for {trade.get('id','?')}")
+        return None
+
     try:
         r = requests.post(f"{ALPACA_BASE}/v2/orders", headers=hdrs(),
                           json=payload, timeout=20)
         result = r.json()
         if r.status_code in (200, 201):
-            log(f"  Close order placed: {result.get('id','?')[:8]}")
+            log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''}): {result.get('id','?')[:8]}")
             return result
-        msg = result.get("message", str(result))[:150]
-        log(f"  Close order FAILED {r.status_code}: {msg}")
+        msg = result.get("message", str(result))[:200]
+        log(f"  Close order FAILED {r.status_code} ({len(legs)}-leg): {msg}")
         return None
     except Exception as e:
         log(f"  Close order exception: {e}")
@@ -251,11 +304,6 @@ def post_discord(msg):
                 json={"content": msg[:1900]}, timeout=8
             )
             return
-        except Exception:
-            pass
-    if DISCORD_WEBHOOK:
-        try:
-            requests.post(DISCORD_WEBHOOK, json={"content": msg[:1900]}, timeout=8)
         except Exception:
             pass
 
@@ -367,31 +415,63 @@ def main():
     # Always write dashboard with fresh P&L
     write_dashboard(open_trades, pnl_map)
 
-    # Evaluate exits
+    # Evaluate exits — but skip closes outside market hours (options aren't tradable).
     journal_updates = {}
     closed_trades   = []
+    market_open = is_market_open(now)
+    if not market_open:
+        log(f"Market closed at {now.strftime('%H:%M ET')} — monitoring only, no close attempts")
+
+    attempts = _load_close_attempts() if market_open else {}
 
     for t in open_trades:
         pnl = pnl_map[t["id"]]
         should_close, reason = check_exit_threshold(t, pnl, now)
         if not should_close:
             continue
+        if not market_open:
+            continue  # P&L recorded above; close attempt deferred to next market session
 
-        log(f"EXIT triggered: {t['id']} ({reason}) — P&L ${pnl:+.2f}")
+        tid = t["id"]
+        prior = attempts.get(tid, 0)
+        if prior >= MAX_CLOSE_ATTEMPTS:
+            # Quiet — already logged once when the limit was hit. Manual review needed.
+            continue
+
+        log(f"EXIT triggered: {tid} ({reason}) — P&L ${pnl:+.2f}")
 
         legs = build_closing_legs(t, alpaca_pos)
         if not legs:
-            log(f"  No active Alpaca legs for {t['id']} — skipping close (manual review needed)")
+            log(f"  No active Alpaca legs for {tid} — already closed on broker; marking journal CLOSED")
+            credit = abs(t.get("estimated_credit") or 0)
+            pnl_pct = round(pnl / credit, 4) if credit else 0.0
+            journal_updates[tid] = {
+                "status":         "CLOSED",
+                "exit_timestamp": now.isoformat(),
+                "exit_reason":    "closed_outside_pipeline",
+                "exit_pnl":       round(pnl, 2),
+                "pnl":            round(pnl, 2),
+                "pnl_pct":        pnl_pct,
+                "close_order_id": "",
+            }
+            attempts.pop(tid, None)
             continue
 
         order = place_close_order(t, legs)
         if order is None:
-            log(f"  Close order failed for {t['id']} — trade stays OPEN, will retry next cycle")
+            attempts[tid] = prior + 1
+            log(f"  Close order failed for {tid} (attempt {attempts[tid]}/{MAX_CLOSE_ATTEMPTS}) — will retry next cycle")
+            if attempts[tid] >= MAX_CLOSE_ATTEMPTS:
+                log(f"  GIVING UP on {tid} after {MAX_CLOSE_ATTEMPTS} attempts — manual review needed")
+                post_discord(
+                    f"⚠️ Position close gave up after {MAX_CLOSE_ATTEMPTS} attempts: "
+                    f"`{tid}` {t.get('symbol','?')} {(t.get('strategy') or '').upper()} — manual review"
+                )
             continue
 
         credit = abs(t.get("estimated_credit") or 0)
         pnl_pct = round(pnl / credit, 4) if credit else 0.0
-        journal_updates[t["id"]] = {
+        journal_updates[tid] = {
             "status":         "CLOSED",
             "exit_timestamp": now.isoformat(),
             "exit_reason":    reason,
@@ -401,6 +481,10 @@ def main():
             "close_order_id": order.get("id", ""),
         }
         closed_trades.append((t, reason, pnl))
+        attempts.pop(tid, None)
+
+    if market_open:
+        _save_close_attempts(attempts)
 
     if journal_updates:
         if DRY_RUN:

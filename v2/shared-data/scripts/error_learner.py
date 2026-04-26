@@ -13,7 +13,7 @@ with the catalog, and:
 - Known-catalog entries → refresh last_seen, bump occurrence_count by the
   count observed this week.
 
-Posts a weekly summary to Discord #logs (via DISCORD_WEBHOOK_CHAT).
+Posts a weekly summary to Discord via the bot-token helper (_discord.post_to_channel).
 
 Pure Python, no LLM calls. Atomic catalog writes with .bak backup.
 
@@ -57,6 +57,7 @@ LOGS = [
 
 LOOKBACK_DAYS = 7
 RECURRING_THRESHOLD = 3
+MIN_NOVEL_THRESHOLD = 2  # don't catalog single-occurrence transients
 
 DRY_RUN = "--dry-run" in sys.argv
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
@@ -69,7 +70,15 @@ ERROR_TOKENS = (
 ERROR_TOKEN_IGNORE = ("no errors", "error_count: 0", "0 errors")
 # Skip lines that are clearly LLM debate/analysis prose rather than system
 # errors, even if they happen to contain an error token like "rejected".
-NOISE_PREFIXES = ("•", "[debate]", "- **", "**", "**✅", "**❌", "Diagonal:", "BUY ", "SELL ", "SENIOR TRADER", "JUDGE:", "BULL:", "BEAR:")
+NOISE_PREFIXES = (
+    # LLM debate / analysis prose
+    "•", "[debate]", "- **", "**", "**✅", "**❌", "Diagonal:", "BUY ", "SELL ",
+    "SENIOR TRADER", "JUDGE:", "BULL:", "BEAR:",
+    # Routine data-format prints — never errors
+    "[market_intelligence]", "[scan_options]", "[debate_chamber]",
+    "[market_data]", "[autonomous_execution]", "[eod_summary]",
+    "[heartbeat]", "[position_monitor]",
+)
 
 # Match a leading [HH:MM:SS] or [YYYY-MM-DD HH:MM:SS] prefix so we can strip
 # it when producing a stable signature.
@@ -190,25 +199,16 @@ def match_catalog(sig, catalog_entries):
 
 
 def post_discord(msg):
-    url = os.environ.get("DISCORD_WEBHOOK_LOGS") or os.environ.get("DISCORD_WEBHOOK_CHAT")
-    if not url:
-        log("WARN: no Discord webhook env var set; skipping post")
+    from _discord import post_to_channel
+    ch = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
+    if not ch:
+        log("WARN: DISCORD_CHANNEL_ALERTS not set; skipping post")
         return
     if DRY_RUN:
         log(f"[DRY] would post to Discord: {msg[:140]}...")
         return
-    body = json.dumps({"content": msg[:1900]}).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status >= 300:
-                log(f"Discord post failed: HTTP {resp.status}")
-    except Exception as ex:
-        log(f"Discord post error: {ex}")
+    if not post_to_channel(ch, msg):
+        log("Discord post failed")
 
 
 def main():
@@ -253,7 +253,7 @@ def main():
             new_recurring.append((sig, count, sig_sample[sig]))
             if VERBOSE:
                 log(f"NEW recurring (x{count}): {sig[:120]}")
-        else:
+        elif count >= MIN_NOVEL_THRESHOLD:
             new_novel.append((sig, count, sig_sample[sig]))
             if VERBOSE:
                 log(f"NEW novel     (x{count}): {sig[:120]}")
@@ -275,7 +275,7 @@ def main():
             "pattern": sig[:120],
             "is_regex": False,
             "category": "recurring",
-            "severity": "unknown",
+            "severity": "info",
             "auto_action": "none",
             "description": f"Auto-catalogued by error_learner (seen {count}x in 7d). Sample: {sample[:200]}",
             "runbook": "",
@@ -296,7 +296,7 @@ def main():
             "pattern": sig[:120],
             "is_regex": False,
             "category": "novel",
-            "severity": "unknown",
+            "severity": "info",
             "auto_action": "none",
             "description": f"Novel pattern (seen {count}x in 7d). Sample: {sample[:200]}",
             "runbook": "",

@@ -121,7 +121,8 @@ CNN endpoint returns HTTP 418 ("I'm a teapot" — bot detection). Code falls bac
 ## Environment variables (purposes, not values)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY`: Paper trading credentials
 - `FINNHUB_API_KEY`: Economic calendar events
-- `DISCORD_WEBHOOK_CHAT`: Trade alerts to Discord
+- `DISCORD_TOKEN_ORCHESTRATOR` + `DISCORD_CHANNEL_ALERTS`: bot-token Discord posting (sole path post-2026-04-26; webhooks decommissioned)
+- `DISCORD_WEBHOOK_RESEARCH/PROPOSALS/EXECUTION`: legacy webhooks still referenced by trader-orchestrator (will retire alongside that container)
 - `GOOGLE_SHEET_ID`: Journal sync target
 - `ANTHROPIC_API_KEY`: Debate chamber LLM calls
 - Loaded from `/home/trader/QuantAI/.env` (never cat this in chat)
@@ -166,6 +167,13 @@ Catches silent pipeline failures within 2 minutes. Before this, the pipeline was
 - During market hours (9–16 ET Mon–Fri): alerts Discord if `pipeline.beat` is missing or older than 20 minutes
 - Outside market hours: writes dashboard state but sends no alerts
 - Alert cooldown: 30 minutes between Discord messages per beat name (prevents spam)
+
+### Position monitor close-order behavior (post-2026-04-26)
+- `is_market_open()` guard: close attempts skipped outside 09:30–16:00 ET on weekdays. P&L still recorded.
+- 1-leg fallback: if `build_closing_legs()` returns exactly 1 leg, `place_close_order()` issues a single-leg market order (not mleg).
+- Zero-leg recovery: if 0 active Alpaca legs found, the journal entry is auto-marked `status: "CLOSED"`, `exit_reason: "closed_outside_pipeline"` (no infinite retry loop).
+- Bounded retries: 5 attempts per trade ID, persisted at `/root/quantai-v2/shared-data/cache/close_attempts.json`. After exhaustion, one Discord alert fires and the trade is left for manual review.
+- Runbook: `docs/runbooks/runbook-close-order-failed.md`.
 - Dashboard state: `/var/dashboard/state/quantai-heartbeats.json`
 - Heartbeat log: `/root/quantai-v2/shared-data/logs/heartbeat.log`
 
@@ -249,15 +257,16 @@ Auto-actions: `none` (human), `retry` (re-run retry_command after 60s), `skip` (
 
 **`v2/shared-data/scripts/error_detector.py`** — runs every 5 min via cron. Tails the last 500 lines of pipeline.log + heartbeat.log + position_monitor.log, matches against catalog, dispatches auto-actions, updates the catalog atomically, and writes `/var/dashboard/state/quantai-errors.json` for the dashboard. Deduplicates identical patterns within a 30-minute window via `/tmp/quantai-error-dedup.json`.
 
-**`v2/shared-data/scripts/error_learner.py`** — runs Friday 22:00 UTC (6 PM ET). Scans the last 7 days of logs, counts signatures (with numeric/path/hex tokens stripped for stability), auto-appends recurring patterns (3+) as `recurring` with a stub runbook and single-occurrence patterns as `novel`. Bumps occurrence_count on known matches. Posts a weekly digest to Discord.
+**`v2/shared-data/scripts/error_learner.py`** — runs Friday 22:00 UTC (6 PM ET). Scans the last 7 days of logs, counts signatures (with numeric/path/hex tokens stripped for stability), auto-appends recurring patterns (3+) as `recurring` and 2+ as `novel` with `severity: "info"` (post-2026-04-26: was "unknown", changed to suppress Discord noise). Skips lines starting with `[market_intelligence]`, `[scan_options]`, `[debate_chamber]`, etc. Bumps occurrence_count on known matches. Posts weekly digest via the bot-token helper `_discord.post_to_channel()`.
 
 **`v2/shared-data/scripts/add_error.py`** — CLI for manual catalog additions. Atomic write with `.bak` backup. Rejects duplicate ids unless `--force`.
 
-### Discord routing
-- `auto_action` executed successfully → `#logs` (`DISCORD_WEBHOOK_LOGS`)
-- Known pattern but manual action → `#karna-approvals` (`DISCORD_WEBHOOK_APPROVALS`)
-- Unknown pattern → `#karna-alerts` (`DISCORD_WEBHOOK_ALERTS`)
-- All three env vars fall back to `DISCORD_WEBHOOK_CHAT` if unset.
+### Discord routing (post-2026-04-26)
+All v2 cron scripts post via `_discord.post_to_channel(channel_id, msg)` using the bot token (`DISCORD_TOKEN_ORCHESTRATOR`) and a single channel (`DISCORD_CHANNEL_ALERTS`). The error_detector gates posts by severity:
+- `severity: "info"` or `"unknown"` → log locally only, no Discord post.
+- `severity: "warning"` → post once per `eid`, throttled at 60 minutes (DEDUP_MINUTES).
+- `severity: "critical"` → post immediately, dedup applies.
+- Unknown signatures with count < 2 in the window → log locally only (transient/noise filter).
 
 ### Cron
 ```
