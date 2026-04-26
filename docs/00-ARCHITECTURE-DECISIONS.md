@@ -117,3 +117,81 @@ rebuild done). HEARTBEAT Groq swap pending `GROQ_API_KEY` in clawroute.service.
 **Phase B5 (shipped 2026-04-25):** Cost cron + dashboard cards live.
 `/var/dashboard/collect_clawroute.py` runs every 15 min, writes
 `clawroute.json`, Discord-alerts on spend spikes.
+
+---
+
+## ADR-004: Migrate from Alpaca to IBKR for options execution
+**Date:** 2026-04-26
+**Status:** Accepted — infrastructure installed; connection pending IP whitelist (see below)
+
+**Context:** QuantAI's original execution broker is Alpaca paper trading. A live
+probe on 2026-04-26 confirmed that Alpaca paper returns HTTP 422 ("invalid
+underlying symbol") for all index options — SPX, XSP, SPXW, VIX, and MXSP. The
+planned strategy for both Agent Alpha and Agent Beta requires XSP (mini-SPX),
+which offers: (1) European-style exercise — no early assignment risk, (2) cash
+settlement — no share delivery risk, (3) Section 1256 tax treatment — 60/40
+long/short-term capital gains regardless of holding period.
+
+At $10k paper capital, one XSP contract ($50–$250 premium) fits the 1% risk rule.
+SPY options are the nearest alternative but carry American-style exercise risk and
+do not qualify for 1256 tax treatment.
+
+IB Gateway 10.37 was installed at `/opt/ibgateway/` and configured for paper mode
+(account DUP851506, port 4002) via IBC 3.23.0. The systemd unit
+`ibgateway.service` is enabled. The IBKR password was rotated on 2026-04-26 and
+is stored in `.env` as `IBKR_PASSWORD`, injected at runtime by
+`/opt/ibc/quantai_gateway_start.sh` via IBC's `--pw` argument.
+
+**Connection verification status (2026-04-26):** Blocked — IBKR's authentication
+server returns `NSErrorResponse.INVALID_USERNAME_OR_BAD_IP` for login attempts
+from VPS IP `87.99.141.55`. This is IBKR's IP-based login restriction. The VPS
+IP must be added to the account's Trusted IP Addresses list in IBKR Client Portal
+before IBC can authenticate. This is a one-time setup step requiring browser login
+by Amit at interactivebrokers.com → Settings → Security → Trusted IPs.
+
+**Decision:** IBKR (via IB Gateway + ib_insync) becomes the execution broker for
+QuantAI. Alpaca paper remains the current active broker until a BrokerAdapter
+abstraction layer is built and the IBKR connection is verified. Migration is
+incremental:
+
+1. Phase 1 (this ADR): Gateway installed, CLAUDE.md updated, ADR documented.
+   Connection pending IP whitelist.
+2. Phase 2 (after IP whitelist): Verify ib_insync connects to localhost:4002,
+   confirm `managedAccounts()` returns `['DUP851506']`, test XSP/SPX/VIX chains.
+3. Phase 3 (next session): Build `broker.py` — pluggable BrokerAdapter with
+   `AlpacaBroker` and `IBKRBroker` implementations. `BROKER_TYPE=alpaca|ibkr`
+   env var controls which is active.
+4. Phase 4: Validate IBKR paper execution in parallel with Alpaca for 1-2 weeks.
+5. Phase 5 (when live trading approved): Switch `BROKER_TYPE` to `ibkr` on live
+   account.
+
+**Alternatives considered:**
+- Keep Alpaca + use SPY/VXX as index proxies: rejected — SPY is American-style
+  (early assignment on ex-div dates), VXX suffers contango decay (~10-15%/yr),
+  neither qualifies for 1256 treatment. Proxies introduce tracking error that
+  breaks the strategy's payoff math.
+- Switch to tastytrade API: considered — has index options support, but API is
+  less mature than ib_insync/TWS, and IBKR is already installed and partially
+  configured.
+- Build custom IBKR REST wrapper via TWS API (Java): rejected — ib_insync
+  is a battle-tested Python client wrapping the same TWS socket API.
+
+**Consequences:**
+- (+) XSP, SPX, VIX option chains accessible — unblocks Agent Beta iron condors.
+- (+) Section 1256 tax treatment: 60/40 long/short-term regardless of holding period.
+- (+) European-style exercise: zero early-assignment risk on index options.
+- (+) Cash settlement: no share delivery or margin call on expiration.
+- (-) IB Gateway is a persistent process (~373 MB) requiring daily restart at
+  23:45 ET (IBC handles this automatically via `AutoRestartTime=23:45`).
+- (-) ib_insync is async/event-driven vs Alpaca's synchronous REST — `broker.py`
+  must manage connect/disconnect lifecycle across cron invocations.
+- (-) IBKR IP whitelist is a one-time manual setup step not captured in code.
+- (-) Credential security: `IBKR_PASSWORD` must never appear in logs, ps, or
+  systemctl output. Enforced via IBC wrapper + `EnvironmentFile` pattern.
+
+**Security posture:**
+- Password stored in `/home/trader/QuantAI/.env`, injected at runtime via
+  `/opt/ibc/quantai_gateway_start.sh` using systemd `EnvironmentFile` directive.
+- `config.ini` has blank `IbPassword=` intentionally; password injected via
+  `--pw` arg into a 0600 temp copy of `gatewaystart.sh` at runtime.
+- **NEVER run `systemctl status ibgateway` or `ps aux`** — use `systemctl is-active ibgateway`.

@@ -82,19 +82,43 @@ Amit (strategy, approvals via phone/Discord)
 ### Docs
 - `docs/quantai-knowledge.md` — Living knowledge base
 
-## Current State (April 16, 2026)
+## Current State (April 26, 2026)
 
 - Paper trading on Alpaca (~$99,368 equity)
 - 0 open positions (closed for strategy rework)
 - Pipeline works end-to-end: scan, debate, execute, journal, sync
 - 42/43 system tests passing
 - Dashboard live at https://quantai.tail1465ff.ts.net/
+- IB Gateway 10.37 installed at localhost:4002 (paper, DUP851506) — **pending IP whitelist** (see below)
 
 ## Alpaca API Gotchas
 
 - mleg orders REQUIRE top-level `"qty": "1"` in payload
 - mleg orders REJECT `"position_intent"` — never include it
 - Options chain: `paper-api.alpaca.markets/v2/options/contracts`
+
+## IB Gateway (IBKR Paper)
+
+- Paper trading port: `localhost:4002`, clientId=1
+- Account: `DUP851506`
+- Service: `ibgateway.service` (systemd, enabled)
+- Started by: `/opt/ibc/quantai_gateway_start.sh` (reads `IBKR_PASSWORD` from `.env`)
+- **NEVER run `systemctl status ibgateway` or `ps aux | grep ibgateway`** — these leak `IBKR_PASSWORD` into terminal output.
+- Safe status check: `systemctl is-active ibgateway`
+- Safe log check: `journalctl -u ibgateway -n 30 --no-pager | grep -v -i 'pass\|pw=\|--user='`
+
+### IBKR Login — Action Required Before Service Can Connect
+
+Root cause diagnosed 2026-04-26: IBKR rejects VPS login with `NSErrorResponse.INVALID_USERNAME_OR_BAD_IP`.
+The VPS IP **87.99.141.55** must be whitelisted in IBKR Client Portal before IBC can authenticate.
+
+**Amit must do this via browser:**
+1. Log in at https://www.interactivebrokers.com/sso/Login
+2. Navigate: Settings → Security → Trusted IPs (or User Settings → API → Trusted IP Addresses)
+3. Add `87.99.141.55` as a trusted API IP for account DUP851506
+4. Then: `sudo systemctl start ibgateway` on the VPS — should log in within 60 seconds
+
+After whitelist: verify with `python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"`
 
 ## Cron Schedule
 
