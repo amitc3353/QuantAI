@@ -110,15 +110,25 @@ Amit (strategy, approvals via phone/Discord)
 ### IBKR Login — Action Required Before Service Can Connect
 
 Root cause diagnosed 2026-04-26: IBKR rejects VPS login with `NSErrorResponse.INVALID_USERNAME_OR_BAD_IP`.
-The VPS IP **87.99.141.55** must be whitelisted in IBKR Client Portal before IBC can authenticate.
+The VPS IP **87.99.141.55** must be whitelisted at the **login level** in IBKR Client Portal.
 
-**Amit must do this via browser:**
+**IBKR has two separate IP controls — we need the LOGIN-level one:**
+- ❌ Settings → API Settings → Trusted IPs — this gates TCP connections *after* login (not what we need)
+- ✅ **Settings → User Settings → Security → Trusted IPs** — this gates the login itself (required)
+
+**Amit: exact steps:**
 1. Log in at https://www.interactivebrokers.com/sso/Login
-2. Navigate: Settings → Security → Trusted IPs (or User Settings → API → Trusted IP Addresses)
-3. Add `87.99.141.55` as a trusted API IP for account DUP851506
-4. Then: `sudo systemctl start ibgateway` on the VPS — should log in within 60 seconds
+2. Click username (top right) → **Settings** → **User Settings**
+3. Under **Security** section → **Trusted IPs**
+4. Add `87.99.141.55` → Save
+5. Wait **10–15 minutes** for propagation across IBKR auth servers
+6. Then: `sudo systemctl start ibgateway` on the VPS
 
-After whitelist: verify with `python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"`
+After whitelist propagates: verify with:
+```
+python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"
+```
+Expected: `True ['DUP851506']`
 
 ## Cron Schedule
 
