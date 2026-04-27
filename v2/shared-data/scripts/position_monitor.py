@@ -257,10 +257,94 @@ def place_close_order(trade, legs):
 
 # ── Exit logic ─────────────────────────────────────────────────────────────────
 
-def check_exit_threshold(trade, pnl, now):
-    """Check all four exit rules in priority order.
-    Returns (should_close: bool, exit_reason: str).
+def _min_leg_dte(trade, today):
+    """Days to the soonest-expiring leg."""
+    dtes = []
+    for leg in trade.get("legs", []):
+        try:
+            d = datetime.strptime(leg["expiry"], "%Y-%m-%d").date()
+            dtes.append((d - today).days)
+        except Exception:
+            continue
+    return min(dtes) if dtes else 999
+
+
+def check_beta_exit(trade, pnl, now):
+    """Beta-specific exit rules sourced from trade['exit_rules']. Returns
+    (should_close, reason). Only fires when exit_rules is non-empty —
+    Alpha trades have no exit_rules and fall through.
     """
+    rules = trade.get("exit_rules") or {}
+    if not rules:
+        return None
+    today = now.date()
+    weekday = now.weekday()  # 0=Mon, 4=Fri
+
+    # Hard time exit
+    time_exit_dte = rules.get("time_exit_dte")
+    if time_exit_dte is not None:
+        dte = _min_leg_dte(trade, today)
+        if dte <= int(time_exit_dte):
+            return True, f"time_exit_dte ({dte}<={time_exit_dte})"
+
+    # PnL-percentage thresholds (against entry net debit/credit)
+    basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
+    if basis > 0:
+        pnl_pct = (pnl / (basis * 100)) * 100
+        tp = rules.get("take_profit_pct")
+        if tp is not None and pnl_pct >= float(tp):
+            return True, f"take_profit ({pnl_pct:.0f}%>={tp}%)"
+        sl = rules.get("stop_loss_pct")
+        if sl is not None and pnl_pct <= float(sl):
+            return True, f"stop_loss ({pnl_pct:.0f}%<={sl}%)"
+
+    # Weekend close — credit spreads only (Friday after 3 PM)
+    if rules.get("weekend_close") and weekday == 4 and now.hour >= 15:
+        return True, "weekend_close"
+
+    # Valley danger (ratio backspreads): close if price within X% of the
+    # long strike at low DTE.
+    valley = rules.get("valley_strike")
+    if valley:
+        dte = _min_leg_dte(trade, today)
+        valley_exit_dte = int(rules.get("valley_exit_dte", 14))
+        prox_pct = float(rules.get("valley_proximity_pct", 5.0))
+        try:
+            udl = float(trade.get("underlying_price") or 0)
+            if udl > 0 and dte <= valley_exit_dte:
+                dist = abs(udl - float(valley)) / float(valley) * 100
+                if dist < prox_pct:
+                    return True, f"valley_danger ({dist:.1f}% from {valley} @ {dte}d)"
+        except Exception:
+            pass
+
+    # Hard time exit for ratios (independent of generic time_exit_dte)
+    hard_dte = rules.get("hard_time_exit_dte")
+    if hard_dte is not None:
+        dte = _min_leg_dte(trade, today)
+        if dte <= int(hard_dte):
+            return True, f"hard_time_exit ({dte}<={hard_dte})"
+
+    return False, "hold"
+
+
+def check_exit_threshold(trade, pnl, now):
+    """Returns (should_close, exit_reason).
+
+    For Beta trades (exit_rules present): consult Beta logic first; if it
+    returns None we still apply the Alpha hard-close guard. For Alpha
+    trades (no exit_rules): use the existing 4-rule logic.
+    """
+    beta = check_beta_exit(trade, pnl, now)
+    if beta is not None:
+        should, reason = beta
+        if should:
+            return True, reason
+        # Beta said hold — but we still apply the 3:30 PM hard close to all trades.
+        if now.hour > 15 or (now.hour == 15 and now.minute >= 30):
+            return True, "hard_close_15_30"
+        return False, ""
+
     # 1. Hard close — 3:30 PM ET
     if now.hour > 15 or (now.hour == 15 and now.minute >= 30):
         return True, "hard_close_15_30"
