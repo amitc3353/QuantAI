@@ -40,7 +40,7 @@ hour = now_et.hour
 session = "pre_market" if hour < 9 else "morning" if hour < 12 else "afternoon" if hour < 15 else "end_of_day"
 client = Client()
 
-SONNET = "claude-sonnet-4-5"
+SONNET = "claude-sonnet-4-6"
 HAIKU  = "claude-haiku-4-5-20251001"
 
 CONSTITUTION = """

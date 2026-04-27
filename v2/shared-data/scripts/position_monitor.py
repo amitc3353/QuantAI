@@ -616,6 +616,15 @@ def check_exit_threshold(trade, pnl, now, broker=None):
         if pnl >= 0.5 * credit:
             return True, "profit_target", 1.0, None
 
+    # 5 & 6. Debit-based thresholds (diagonal spreads: estimated_credit=0, net_debit set)
+    debit = abs(trade.get("net_debit") or 0)
+    if credit == 0 and debit > 0:
+        debit_basis = debit * 100
+        if pnl < -debit_basis:
+            return True, "stop_loss_debit (100%)", 1.0, None
+        if pnl >= 0.5 * debit_basis:
+            return True, "profit_target_debit (50%)", 1.0, None
+
     return False, "", 1.0, None
 
 

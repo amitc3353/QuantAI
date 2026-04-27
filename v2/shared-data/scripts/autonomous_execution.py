@@ -15,7 +15,7 @@ Agent Beta:  Iron condors and butterflies — submitted as multi-leg orders
 
 Key fixes (Apr 2):
 - Iron condors submitted as single mleg order (fixes uncovered options error)
-- Strike selection queries Alpaca chain first, falls back to nearest available
+- Strike selection queries broker chain first, falls back to nearest available
 - Spreads also submitted as mleg for cleaner execution
 
 Usage:
@@ -186,7 +186,7 @@ def resolve_expiry(expiry_str):
         days_to_friday = (4 - today.weekday()) % 7 or 7
         return (today + timedelta(days=days_to_friday)).strftime("%Y-%m-%d")
 
-# ── Strike selection — query Alpaca chain first ───────────────────────
+# ── Strike selection — query broker chain ────────────────────────────
 def get_available_strikes(symbol, option_type, expiry):
     """Query the active broker for available strikes on a given expiry.
     Returns sorted list of strikes, or empty list on failure.
@@ -239,7 +239,7 @@ def find_spread_strikes(symbol, short_target, long_target, option_type, expiry):
         log(f"  Could not find long {option_type} below/above ${short_strike}")
         return None, None
 
-    log(f"  Found strikes: short ${short_strike}, long ${long_strike} (from Alpaca chain)")
+    log(f"  Found strikes: short ${short_strike}, long ${long_strike} (from broker chain)")
     return short_strike, long_strike
 
 # ── Multi-leg order (mleg) ────────────────────────────────────────────
@@ -362,7 +362,7 @@ def execute_iron_condor(symbol, trade, expiry):
     )
 
     if not all([put_short_s, put_long_s, call_short_s, call_long_s]):
-        log("  Could not find all 4 condor strikes in Alpaca chain")
+        log("  Could not find all 4 condor strikes in broker chain")
         return None
 
     mleg_legs = [
@@ -424,7 +424,7 @@ def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
     sell_strike = float(sell_leg.get("strike", 0))
     buy_strike  = float(buy_leg.get("strike", sell_strike))  # often same strike
 
-    # Get real strikes from Alpaca chain
+    # Get real strikes from broker chain
     near_strikes = get_available_strikes(symbol, option_type, near_expiry)
     far_strikes  = get_available_strikes(symbol, option_type, far_expiry)
 
@@ -432,7 +432,7 @@ def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
     actual_buy_strike  = nearest_strike(far_strikes, buy_strike)   if far_strikes  else buy_strike
 
     if not actual_sell_strike or not actual_buy_strike:
-        log(f"  Could not find diagonal strikes in Alpaca chain")
+        log(f"  Could not find diagonal strikes in broker chain")
         return None
 
     sell_sym = build_occ_symbol(symbol, near_expiry, option_type, actual_sell_strike)
@@ -550,6 +550,7 @@ def sync_sheets():
 
 # ── Monitor ───────────────────────────────────────────────────────────
 def run_monitor():
+    # Discord-alert stub only — actual position closing is handled by position_monitor.py cron.
     if not os.path.exists(JOURNAL): return
     trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
     open_agent = [t for t in trades if t.get("status") == "OPEN"
@@ -611,7 +612,7 @@ def run():
         trade    = item.get("proposal", {})
         symbol   = trade.get("symbol", "?")
         strategy = trade.get("strategy", "?").lower().replace(" ", "_")
-        agent_name = "agent_beta" if strategy == "iron_condor" else "agent_alpha"
+        agent_name = "agent_alpha"
 
         log(f"\n{'='*50}")
         log(f"Trade: {strategy.upper()} on {symbol} | Agent: {agent_name}")
