@@ -512,8 +512,11 @@ def log_trade(trade, agent_name, fill, intel):
         with open(JOURNAL) as f:
             existing = [json.loads(l) for l in f if l.strip()]
 
+    # Per-prefix counter so Alpha (A###) and Beta (B###) don't collide.
+    prefix = "B" if agent_name == "agent_beta" else "A"
+    same_prefix = sum(1 for t in existing if (t.get("id") or "").startswith(prefix))
     entry = {
-        "id": f"A{len(existing)+1:03d}",
+        "id": f"{prefix}{same_prefix+1:03d}",
         "timestamp": datetime.now(ET).isoformat(),
         "mode": "paper",
         "source": agent_name,
