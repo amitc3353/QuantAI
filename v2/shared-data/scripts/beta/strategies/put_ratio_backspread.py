@@ -19,6 +19,10 @@ def can_enter(intel: dict, regime: str, journal: list) -> tuple[bool, str]:
     skew = macro.get("spx_put_call_skew")
     if skew is not None and skew >= 1.25:
         return False, f"skew {skew} >=1.25, OTM puts too rich; use BWB"
+    # BB width expanding: percentile must be >= 30 (not in lower tercile = contracting)
+    bb_pct = macro.get("spx_bb_width_percentile_126d")
+    if bb_pct is not None and bb_pct < 30:
+        return False, f"BB width percentile {bb_pct:.0f} <30 (bands contracting)"
     if any(t.get("strategy") in (NAME, "call_ratio_backspread") and t.get("status") == "OPEN"
            for t in journal):
         return False, "ratio position already open"

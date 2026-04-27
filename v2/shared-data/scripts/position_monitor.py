@@ -225,12 +225,12 @@ def build_closing_legs(trade, alpaca_pos):
     return closing
 
 
-def place_close_order(trade, legs):
+def place_close_order(trade, legs, close_qty=1):
     """Place a close order through the active broker. 1 leg → plain order;
     2-4 legs → mleg combo. Returns order dict on success, None on failure.
     """
     if DRY_RUN:
-        log(f"  [DRY RUN] Would close {trade['id']} with {len(legs)} legs:")
+        log(f"  [DRY RUN] Would close {trade['id']} qty={close_qty} with {len(legs)} legs:")
         for leg in legs:
             log(f"    {leg['side'].upper()} {leg['symbol']}")
         return {"id": "dry-run", "status": "simulated"}
@@ -242,16 +242,16 @@ def place_close_order(trade, legs):
     import time as _t
     coid = f"close-{trade.get('id','?')}-{int(_t.time())}"
     try:
-        result = get_broker().close_position(legs, qty=1, client_order_id=coid)
+        result = get_broker().close_position(legs, qty=close_qty, client_order_id=coid)
     except Exception as e:
         log(f"  Close order exception: {e}")
         return None
     if result is None:
-        log(f"  Close order FAILED ({len(legs)}-leg): broker returned None")
-        logging.error("Close order FAILED %d-leg: broker returned None", len(legs))
+        log(f"  Close order FAILED ({len(legs)}-leg qty={close_qty}): broker returned None")
+        logging.error("Close order FAILED %d-leg qty=%d: broker returned None", len(legs), close_qty)
         return None
     order_id = (result.get("order_id") or "")[:8]
-    log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''}): {order_id}")
+    log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''} qty={close_qty}): {order_id}")
     return {"id": result.get("order_id", ""), "status": result.get("status", "submitted")}
 
 
@@ -271,6 +271,7 @@ def _min_leg_dte(trade, today):
 
 _INTEL_CACHE = {"loaded_at": None, "data": {}}
 _GAP_CACHE = {"date": None, "gap_pct": None}
+_REGIME_CACHE = {"loaded_at": None, "regime": "UNKNOWN"}
 
 
 def _load_intel_macro():
@@ -286,6 +287,22 @@ def _load_intel_macro():
         data = {}
     _INTEL_CACHE.update({"loaded_at": now_ts, "data": data})
     return data
+
+
+def _current_beta_regime():
+    """Read current Beta regime from dashboard state. Cached per minute."""
+    import time
+    now_ts = time.time()
+    if _REGIME_CACHE["loaded_at"] and now_ts - _REGIME_CACHE["loaded_at"] < 60:
+        return _REGIME_CACHE["regime"]
+    try:
+        from pathlib import Path as _P
+        state = json.loads(_P("/var/dashboard/state/agent-beta-state.json").read_text())
+        r = state.get("data", {}).get("current_regime", "UNKNOWN")
+    except Exception:
+        r = "UNKNOWN"
+    _REGIME_CACHE.update({"loaded_at": now_ts, "regime": r})
+    return r
 
 
 def _spx_gap_pct(now):
@@ -329,9 +346,11 @@ def _live_net_delta(trade, broker):
 
 
 def check_beta_exit(trade, pnl, now, broker=None):
-    """Beta-specific exit rules sourced from trade['exit_rules']. Returns
-    (should_close, reason). Only fires when exit_rules is non-empty —
-    Alpha trades have no exit_rules and fall through to the Alpha path.
+    """Beta-specific exit rules from trade['exit_rules'].
+
+    Returns (should_close, reason, close_fraction, partial_flag) or None for non-Beta.
+    close_fraction=1.0 for full close; <1.0 for partial (scale-out).
+    partial_flag is the journal key to set True after a partial close, or None.
     """
     rules = trade.get("exit_rules") or {}
     if not rules:
@@ -340,44 +359,179 @@ def check_beta_exit(trade, pnl, now, broker=None):
     weekday = now.weekday()  # 0=Mon, 4=Fri
     macro = _load_intel_macro()
 
-    # Hard time exit (universal)
+    basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
+    pnl_pct = (pnl / (basis * 100)) * 100 if basis > 0 else 0.0
+
+    # -- Scale-out triggers (event strangle) — checked before time/pnl exits --
+    for so in (rules.get("scale_out_at") or []):
+        gp = so.get("gain_pct")
+        frac = so.get("sell_fraction")
+        if gp is None or frac is None:
+            continue
+        flag_key = f"_scaled_at_{int(gp)}"
+        if trade.get(flag_key):
+            continue
+        if basis > 0 and pnl_pct >= float(gp):
+            return True, f"scale_out_at ({pnl_pct:.0f}%>={gp}%)", float(frac), flag_key
+
+    # -- Trailing stop (active only after first scale-out) --
+    trailing_stop = rules.get("trailing_stop_pct")
+    if trailing_stop is not None:
+        first_scale_done = any(
+            trade.get(f"_scaled_at_{int((so.get('gain_pct') or 0))}", False)
+            for so in (rules.get("scale_out_at") or [])
+        )
+        if first_scale_done and basis > 0:
+            peak = float(trade.get("_peak_pnl_pct") or 0)
+            if peak > 0 and pnl_pct < peak - float(trailing_stop):
+                return True, f"trailing_stop ({pnl_pct:.0f}%<peak {peak:.0f}%-{trailing_stop}%)", 1.0, None
+
+    # -- Hard time exit (universal) --
     time_exit_dte = rules.get("time_exit_dte")
     if time_exit_dte is not None:
         dte = _min_leg_dte(trade, today)
         if dte <= int(time_exit_dte):
-            return True, f"time_exit_dte ({dte}<={time_exit_dte})"
+            return True, f"time_exit_dte ({dte}<={time_exit_dte})", 1.0, None
 
-    # Hard time exit for ratios (separate threshold from generic time_exit_dte)
+    # -- Hard time exit for ratios --
     hard_dte = rules.get("hard_time_exit_dte")
     if hard_dte is not None:
         dte = _min_leg_dte(trade, today)
         if dte <= int(hard_dte):
-            return True, f"hard_time_exit ({dte}<={hard_dte})"
+            return True, f"hard_time_exit ({dte}<={hard_dte})", 1.0, None
 
-    # PnL-percentage thresholds (against entry net debit/credit per contract)
-    basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
+    # -- PnL thresholds --
     if basis > 0:
-        pnl_pct = (pnl / (basis * 100)) * 100
         tp = rules.get("take_profit_pct")
         if tp is not None and pnl_pct >= float(tp):
-            return True, f"take_profit ({pnl_pct:.0f}%>={tp}%)"
+            return True, f"take_profit ({pnl_pct:.0f}%>={tp}%)", 1.0, None
         sl = rules.get("stop_loss_pct")
         if sl is not None and pnl_pct <= float(sl):
-            return True, f"stop_loss ({pnl_pct:.0f}%<={sl}%)"
+            return True, f"stop_loss ({pnl_pct:.0f}%<={sl}%)", 1.0, None
+        # 2x-credit stop (credit spreads): stored as stop_loss_2x_credit=True + credit_at_entry
+        if rules.get("stop_loss_2x_credit") and pnl_pct <= -200.0:
+            return True, f"stop_loss_2x_credit ({pnl_pct:.0f}%<=-200%)", 1.0, None
 
-    # Weekend close — credit spreads only (Friday after 3 PM ET)
+    # -- Post-event exit (event strangle, 1h after event day starts) --
+    post_event_hours = rules.get("post_event_exit_hours")
+    event_type = trade.get("event_type")
+    if post_event_hours is not None and event_type:
+        days_field_map = {
+            "CPI": "cpi_days_away", "NFP": "jobs_days_away",
+            "FOMC": "fomc_days_away", "GDP": "gdp_days_away",
+        }
+        days_field = days_field_map.get(event_type)
+        if days_field and macro.get("is_event_day") and (macro.get(days_field) or 999) == 0:
+            try:
+                entry_ts = datetime.fromisoformat(trade.get("timestamp", ""))
+                if entry_ts.tzinfo is None:
+                    entry_ts = entry_ts.replace(tzinfo=ET)
+                elapsed_h = (now - entry_ts).total_seconds() / 3600
+                if elapsed_h >= float(post_event_hours):
+                    return True, f"post_event_exit ({event_type} day +{elapsed_h:.1f}h)", 1.0, None
+            except Exception:
+                pass
+
+    # -- Big-move scale-out (event strangle, >=X% SPX move before event) --
+    big_move_pct = rules.get("big_move_scale_out_pct")
+    if big_move_pct is not None and not trade.get("_big_move_scaled"):
+        spx_now = macro.get("spx_price") or 0
+        entry_spx = float(trade.get("underlying_price") or 0)
+        if spx_now > 0 and entry_spx > 0:
+            move = abs(spx_now - entry_spx) / entry_spx * 100
+            if move >= float(big_move_pct):
+                return True, f"big_move_scale_out ({move:.1f}%>={big_move_pct}%)", 0.5, "_big_move_scaled"
+
+    # -- VIX spike-capture (VIX Calls hedge) --
+    vix_strike = rules.get("vix_strike")
+    if vix_strike is not None:
+        current_vix = macro.get("vix") or 0
+        if current_vix > 0:
+            vix_2x = float(vix_strike) * 2
+            if not trade.get("_vix_2x_scaled") and current_vix >= vix_2x:
+                frac = float(rules.get("vix_2x_strike_sell_fraction", 0.75))
+                return True, f"vix_2x_strike (VIX {current_vix:.1f}>={vix_2x:.1f})", frac, "_vix_2x_scaled"
+            if not trade.get("_vix_crossed_scaled") and current_vix >= float(vix_strike):
+                frac = float(rules.get("vix_cross_strike_sell_fraction", 0.5))
+                return True, f"vix_cross_strike (VIX {current_vix:.1f}>={vix_strike})", frac, "_vix_crossed_scaled"
+
+    # -- Gamma scalp (ratio backspreads, >=3% SPX move within 5 days of entry) --
+    gamma_pct = rules.get("gamma_scalp_pct")
+    gamma_frac = rules.get("gamma_scalp_sell_fraction")
+    if gamma_pct is not None and gamma_frac is not None and not trade.get("_gamma_scalp_done"):
+        spx_now = macro.get("spx_price") or 0
+        entry_spx = float(trade.get("underlying_price") or 0)
+        if spx_now > 0 and entry_spx > 0:
+            move = abs(spx_now - entry_spx) / entry_spx * 100
+            if move >= float(gamma_pct):
+                try:
+                    entry_ts = datetime.fromisoformat(trade.get("timestamp", ""))
+                    if entry_ts.tzinfo is None:
+                        entry_ts = entry_ts.replace(tzinfo=ET)
+                    if (now - entry_ts).days <= 5:
+                        return True, f"gamma_scalp ({move:.1f}%>={gamma_pct}% d≤5)", float(gamma_frac), "_gamma_scalp_done"
+                except Exception:
+                    pass
+
+    # -- Calendar short-leg roll (close when short leg approaches 3 DTE) --
+    short_leg_min_dte = rules.get("short_leg_min_dte")
+    if short_leg_min_dte is not None:
+        expiry_short = trade.get("expiry_short")
+        if expiry_short:
+            try:
+                short_dte = (datetime.strptime(expiry_short, "%Y-%m-%d").date() - today).days
+                if short_dte <= int(short_leg_min_dte):
+                    return True, f"short_leg_min_dte ({short_dte}<={short_leg_min_dte})", 1.0, None
+            except Exception:
+                pass
+
+    # -- Calendar underlying breach (close if underlying moves >=X% from strike) --
+    breach_pct = rules.get("underlying_breach_pct")
+    breach_strike = rules.get("underlying_breach_strike")
+    if breach_pct is not None and breach_strike is not None:
+        spx_now = macro.get("spx_price") or 0
+        if spx_now > 0 and float(breach_strike) > 0:
+            dist = abs(spx_now - float(breach_strike)) / float(breach_strike) * 100
+            if dist >= float(breach_pct):
+                return True, f"underlying_breach ({dist:.1f}%>={breach_pct}%)", 1.0, None
+
+    # -- BWB breakout (close if SPX moves >=X% from entry price) --
+    breakout_pct = rules.get("breakout_pct")
+    if breakout_pct is not None:
+        spx_now = macro.get("spx_price") or 0
+        entry_spx = float(trade.get("underlying_price") or 0)
+        if spx_now > 0 and entry_spx > 0:
+            move = abs(spx_now - entry_spx) / entry_spx * 100
+            if move >= float(breakout_pct):
+                return True, f"breakout ({move:.1f}%>={breakout_pct}%)", 1.0, None
+
+    # -- Weekend close (Friday >=15:00 ET) --
     if rules.get("weekend_close") and weekday == 4 and now.hour >= 15:
-        return True, "weekend_close"
+        return True, "weekend_close", 1.0, None
 
-    # Gap-open close — credit spreads only. Fires only in early session
-    # (9:30-10:00 ET) to avoid mistakenly identifying intraday moves as gaps.
+    # -- Gap-open close (9:30-10:00 ET only, SPX gap >=1%) --
     if rules.get("gap_open_close") and weekday < 5 and now.hour == 9 and now.minute >= 30:
         gap = _spx_gap_pct(now)
         if gap is not None and abs(gap) >= 1.0:
-            return True, f"gap_open_close (SPX gap {gap:+.1f}%)"
+            return True, f"gap_open_close (SPX gap {gap:+.1f}%)", 1.0, None
 
-    # Valley danger (ratio backspreads): close if underlying within X% of
-    # the long-leg strike at low DTE — the v-shaped loss zone.
+    # -- Regime exit (credit spread — exit when leaving HIGH_VOL) --
+    regime_exits = rules.get("regime_exit_on_change")
+    if regime_exits:
+        current = _current_beta_regime()
+        if current not in regime_exits and current != "UNKNOWN":
+            return True, f"regime_exit ({current} not in {regime_exits})", 1.0, None
+
+    # -- Event close buffer (credit spreads and debit spreads) --
+    for buf_key in ("event_close_buffer_days", "event_buffer_days"):
+        event_buf = rules.get(buf_key)
+        if event_buf is not None:
+            for d in ("fomc_days_away", "cpi_days_away", "jobs_days_away"):
+                if (macro.get(d) or 999) <= int(event_buf):
+                    return True, f"{buf_key} ({d}={macro.get(d)})", 1.0, None
+            break
+
+    # -- Valley danger (ratio backspreads) --
     valley = rules.get("valley_strike")
     if valley:
         dte = _min_leg_dte(trade, today)
@@ -388,74 +542,69 @@ def check_beta_exit(trade, pnl, now, broker=None):
             if udl > 0 and dte <= valley_exit_dte:
                 dist = abs(udl - float(valley)) / float(valley) * 100
                 if dist < prox_pct:
-                    return True, f"valley_danger ({dist:.1f}% from {valley} @ {dte}d)"
+                    return True, f"valley_danger ({dist:.1f}% from {valley} @ {dte}d)", 1.0, None
         except Exception:
             pass
 
-    # Trend reversal (ratio backspreads): ADX collapse OR price crosses
-    # against 20 EMA. Reads from cached market_intelligence.macro.
+    # -- Trend reversal (ratio backspreads) --
     adx_min = rules.get("trend_reversal_adx_min")
     if adx_min is not None:
         adx = macro.get("spx_adx_14")
         if adx is not None and float(adx) < float(adx_min):
-            return True, f"trend_reversal (ADX {adx:.0f} < {adx_min})"
+            return True, f"trend_reversal (ADX {adx:.0f} < {adx_min})", 1.0, None
     if rules.get("trend_reversal_ema"):
         price = macro.get("spx_price")
         ema = macro.get("spx_ema_20")
         slope = macro.get("spx_ema_20_slope")
         if price is not None and ema is not None:
-            # Long-side trade (positive net_delta at entry) breaks if price
-            # closes below EMA20; short-side (negative net_delta) if above.
             entry_dir = float(trade.get("net_delta") or 0)
             if entry_dir > 0 and price < ema and slope != "positive":
-                return True, f"trend_reversal (price {price:.0f} < EMA20 {ema:.0f}, slope {slope})"
+                return True, f"trend_reversal (price {price:.0f} < EMA20 {ema:.0f})", 1.0, None
             if entry_dir < 0 and price > ema and slope != "negative":
-                return True, f"trend_reversal (price {price:.0f} > EMA20 {ema:.0f}, slope {slope})"
+                return True, f"trend_reversal (price {price:.0f} > EMA20 {ema:.0f})", 1.0, None
 
-    # Delta exit (ratio backspreads): live position delta exceeds threshold.
-    # Costs ~3-5s of broker snapshots per leg — only run when threshold is set.
+    # -- Delta exit (ratio backspreads, live broker snapshot) --
     delta_thr = rules.get("delta_exit_threshold")
     if delta_thr is not None and broker is not None:
         live_delta = _live_net_delta(trade, broker)
         if live_delta is not None and abs(live_delta) > float(delta_thr):
-            return True, f"delta_exit (|{live_delta:.2f}| > {delta_thr})"
+            return True, f"delta_exit (|{live_delta:.2f}| > {delta_thr})", 1.0, None
 
-    return False, "hold"
+    return False, "hold", 1.0, None
 
 
 def check_exit_threshold(trade, pnl, now, broker=None):
-    """Returns (should_close, exit_reason).
+    """Returns (should_close, exit_reason, close_fraction, partial_flag).
+
+    close_fraction=1.0 for full close; <1.0 for partial scale-out.
+    partial_flag is the journal key to set True after a partial close (or None).
 
     For Beta trades (exit_rules present): consult Beta logic. The 3:30 PM
     blanket close was REMOVED for Beta — its time_exit_dte / hard_time_exit_dte
     rules cover the same ground without prematurely closing multi-week trades.
 
     For Alpha trades (no exit_rules): use the original 4-rule logic, BUT the
-    3:30 PM hard close now fires only when min leg DTE <= 1. Multi-week
-    diagonals/condors/spreads ride through 3:30 PM naturally; only true 0/1 DTE
-    positions get the gamma-protection close. (Bug history: A005/A006 diagonals
-    with 17+ DTE legs were incorrectly force-closed same-day — fixed 2026-04-27.)
+    3:30 PM hard close now fires only when min leg DTE <= 1.
     """
     today = now.date()
     min_dte = _min_leg_dte(trade, today)
 
     beta = check_beta_exit(trade, pnl, now, broker=broker)
     if beta is not None:
-        should, reason = beta
-        return (True, reason) if should else (False, "")
+        should, reason, fraction, flag = beta
+        return (True, reason, fraction, flag) if should else (False, "", 1.0, None)
 
     # Alpha path. 1. Hard close at 3:30 PM ET — ONLY for 0/1 DTE legs.
     if min_dte <= 1 and (now.hour > 15 or (now.hour == 15 and now.minute >= 30)):
-        return True, "hard_close_15_30"
+        return True, "hard_close_15_30", 1.0, None
 
     # 2. Expiry proximity — today or tomorrow
-    today = now.date()
     tomorrow = date.fromordinal(today.toordinal() + 1)
     for leg in trade.get("legs", []):
         try:
             exp = datetime.strptime(leg["expiry"], "%Y-%m-%d").date()
             if exp <= tomorrow:
-                return True, "expiry_proximity"
+                return True, "expiry_proximity", 1.0, None
         except Exception:
             pass
 
@@ -463,11 +612,11 @@ def check_exit_threshold(trade, pnl, now, broker=None):
     credit = abs(trade.get("estimated_credit") or 0)
     if credit > 0:
         if pnl < -(2 * credit):
-            return True, "stop_loss"
+            return True, "stop_loss", 1.0, None
         if pnl >= 0.5 * credit:
-            return True, "profit_target"
+            return True, "profit_target", 1.0, None
 
-    return False, ""
+    return False, "", 1.0, None
 
 
 # ── Discord ────────────────────────────────────────────────────────────────────
@@ -489,21 +638,35 @@ def post_discord(msg):
             pass
 
 
-def post_close_alert(trade, exit_reason, pnl):
-    labels = {
-        "stop_loss":        "🛑 STOP LOSS",
-        "profit_target":    "✅ PROFIT TARGET",
-        "expiry_proximity": "⏳ EXPIRY PROXIMITY",
-        "hard_close_15_30": "⏰ HARD CLOSE 3:30 PM",
-    }
-    label  = labels.get(exit_reason, exit_reason.upper())
-    credit = trade.get("estimated_credit", 0)
-    msg = (
-        f"{label} | {trade.get('id','?')} {trade.get('symbol','?')} "
-        f"{(trade.get('strategy') or '').replace('_',' ').upper()} | "
-        f"P&L: ${pnl:+.2f} | Entry credit: ${credit:.2f} | "
-        f"{datetime.now(ET).strftime('%H:%M ET')}"
-    )
+def post_close_alert(trade, exit_reason, pnl, is_partial=False, close_qty=None):
+    strategy = (trade.get("strategy") or "").replace("_", " ").upper()
+    instrument = trade.get("instrument") or trade.get("symbol") or "?"
+    basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
+    pnl_pct = round(pnl / (basis * 100) * 100, 1) if basis > 0 else 0.0
+
+    if trade.get("source") == "agent_beta":
+        action = "SCALED" if is_partial else "CLOSED"
+        qty_note = f" (×{close_qty})" if is_partial and close_qty else ""
+        msg = (
+            f"🤖 Agent Beta | {action} — {strategy}{qty_note}\n"
+            f"📊 {instrument} | {exit_reason}\n"
+            f"💰 P&L: ${pnl:+.2f} ({pnl_pct:+.1f}%)\n"
+            f"📋 {trade.get('id','?')} | {datetime.now(ET).strftime('%H:%M ET')}"
+        )
+    else:
+        labels = {
+            "stop_loss":        "🛑 STOP LOSS",
+            "profit_target":    "✅ PROFIT TARGET",
+            "expiry_proximity": "⏳ EXPIRY PROXIMITY",
+            "hard_close_15_30": "⏰ HARD CLOSE 3:30 PM",
+        }
+        label = labels.get(exit_reason, exit_reason.upper())
+        credit = trade.get("estimated_credit", 0)
+        msg = (
+            f"{label} | {trade.get('id','?')} {trade.get('symbol','?')} {strategy} | "
+            f"P&L: ${pnl:+.2f} | Entry credit: ${credit:.2f} | "
+            f"{datetime.now(ET).strftime('%H:%M ET')}"
+        )
     post_discord(msg)
 
 
@@ -596,9 +759,27 @@ def main():
     # Always write dashboard with fresh P&L
     write_dashboard(open_trades, pnl_map)
 
-    # Evaluate exits — but skip closes outside market hours (options aren't tradable).
+    # Update _peak_pnl_pct for Beta trades with trailing-stop rules (non-close journal update).
+    peak_updates = {}
+    for t in open_trades:
+        if not t.get("exit_rules", {}).get("trailing_stop_pct"):
+            continue
+        tid = t["id"]
+        basis = abs(t.get("net_debit") or t.get("net_credit") or 0)
+        if basis <= 0:
+            continue
+        pnl_pct = (pnl_map.get(tid, 0) / (basis * 100)) * 100
+        old_peak = float(t.get("_peak_pnl_pct") or 0)
+        if pnl_pct > old_peak:
+            peak_updates[tid] = {"_peak_pnl_pct": round(pnl_pct, 1)}
+    if peak_updates and not DRY_RUN:
+        rewrite_journal_atomic(peak_updates)
+        log(f"Peak PnL updated for {len(peak_updates)} trade(s)")
+
+    # Evaluate exits — but skip closes outside market hours.
     journal_updates = {}
     closed_trades   = []
+    partial_trades  = []
     market_open = is_market_open(now)
     if not market_open:
         log(f"Market closed at {now.strftime('%H:%M ET')} — monitoring only, no close attempts")
@@ -608,30 +789,37 @@ def main():
     broker = get_broker()
     for t in open_trades:
         pnl = pnl_map[t["id"]]
-        should_close, reason = check_exit_threshold(t, pnl, now, broker=broker)
+        should_close, reason, close_fraction, partial_flag = check_exit_threshold(
+            t, pnl, now, broker=broker
+        )
         if not should_close:
             continue
         if not market_open:
-            continue  # P&L recorded above; close attempt deferred to next market session
+            continue
 
         tid = t["id"]
         prior = attempts.get(tid, 0)
         if prior >= MAX_CLOSE_ATTEMPTS:
-            # Quiet — already logged once when the limit was hit. Manual review needed.
             continue
 
-        log(f"EXIT triggered: {tid} ({reason}) — P&L ${pnl:+.2f}")
+        trade_qty = t.get("qty") or 1
+        close_qty = max(1, round(close_fraction * trade_qty))
+        is_partial = close_fraction < 1.0 and close_qty < trade_qty
+
+        log(f"EXIT triggered: {tid} ({reason}) close_qty={close_qty}/{trade_qty} — P&L ${pnl:+.2f}")
 
         legs = build_closing_legs(t, alpaca_pos)
         if not legs:
             log(f"  No active Alpaca legs for {tid} — already closed on broker; marking journal CLOSED")
             logging.warning("No active Alpaca legs for %s — broker already closed (journal repaired)", tid)
-            credit = abs(t.get("estimated_credit") or 0)
-            pnl_pct = round(pnl / credit, 4) if credit else 0.0
+            basis = abs(t.get("net_debit") or t.get("net_credit") or t.get("estimated_credit") or 0)
+            pnl_pct = round(pnl / (basis * 100), 4) if basis else 0.0
             journal_updates[tid] = {
                 "status":         "CLOSED",
                 "exit_timestamp": now.isoformat(),
+                "close_timestamp": now.isoformat(),
                 "exit_reason":    "closed_outside_pipeline",
+                "close_reason":   "closed_outside_pipeline",
                 "exit_pnl":       round(pnl, 2),
                 "pnl":            round(pnl, 2),
                 "pnl_pct":        pnl_pct,
@@ -640,10 +828,10 @@ def main():
             attempts.pop(tid, None)
             continue
 
-        order = place_close_order(t, legs)
+        order = place_close_order(t, legs, close_qty)
         if order is None:
             attempts[tid] = prior + 1
-            log(f"  Close order failed for {tid} (attempt {attempts[tid]}/{MAX_CLOSE_ATTEMPTS}) — will retry next cycle")
+            log(f"  Close order failed for {tid} (attempt {attempts[tid]}/{MAX_CLOSE_ATTEMPTS})")
             logging.warning("Close order failed for %s (attempt %d/%d)", tid, attempts[tid], MAX_CLOSE_ATTEMPTS)
             if attempts[tid] >= MAX_CLOSE_ATTEMPTS:
                 log(f"  GIVING UP on {tid} after {MAX_CLOSE_ATTEMPTS} attempts — manual review needed")
@@ -654,59 +842,94 @@ def main():
                 )
             continue
 
-        credit = abs(t.get("estimated_credit") or 0)
-        pnl_pct = round(pnl / credit, 4) if credit else 0.0
-        journal_updates[tid] = {
-            "status":         "CLOSED",
-            "exit_timestamp": now.isoformat(),
-            "exit_reason":    reason,
-            "exit_pnl":       round(pnl, 2),
-            "pnl":            round(pnl, 2),
-            "pnl_pct":        pnl_pct,
-            "close_order_id": order.get("id", ""),
-        }
-        closed_trades.append((t, reason, pnl))
-        attempts.pop(tid, None)
-        # Code-resolve the centralized-logger entries for the close-failure pattern.
-        # If the close succeeded, those errors are stale by definition. If they
-        # recur, the resurfacing rule creates fresh rows.
-        try:
-            sys.path.insert(0, '/var/dashboard')
-            from lib_errors import resolve_catalog
-            resolve_catalog("recurring-3c6683b1", by="code")  # underlying mleg-legs error
-            # Per-symbol echoes (A008/A009/A010 mapped 1:1 from earlier session)
-            tid_to_catalog = {
-                "A008": "recurring-74290d3d",
-                "A009": "recurring-09cfb5d0",
-                "A010": "recurring-2cf36ff6",
+        basis = abs(t.get("net_debit") or t.get("net_credit") or t.get("estimated_credit") or 0)
+        pnl_pct = round(pnl / (basis * 100), 4) if basis else 0.0
+
+        if is_partial:
+            remaining_qty = trade_qty - close_qty
+            log_entry = {
+                "reason": reason, "qty_closed": close_qty,
+                "qty_remaining": remaining_qty,
+                "timestamp": now.isoformat(), "pnl_at_scale": round(pnl, 2),
             }
-            cat_id = tid_to_catalog.get(tid)
-            if cat_id:
-                resolve_catalog(cat_id, by="code")
-        except Exception as _resolve_err:
-            log(f"  WARN: resolve_catalog after close failed: {_resolve_err}")
+            upd = {
+                "qty": remaining_qty,
+                "_partial_close_log": (t.get("_partial_close_log") or []) + [log_entry],
+            }
+            if partial_flag:
+                upd[partial_flag] = True
+            journal_updates[tid] = upd
+            partial_trades.append((t, reason, pnl, close_qty))
+            attempts.pop(tid, None)
+        else:
+            # Full close
+            try:
+                entry_ts = datetime.fromisoformat(t.get("timestamp", ""))
+                if entry_ts.tzinfo is None:
+                    entry_ts = entry_ts.replace(tzinfo=ET)
+                holding_days = (now - entry_ts).days
+            except Exception:
+                holding_days = None
+
+            upd = {
+                "status":          "CLOSED",
+                "exit_timestamp":  now.isoformat(),
+                "close_timestamp": now.isoformat(),
+                "exit_reason":     reason,
+                "close_reason":    reason,
+                "exit_pnl":        round(pnl, 2),
+                "pnl":             round(pnl, 2),
+                "pnl_pct":         pnl_pct,
+                "close_order_id":  order.get("id", ""),
+            }
+            if holding_days is not None:
+                upd["holding_days"] = holding_days
+            if partial_flag:
+                upd[partial_flag] = True
+            journal_updates[tid] = upd
+            closed_trades.append((t, reason, pnl))
+            attempts.pop(tid, None)
+            # Code-resolve centralized-logger entries for close-failure patterns.
+            try:
+                sys.path.insert(0, '/var/dashboard')
+                from lib_errors import resolve_catalog
+                resolve_catalog("recurring-3c6683b1", by="code")
+                tid_to_catalog = {
+                    "A008": "recurring-74290d3d",
+                    "A009": "recurring-09cfb5d0",
+                    "A010": "recurring-2cf36ff6",
+                }
+                cat_id = tid_to_catalog.get(tid)
+                if cat_id:
+                    resolve_catalog(cat_id, by="code")
+            except Exception as _resolve_err:
+                log(f"  WARN: resolve_catalog after close failed: {_resolve_err}")
 
     if market_open:
         _save_close_attempts(attempts)
 
+    all_updates = len(journal_updates)
     if journal_updates:
         if DRY_RUN:
-            log(f"[DRY RUN] Would close {len(journal_updates)} trade(s): {list(journal_updates)}")
+            log(f"[DRY RUN] Would update {all_updates} trade(s): {list(journal_updates)}")
         else:
             ok = rewrite_journal_atomic(journal_updates)
             if ok:
-                log(f"Journal updated — {len(journal_updates)} trade(s) marked CLOSED")
-                sync_sheets()
+                log(f"Journal updated — {len(closed_trades)} CLOSED, {len(partial_trades)} partial")
+                if closed_trades:
+                    sync_sheets()
                 for (t, reason, pnl) in closed_trades:
                     post_close_alert(t, reason, pnl)
+                for (t, reason, pnl, cq) in partial_trades:
+                    post_close_alert(t, reason, pnl, is_partial=True, close_qty=cq)
             else:
                 msg = ("CRITICAL: position_monitor journal rewrite failed. "
                        "Close order(s) placed but journal not updated. Manual intervention needed.")
                 log(msg)
                 post_discord(f"⚠️ {msg}")
 
-    log(f"Done — {len(closed_trades)} closed, "
-        f"{len(open_trades) - len(closed_trades)} still open")
+    log(f"Done — {len(closed_trades)} closed, {len(partial_trades)} partial, "
+        f"{len(open_trades) - len(closed_trades) - len(partial_trades)} still open")
 
 
 if __name__ == "__main__":

@@ -110,6 +110,7 @@ try:
     term_structure = "backwardation" if (vix3m > 0 and vix > vix3m) else "contango"
 
     result["macro"]["vix"] = round(vix, 2)
+    result["macro"]["vix_prev_close"] = round(vix_prev_close, 2)
     result["macro"]["vix_3m"] = round(vix3m, 2)
     result["macro"]["vix_regime"] = regime
     result["macro"]["vix_term_structure"] = term_structure
@@ -185,7 +186,7 @@ if FINNHUB_KEY:
         with urllib.request.urlopen(req, timeout=8) as resp:
             ev_data = json.loads(resp.read())
         events = ev_data.get("economicCalendar", [])
-        fomc_days = cpi_days = jobs_days = 999
+        fomc_days = cpi_days = jobs_days = gdp_days = 999
         is_event_day = False
         event_desc = ""
         for ev in events:
@@ -197,6 +198,7 @@ if FINNHUB_KEY:
                 if any(w in name for w in ["fomc","fed","interest rate"]): fomc_days = min(fomc_days, days_away)
                 if any(w in name for w in ["cpi","inflation"]): cpi_days = min(cpi_days, days_away)
                 if any(w in name for w in ["nonfarm","payroll","unemployment"]): jobs_days = min(jobs_days, days_away)
+                if any(w in name for w in ["gdp","gross domestic"]): gdp_days = min(gdp_days, days_away)
                 if days_away == 0:
                     is_event_day = True
                     event_desc = ev.get("event", "")
@@ -204,9 +206,14 @@ if FINNHUB_KEY:
         result["macro"]["fomc_days_away"] = fomc_days
         result["macro"]["cpi_days_away"] = cpi_days
         result["macro"]["jobs_days_away"] = jobs_days
+        result["macro"]["gdp_days_away"] = gdp_days
         result["macro"]["is_event_day"] = is_event_day
         result["macro"]["event_today"] = event_desc
-        result["macro"]["event_within_3_days"] = any(d <= 3 for d in (fomc_days, cpi_days, jobs_days))
+        result["macro"]["event_within_3_days"] = any(d <= 3 for d in (fomc_days, cpi_days, jobs_days, gdp_days))
+        # Nearest event type within 7 days (used by event_strangle and post_event_exit)
+        _ev_candidates = [(fomc_days, "FOMC"), (cpi_days, "CPI"), (jobs_days, "NFP"), (gdp_days, "GDP")]
+        _ev_near = sorted([(d, t) for d, t in _ev_candidates if d <= 7])
+        result["macro"]["event_type"] = _ev_near[0][1] if _ev_near else None
         if is_event_day:
             result["risk_flags"].append({"level": "CAUTION", "reason": f"Economic event today: {event_desc}"})
         if fomc_days <= 1:
@@ -259,13 +266,51 @@ try:
         result["macro"]["spx_ema_20_slope"] = ema20_slope
         result["macro"]["spx_ema_50"] = round(ema50_v, 2)
 
-        # ADX(14), BB width percentile, IV rank
+        # ADX(14), BB width percentile + raw, IV rank, RV-20, volume ratio, daily range
         result["macro"]["spx_adx_14"] = compute_adx_14(spx_high, spx_low, spx_close)
         result["macro"]["spx_bb_width_percentile_126d"] = compute_bb_width_percentile(spx_close)
         result["macro"]["spx_iv_rank"] = compute_iv_rank_252d(spx_close)
+
+        # Raw BB width (upper-lower / SMA20) — used by ratio backspread expanding check
+        try:
+            _sma20 = float(spx_close.rolling(20).mean().iloc[-1])
+            _std20 = float(spx_close.rolling(20).std().iloc[-1])
+            result["macro"]["spx_bb_width"] = round((4 * _std20) / _sma20, 4) if _sma20 > 0 else None
+        except Exception:
+            result["macro"]["spx_bb_width"] = None
+
+        # 20-day realized vol (annualized, %)
+        try:
+            _rv20 = float(spx_close.pct_change().tail(20).std() * (252 ** 0.5) * 100)
+            result["macro"]["spx_rv_20"] = round(_rv20, 1)
+        except Exception:
+            result["macro"]["spx_rv_20"] = None
+
+        # Volume ratio: today / 20d avg — used by debit_spread volume gate
+        try:
+            if len(spx_hist) >= 20:
+                _today_vol = float(spx_hist["Volume"].iloc[-1])
+                _avg20_vol = float(spx_hist["Volume"].iloc[-20:].mean())
+                result["macro"]["spx_volume_ratio"] = round(_today_vol / _avg20_vol, 2) if _avg20_vol > 0 else None
+            else:
+                result["macro"]["spx_volume_ratio"] = None
+        except Exception:
+            result["macro"]["spx_volume_ratio"] = None
+
+        # Max daily range % over last 5 days — used by BWB range-bound check
+        try:
+            if len(spx_hist) >= 5:
+                _ranges = ((spx_high - spx_low) / spx_close).tail(5)
+                result["macro"]["spx_max_daily_range_5d"] = round(float(_ranges.max()) * 100, 2)
+            else:
+                result["macro"]["spx_max_daily_range_5d"] = None
+        except Exception:
+            result["macro"]["spx_max_daily_range_5d"] = None
+
         print(f"[market_intelligence] SPX: ${spx_price_v:.0f} RSI:{result['macro']['spx_rsi_14']} "
               f"ADX:{result['macro']['spx_adx_14']} BB%:{result['macro']['spx_bb_width_percentile_126d']} "
-              f"IVR:{result['macro']['spx_iv_rank']}")
+              f"IVR:{result['macro']['spx_iv_rank']} RV20:{result['macro'].get('spx_rv_20')} "
+              f"VolRatio:{result['macro'].get('spx_volume_ratio')}")
     else:
         print("[market_intelligence] SPX: insufficient history")
         for k in ("spx_price","spx_rsi_14","spx_macd_signal","spx_ema_20","spx_ema_20_slope",

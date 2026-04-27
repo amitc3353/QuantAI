@@ -130,5 +130,7 @@ def check_risk(new_trade: dict, intel: dict, account: dict,
         return False, f"portfolio already short delta ({nd:.2f})", new_trade
     if nt_v > 0 and nv > 1.0:
         return False, f"portfolio already long vega ({nv:.2f})", new_trade
+    if nt_v < 0 and nv < -1.0:
+        return False, f"portfolio already short vega ({nv:.2f}) — adding more short-vol blocked", new_trade
 
     return True, "passed", new_trade

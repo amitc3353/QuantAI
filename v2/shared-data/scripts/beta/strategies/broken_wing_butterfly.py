@@ -36,6 +36,10 @@ def can_enter(intel: dict, regime: str, journal: list) -> tuple[bool, str]:
     macro = intel.get("macro", {})
     if (macro.get("spx_iv_rank") or 0) <= 40:
         return False, f"IVR {macro.get('spx_iv_rank')} <=40, premium too low"
+    # Range-bound: SPX max daily range < 1.5% over last 5 days (BWB needs tight range)
+    range_5d = macro.get("spx_max_daily_range_5d")
+    if range_5d is not None and range_5d >= 1.5:
+        return False, f"not range-bound: max 5d daily range {range_5d:.1f}% >=1.5%"
     return True, "passed"
 
 

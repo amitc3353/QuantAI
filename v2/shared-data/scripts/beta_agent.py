@@ -277,13 +277,22 @@ def main() -> int:
     entry["fill_status"] = fill.get("status", "")
     entry["filled_qty"] = fill.get("filled_qty", 0)
     entry["avg_fill_price"] = fill.get("avg_fill_price", 0)
+    # Top-level fields for position_monitor post_event_exit + dashboard
+    _macro = intel.get("macro") or {}
+    entry["symbol"] = smod.INSTRUMENT
+    entry["vix_at_entry"] = _macro.get("vix")
+    entry["iv_rank_at_entry"] = _macro.get("spx_iv_rank")
+    entry["max_risk_pct"] = round(proposal["max_risk"] / equity * 100, 3) if equity > 0 else None
+    # event_type propagated to journal so post_event_exit_hours works in position_monitor
+    entry["event_type"] = (strikes.get("event_type") or _macro.get("event_type"))
     entry["regime_data"] = {
-        "vix": (intel.get("macro") or {}).get("vix"),
-        "iv_rank": (intel.get("macro") or {}).get("spx_iv_rank"),
-        "adx": (intel.get("macro") or {}).get("spx_adx_14"),
-        "rsi": (intel.get("macro") or {}).get("spx_rsi_14"),
-        "implied_move_pct": (intel.get("macro") or {}).get("spx_implied_move_pct"),
-        "skew": (intel.get("macro") or {}).get("spx_put_call_skew"),
+        "vix": _macro.get("vix"),
+        "iv_rank": _macro.get("spx_iv_rank"),
+        "adx": _macro.get("spx_adx_14"),
+        "rsi": _macro.get("spx_rsi_14"),
+        "implied_move_pct": _macro.get("spx_implied_move_pct"),
+        "skew": _macro.get("spx_put_call_skew"),
+        "historical_avg_move_pct": (event_moves.get(entry.get("event_type") or "") or {}).get("avg_8"),
     }
     _journal_write(entry)
     print(f"[beta_agent] journaled as {entry['id']}")

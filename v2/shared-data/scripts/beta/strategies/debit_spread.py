@@ -38,6 +38,10 @@ def can_enter(intel: dict, regime: str, journal: list) -> tuple[bool, str]:
     for d in ("fomc_days_away", "cpi_days_away", "jobs_days_away"):
         if (macro.get(d) or 999) <= 2:
             return False, f"{d} <=2"
+    # Volume confirmation: SPX volume >= 20d average (low-volume days lack directional follow-through)
+    vol_ratio = macro.get("spx_volume_ratio")
+    if vol_ratio is not None and vol_ratio < 1.0:
+        return False, f"spx_volume_ratio {vol_ratio:.2f} <1.0 (below avg volume)"
     return True, f"passed ({direction})"
 
 

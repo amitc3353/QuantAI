@@ -25,6 +25,10 @@ def can_enter(intel: dict, regime: str, journal: list) -> tuple[bool, str]:
         return False, f"RSI {rsi:.0f} outside 55-75"
     if macro.get("spx_macd_signal") != "bullish":
         return False, "MACD not bullish"
+    # BB width expanding: percentile must be >= 30 (not in lower tercile = contracting)
+    bb_pct = macro.get("spx_bb_width_percentile_126d")
+    if bb_pct is not None and bb_pct < 30:
+        return False, f"BB width percentile {bb_pct:.0f} <30 (bands contracting)"
     if any(t.get("strategy") in (NAME, "put_ratio_backspread") and t.get("status") == "OPEN"
            for t in journal):
         return False, "ratio position already open"
