@@ -53,6 +53,44 @@ except ImportError as e:
         "ib_insync not available. Install with: pip3 install ib_insync"
     ) from e
 
+
+# IBKR error codes that are subscription-noise on paper accounts. ib_insync
+# logs these at ERROR level via `ib_insync.wrapper`; our `_logger.setup`
+# captures WARNING+ from all loggers, so without a filter each contract that
+# misses a market-data subscription floods the dashboard error catalog
+# (one event per contract × 50+ contracts per chain fetch). The data still
+# flows (delayed); `_check_md_type` already logs ONE warning per process.
+# Set IBKR_LOG_RAW=1 to disable the filter for diagnostics.
+_IBKR_NOISE_CODES = (
+    "Error 354,",    # "Requested market data is not subscribed; displaying delayed."
+    "Error 10090,",  # "Part of requested market data is not subscribed. Delayed available."
+    "Error 10168,",  # alt phrasing of subscription gap
+    "Error 10182,",  # "Failed to request live updates (disconnected)" — transient
+)
+
+
+class _IBKRNoiseFilter(logging.Filter):
+    """Drop ib_insync.wrapper records that match known-benign IBKR error codes."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        return not msg.startswith(_IBKR_NOISE_CODES)
+
+
+def _install_ib_log_filter() -> None:
+    if os.environ.get("IBKR_LOG_RAW") == "1":
+        return
+    target = logging.getLogger("ib_insync.wrapper")
+    # Idempotent — don't stack duplicate filters on repeated imports.
+    if not any(isinstance(f, _IBKRNoiseFilter) for f in target.filters):
+        target.addFilter(_IBKRNoiseFilter())
+
+
+_install_ib_log_filter()
+
 ET = ZoneInfo("America/New_York")
 
 _INDEX_ROOTS = {"XSP", "SPX", "SPXW", "VIX", "VIXW", "RUT", "NDX"}
