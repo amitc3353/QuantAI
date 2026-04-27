@@ -78,6 +78,11 @@ _IBKR_CONNECT_NOISE = (
     "Make sure API port on TWS/IBG is open",
     "peer closed connection",
     "Connect call failed",
+    # qualifyContracts logs a WARNING when a strike spec doesn't resolve to a
+    # listed contract — common with tight strike grids on indexes (XSP/SPX).
+    # The caller already gets None back and skips; the warning is pure noise
+    # and floods at 200+ events per chain query.
+    "Unknown contract: Option(",
 )
 
 
@@ -346,7 +351,10 @@ class IBKRBroker(BrokerBase):
         the chain (typically <50 contracts) before passing include_quotes=True.
         IBKR has a 50-line market-data ceiling on retail accounts."""
         if len(chain) > 50:
-            logging.warning(
+            # IBKR's 50-line snapshot cap is documented expected behavior; the
+            # truncate-to-50 fallback is intentional. Logged at INFO so it
+            # doesn't flood the dashboard warning catalog.
+            logging.info(
                 "IBKRBroker._enrich_with_quotes: %d entries exceeds 50-line cap; truncating",
                 len(chain),
             )

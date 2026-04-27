@@ -126,7 +126,9 @@ def compute_spx_chain_metrics(broker, spx_price: float, dte_target: int = 7) -> 
             include_quotes=True,
         )
         if not chain:
-            logging.warning("compute_spx_chain_metrics: empty SPX chain")
+            # Empty chain is a graceful no-op; caller already gets Nones for
+            # straddle/move/spread/skew. INFO-level so dashboard doesn't flood.
+            logging.info("compute_spx_chain_metrics: empty SPX chain")
             return out
         expiries = sorted({e["expiry"] for e in chain if e.get("expiry")})
         if not expiries:
