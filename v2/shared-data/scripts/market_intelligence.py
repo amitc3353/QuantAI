@@ -96,6 +96,7 @@ try:
     vix3m_hist = vix3m_ticker.history(period="3d")
 
     vix = float(vix_hist["Close"].iloc[-1]) if not vix_hist.empty else 0.0
+    vix_prev_close = float(vix_hist["Close"].iloc[-2]) if len(vix_hist) >= 2 else vix
     vix3m = float(vix3m_hist["Close"].iloc[-1]) if not vix3m_hist.empty else 0.0
 
     if vix <= 0:      regime = "unknown"
@@ -112,7 +113,9 @@ try:
     result["macro"]["vix_3m"] = round(vix3m, 2)
     result["macro"]["vix_regime"] = regime
     result["macro"]["vix_term_structure"] = term_structure
-    print(f"[market_intelligence] VIX: {vix:.1f} ({regime}) | Term: {term_structure}")
+    result["macro"]["vix_1d_change"] = round(vix - vix_prev_close, 2)
+    result["macro"]["vix_contango_pct"] = round((vix3m - vix) / vix * 100, 2) if vix > 0 else None
+    print(f"[market_intelligence] VIX: {vix:.1f} ({regime}) | Term: {term_structure} | 1d Δ: {vix - vix_prev_close:+.2f}")
 
     if regime == "HALT":
         result["risk_flags"].append({"level": "HALT", "reason": f"VIX {vix:.1f} ≥ 35 — no auto-execution"})
@@ -203,6 +206,7 @@ if FINNHUB_KEY:
         result["macro"]["jobs_days_away"] = jobs_days
         result["macro"]["is_event_day"] = is_event_day
         result["macro"]["event_today"] = event_desc
+        result["macro"]["event_within_3_days"] = any(d <= 3 for d in (fomc_days, cpi_days, jobs_days))
         if is_event_day:
             result["risk_flags"].append({"level": "CAUTION", "reason": f"Economic event today: {event_desc}"})
         if fomc_days <= 1:
@@ -211,6 +215,90 @@ if FINNHUB_KEY:
     except Exception as e:
         print(f"[market_intelligence] Finnhub events failed: {e}")
         result["data_quality"] -= 5
+
+# ── SPX-derived intelligence (Agent Beta) ─────────────────────────────
+# Adds: spx_price, spx_rsi_14, spx_macd_signal, spx_ema_20, spx_ema_50,
+#       spx_ema_20_slope, spx_adx_14, spx_bb_width_percentile_126d, spx_iv_rank,
+#       spx_atm_straddle_price, spx_implied_move_pct, spx_atm_bid_ask_spread,
+#       spx_put_call_skew. All fields default None on failure so Beta can skip.
+try:
+    from _beta_intel import (
+        compute_adx_14,
+        compute_bb_width_percentile,
+        compute_iv_rank_252d,
+        compute_ema_slope,
+        compute_spx_chain_metrics,
+    )
+    spx_t = yf.Ticker("^GSPC")
+    spx_hist = spx_t.history(period="252d")
+    if not spx_hist.empty and len(spx_hist) >= 30:
+        spx_close = spx_hist["Close"]
+        spx_high = spx_hist["High"]
+        spx_low = spx_hist["Low"]
+        spx_price_v = float(spx_close.iloc[-1])
+        result["macro"]["spx_price"] = round(spx_price_v, 2)
+
+        # RSI(14)
+        d = spx_close.diff()
+        gain = d.clip(lower=0).rolling(14).mean()
+        loss = (-d.clip(upper=0)).rolling(14).mean()
+        rs = gain / loss.replace(0, 1e-10)
+        result["macro"]["spx_rsi_14"] = round(float((100 - 100 / (1 + rs)).iloc[-1]), 1)
+
+        # MACD signal (line vs signal)
+        e12 = spx_close.ewm(span=12).mean()
+        e26 = spx_close.ewm(span=26).mean()
+        macd_line = e12 - e26
+        signal_line = macd_line.ewm(span=9).mean()
+        result["macro"]["spx_macd_signal"] = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] else "bearish"
+
+        # EMA 20 + slope, EMA 50
+        ema20_v, ema20_slope = compute_ema_slope(spx_close, period=20, lookback=5)
+        ema50_v = float(spx_close.ewm(span=50, adjust=False).mean().iloc[-1])
+        result["macro"]["spx_ema_20"] = ema20_v
+        result["macro"]["spx_ema_20_slope"] = ema20_slope
+        result["macro"]["spx_ema_50"] = round(ema50_v, 2)
+
+        # ADX(14), BB width percentile, IV rank
+        result["macro"]["spx_adx_14"] = compute_adx_14(spx_high, spx_low, spx_close)
+        result["macro"]["spx_bb_width_percentile_126d"] = compute_bb_width_percentile(spx_close)
+        result["macro"]["spx_iv_rank"] = compute_iv_rank_252d(spx_close)
+        print(f"[market_intelligence] SPX: ${spx_price_v:.0f} RSI:{result['macro']['spx_rsi_14']} "
+              f"ADX:{result['macro']['spx_adx_14']} BB%:{result['macro']['spx_bb_width_percentile_126d']} "
+              f"IVR:{result['macro']['spx_iv_rank']}")
+    else:
+        print("[market_intelligence] SPX: insufficient history")
+        for k in ("spx_price","spx_rsi_14","spx_macd_signal","spx_ema_20","spx_ema_20_slope",
+                  "spx_ema_50","spx_adx_14","spx_bb_width_percentile_126d","spx_iv_rank"):
+            result["macro"].setdefault(k, None)
+
+    # Chain-derived metrics — best-effort. Skipped if BETA_SKIP_CHAIN=1
+    # (useful for fast iteration / Alpaca-only environments).
+    chain_metrics = {
+        "spx_atm_straddle_price": None,
+        "spx_implied_move_pct": None,
+        "spx_atm_bid_ask_spread": None,
+        "spx_put_call_skew": None,
+    }
+    if os.environ.get("BETA_SKIP_CHAIN") != "1":
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from broker import get_broker
+            spx_p = result["macro"].get("spx_price") or 0
+            if spx_p > 0:
+                chain_metrics = compute_spx_chain_metrics(get_broker(), spx_p, dte_target=7)
+                print(f"[market_intelligence] SPX chain: straddle={chain_metrics['spx_atm_straddle_price']} "
+                      f"move%={chain_metrics['spx_implied_move_pct']} "
+                      f"spread={chain_metrics['spx_atm_bid_ask_spread']} "
+                      f"skew={chain_metrics['spx_put_call_skew']}")
+        except Exception as e:
+            print(f"[market_intelligence] SPX chain fetch failed: {e}")
+    else:
+        print("[market_intelligence] SPX chain skipped (BETA_SKIP_CHAIN=1)")
+    result["macro"].update(chain_metrics)
+except Exception as e:
+    print(f"[market_intelligence] SPX block failed: {e}")
+    result["data_quality"] -= 5
 
 # ── Symbol snapshots ──────────────────────────────────────────────────
 WATCHLIST = ["SPY", "QQQ", "NVDA", "PLTR", "TSM", "AMD", "AVGO", "ASML", "MU", "SOFI", "CCJ"]
