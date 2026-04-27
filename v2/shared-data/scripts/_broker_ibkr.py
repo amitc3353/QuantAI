@@ -379,6 +379,13 @@ class IBKRBroker(BrokerBase):
             bid = float(t.bid) if t.bid and t.bid > 0 else None
             ask = float(t.ask) if t.ask and t.ask > 0 else None
             last = float(t.last) if t.last and t.last > 0 else None
+            delta = gamma = theta = vega = iv = None
+            if t.modelGreeks:
+                delta = _to_float(t.modelGreeks.delta)
+                gamma = _to_float(t.modelGreeks.gamma)
+                theta = _to_float(t.modelGreeks.theta)
+                vega = _to_float(t.modelGreeks.vega)
+                iv = _to_float(getattr(t.modelGreeks, "impliedVol", None))
             try:
                 self._ib.cancelMktData(contract)
             except Exception:
@@ -388,6 +395,11 @@ class IBKRBroker(BrokerBase):
                 "ask": ask,
                 "last": last,
                 "mid": _safe_mid(bid, ask),
+                "delta": delta,
+                "gamma": gamma,
+                "theta": theta,
+                "vega": vega,
+                "iv": iv,
             }
         except Exception as e:
             logging.warning("IBKRBroker.get_option_quote(%s) failed: %s", occ, e)

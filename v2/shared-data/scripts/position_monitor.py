@@ -269,25 +269,92 @@ def _min_leg_dte(trade, today):
     return min(dtes) if dtes else 999
 
 
-def check_beta_exit(trade, pnl, now):
+_INTEL_CACHE = {"loaded_at": None, "data": {}}
+_GAP_CACHE = {"date": None, "gap_pct": None}
+
+
+def _load_intel_macro():
+    """Load cached market_intelligence.macro. Refreshes once per minute."""
+    import time
+    now_ts = time.time()
+    if _INTEL_CACHE["loaded_at"] and now_ts - _INTEL_CACHE["loaded_at"] < 60:
+        return _INTEL_CACHE["data"]
+    try:
+        with open("/root/quantai-v2/shared-data/cache/market_intelligence.json") as f:
+            data = json.load(f).get("macro", {})
+    except Exception:
+        data = {}
+    _INTEL_CACHE.update({"loaded_at": now_ts, "data": data})
+    return data
+
+
+def _spx_gap_pct(now):
+    """Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failure."""
+    today = now.date()
+    if _GAP_CACHE["date"] == today and _GAP_CACHE["gap_pct"] is not None:
+        return _GAP_CACHE["gap_pct"]
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("^GSPC").history(period="3d")
+        if len(hist) < 2:
+            return None
+        today_open = float(hist["Open"].iloc[-1])
+        prev_close = float(hist["Close"].iloc[-2])
+        if prev_close <= 0:
+            return None
+        gap_pct = (today_open - prev_close) / prev_close * 100
+        _GAP_CACHE.update({"date": today, "gap_pct": gap_pct})
+        return gap_pct
+    except Exception:
+        return None
+
+
+def _live_net_delta(trade, broker):
+    """Sum live signed deltas across legs. Returns None if any leg can't be quoted."""
+    if broker is None:
+        return None
+    total = 0.0
+    legs = trade.get("legs") or []
+    for leg in legs:
+        sym = leg.get("symbol")
+        if not sym:
+            return None
+        q = broker.get_option_quote(sym)
+        if not q or q.get("delta") is None:
+            return None
+        ratio = int(leg.get("ratio_qty", 1))
+        sign = 1 if str(leg.get("side", "")).lower() == "buy" else -1
+        total += sign * ratio * float(q["delta"])
+    return total
+
+
+def check_beta_exit(trade, pnl, now, broker=None):
     """Beta-specific exit rules sourced from trade['exit_rules']. Returns
     (should_close, reason). Only fires when exit_rules is non-empty —
-    Alpha trades have no exit_rules and fall through.
+    Alpha trades have no exit_rules and fall through to the Alpha path.
     """
     rules = trade.get("exit_rules") or {}
     if not rules:
         return None
     today = now.date()
     weekday = now.weekday()  # 0=Mon, 4=Fri
+    macro = _load_intel_macro()
 
-    # Hard time exit
+    # Hard time exit (universal)
     time_exit_dte = rules.get("time_exit_dte")
     if time_exit_dte is not None:
         dte = _min_leg_dte(trade, today)
         if dte <= int(time_exit_dte):
             return True, f"time_exit_dte ({dte}<={time_exit_dte})"
 
-    # PnL-percentage thresholds (against entry net debit/credit)
+    # Hard time exit for ratios (separate threshold from generic time_exit_dte)
+    hard_dte = rules.get("hard_time_exit_dte")
+    if hard_dte is not None:
+        dte = _min_leg_dte(trade, today)
+        if dte <= int(hard_dte):
+            return True, f"hard_time_exit ({dte}<={hard_dte})"
+
+    # PnL-percentage thresholds (against entry net debit/credit per contract)
     basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
     if basis > 0:
         pnl_pct = (pnl / (basis * 100)) * 100
@@ -298,12 +365,19 @@ def check_beta_exit(trade, pnl, now):
         if sl is not None and pnl_pct <= float(sl):
             return True, f"stop_loss ({pnl_pct:.0f}%<={sl}%)"
 
-    # Weekend close — credit spreads only (Friday after 3 PM)
+    # Weekend close — credit spreads only (Friday after 3 PM ET)
     if rules.get("weekend_close") and weekday == 4 and now.hour >= 15:
         return True, "weekend_close"
 
-    # Valley danger (ratio backspreads): close if price within X% of the
-    # long strike at low DTE.
+    # Gap-open close — credit spreads only. Fires only in early session
+    # (9:30-10:00 ET) to avoid mistakenly identifying intraday moves as gaps.
+    if rules.get("gap_open_close") and weekday < 5 and now.hour == 9 and now.minute >= 30:
+        gap = _spx_gap_pct(now)
+        if gap is not None and abs(gap) >= 1.0:
+            return True, f"gap_open_close (SPX gap {gap:+.1f}%)"
+
+    # Valley danger (ratio backspreads): close if underlying within X% of
+    # the long-leg strike at low DTE — the v-shaped loss zone.
     valley = rules.get("valley_strike")
     if valley:
         dte = _min_leg_dte(trade, today)
@@ -318,35 +392,60 @@ def check_beta_exit(trade, pnl, now):
         except Exception:
             pass
 
-    # Hard time exit for ratios (independent of generic time_exit_dte)
-    hard_dte = rules.get("hard_time_exit_dte")
-    if hard_dte is not None:
-        dte = _min_leg_dte(trade, today)
-        if dte <= int(hard_dte):
-            return True, f"hard_time_exit ({dte}<={hard_dte})"
+    # Trend reversal (ratio backspreads): ADX collapse OR price crosses
+    # against 20 EMA. Reads from cached market_intelligence.macro.
+    adx_min = rules.get("trend_reversal_adx_min")
+    if adx_min is not None:
+        adx = macro.get("spx_adx_14")
+        if adx is not None and float(adx) < float(adx_min):
+            return True, f"trend_reversal (ADX {adx:.0f} < {adx_min})"
+    if rules.get("trend_reversal_ema"):
+        price = macro.get("spx_price")
+        ema = macro.get("spx_ema_20")
+        slope = macro.get("spx_ema_20_slope")
+        if price is not None and ema is not None:
+            # Long-side trade (positive net_delta at entry) breaks if price
+            # closes below EMA20; short-side (negative net_delta) if above.
+            entry_dir = float(trade.get("net_delta") or 0)
+            if entry_dir > 0 and price < ema and slope != "positive":
+                return True, f"trend_reversal (price {price:.0f} < EMA20 {ema:.0f}, slope {slope})"
+            if entry_dir < 0 and price > ema and slope != "negative":
+                return True, f"trend_reversal (price {price:.0f} > EMA20 {ema:.0f}, slope {slope})"
+
+    # Delta exit (ratio backspreads): live position delta exceeds threshold.
+    # Costs ~3-5s of broker snapshots per leg — only run when threshold is set.
+    delta_thr = rules.get("delta_exit_threshold")
+    if delta_thr is not None and broker is not None:
+        live_delta = _live_net_delta(trade, broker)
+        if live_delta is not None and abs(live_delta) > float(delta_thr):
+            return True, f"delta_exit (|{live_delta:.2f}| > {delta_thr})"
 
     return False, "hold"
 
 
-def check_exit_threshold(trade, pnl, now):
+def check_exit_threshold(trade, pnl, now, broker=None):
     """Returns (should_close, exit_reason).
 
-    For Beta trades (exit_rules present): consult Beta logic first; if it
-    returns None we still apply the Alpha hard-close guard. For Alpha
-    trades (no exit_rules): use the existing 4-rule logic.
+    For Beta trades (exit_rules present): consult Beta logic. The 3:30 PM
+    blanket close was REMOVED for Beta — its time_exit_dte / hard_time_exit_dte
+    rules cover the same ground without prematurely closing multi-week trades.
+
+    For Alpha trades (no exit_rules): use the original 4-rule logic, BUT the
+    3:30 PM hard close now fires only when min leg DTE <= 1. Multi-week
+    diagonals/condors/spreads ride through 3:30 PM naturally; only true 0/1 DTE
+    positions get the gamma-protection close. (Bug history: A005/A006 diagonals
+    with 17+ DTE legs were incorrectly force-closed same-day — fixed 2026-04-27.)
     """
-    beta = check_beta_exit(trade, pnl, now)
+    today = now.date()
+    min_dte = _min_leg_dte(trade, today)
+
+    beta = check_beta_exit(trade, pnl, now, broker=broker)
     if beta is not None:
         should, reason = beta
-        if should:
-            return True, reason
-        # Beta said hold — but we still apply the 3:30 PM hard close to all trades.
-        if now.hour > 15 or (now.hour == 15 and now.minute >= 30):
-            return True, "hard_close_15_30"
-        return False, ""
+        return (True, reason) if should else (False, "")
 
-    # 1. Hard close — 3:30 PM ET
-    if now.hour > 15 or (now.hour == 15 and now.minute >= 30):
+    # Alpha path. 1. Hard close at 3:30 PM ET — ONLY for 0/1 DTE legs.
+    if min_dte <= 1 and (now.hour > 15 or (now.hour == 15 and now.minute >= 30)):
         return True, "hard_close_15_30"
 
     # 2. Expiry proximity — today or tomorrow
@@ -506,9 +605,10 @@ def main():
 
     attempts = _load_close_attempts() if market_open else {}
 
+    broker = get_broker()
     for t in open_trades:
         pnl = pnl_map[t["id"]]
-        should_close, reason = check_exit_threshold(t, pnl, now)
+        should_close, reason = check_exit_threshold(t, pnl, now, broker=broker)
         if not should_close:
             continue
         if not market_open:

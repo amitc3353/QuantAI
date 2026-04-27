@@ -447,7 +447,10 @@ class AlpacaBroker(BrokerBase):
                 return None
             bid = float(q.get("bp") or 0) or None
             ask = float(q.get("ap") or 0) or None
-            return {"bid": bid, "ask": ask, "last": None, "mid": _safe_mid(bid, ask)}
+            return {
+                "bid": bid, "ask": ask, "last": None, "mid": _safe_mid(bid, ask),
+                "delta": None, "gamma": None, "theta": None, "vega": None, "iv": None,
+            }
         except Exception as e:
             logging.warning("AlpacaBroker.get_option_quote(%s) failed: %s", occ, e)
             return None
