@@ -122,7 +122,17 @@ rebuild done). HEARTBEAT Groq swap pending `GROQ_API_KEY` in clawroute.service.
 
 ## ADR-004: Migrate from Alpaca to IBKR for options execution
 **Date:** 2026-04-26
-**Status:** Accepted — connection verified 2026-04-26
+**Status:** Accepted — Phases 1–4 complete 2026-04-27. Phase 5 (live trading flip) pending.
+
+**Phase status (as of 2026-04-27):**
+
+| Phase | What | Status |
+|---|---|---|
+| 1 | IB Gateway install + connection probe (XSP/SPX/VIX chains verified) | ✅ 2026-04-26 |
+| 2 | Build pluggable `broker.py` (BrokerBase + AlpacaBroker + IBKRBroker via ib_insync) | ✅ 2026-04-26 |
+| 3 | Wire `get_broker()` into 4 callers (autonomous_execution, position_monitor, pre_trade_check, collect_alpaca) and verify on IBKR | ✅ 2026-04-26 |
+| 4 | System-wide flip: `BROKER_TYPE=ibkr` default in `.env`; close pre-existing Alpaca positions | ✅ 2026-04-27 |
+| 5 | Live trading on IBKR (when paper validation milestones met) | ⏳ pending |
 
 **Context:** QuantAI's original execution broker is Alpaca paper trading. A live
 probe on 2026-04-26 confirmed that Alpaca paper returns HTTP 422 ("invalid
@@ -194,3 +204,32 @@ incremental:
 - `config.ini` has blank `IbPassword=` intentionally; password injected via
   `--pw` arg into a 0600 temp copy of `gatewaystart.sh` at runtime.
 - **NEVER run `systemctl status ibgateway` or `ps aux`** — use `systemctl is-active ibgateway`.
+
+---
+
+## ADR-005: Agent Beta — regime-driven, IBKR-native autonomous trader
+**Date:** 2026-04-27
+**Status:** Accepted — implemented and live in paper.
+
+**Context.** Agent Alpha already runs end-to-end on the v2 pipeline (scan → debate → execute → journal) for ETF defined-risk spreads. The strategy spec for an additional agent (per the Beta specification document) calls for a fundamentally different shape: regime-driven, deterministic, zero-LLM, targeting native SPX/XSP/VIX index options for Section 1256 60/40 tax treatment, European exercise, and cash settlement. ADR-004 made this possible by adding IBKR support; this ADR formalizes how Beta is wired into the system.
+
+**Decision.** Beta is built as a separate pipeline running parallel to Alpha:
+
+- **Own cron entry** (`*/15 13-20 * * 1-5 beta_agent.py`) — Beta failures don't block Alpha.
+- **Shared journal** (`trades.jsonl`) with `source == "agent_beta"` and `B###` IDs (per-prefix counters so Alpha's `A###` series is unaffected).
+- **Shared broker adapter** (`broker.get_broker()` from ADR-004). Beta refuses to run if `BROKER_TYPE != ibkr` since its strategies require native index options.
+- **Independent risk gates** scoped to `source == agent_beta` only (max 3 open, 2 entries/day, 5-loss circuit breaker, daily/weekly drawdown halts, correlation gates).
+- **Per-trade `exit_rules`** stored on each journal entry. `position_monitor.py` consults `exit_rules` first when present (Beta path); otherwise falls through to the existing Alpha 4-rule logic. The 3:30 PM ET hard close still applies to all trades.
+- **Zero-LLM**: regime classification, strategy selection, strike selection, and risk checks are all pure Python. ClawRoute / `_llm_client` is unused on the Beta path.
+- **Twelve regimes × eight strategies**: HALT, CRISIS, MEAN_REVERSION_OVERBOUGHT/OVERSOLD, HIGH_VOL, SQUEEZE, PRE_EVENT, TREND_UP/DOWN, LOW_VOL, RANGE, NORMAL → mapped to event_strangle, call/put_ratio_backspread, broken_wing_butterfly, vix_calls, debit_spread, calendar_spread, credit_spread_offset.
+
+**Consequences.**
+
+- Two agents coexist on one broker, one journal, one account. Risk budgets are independent.
+- Existing readers (sheets sync, dashboard, lib_errors) are journal-schema-agnostic; new Beta fields (`regime_at_entry`, `regime_data`, `exit_rules`, `simulated_slippage`, `net_delta`, `net_vega`) are additive — readers use `.get()`.
+- `position_monitor.py` gains new exit rule types (valley_danger, weekend_close, scale_out, time_exit_dte, etc.) but Alpha behavior is unchanged.
+- Beta requires `BROKER_TYPE=ibkr`; if that env var ever flips back to alpaca, Beta short-circuits with a clear log message and no trades are placed.
+- Finnhub free tier limits the initial seed of `event_moves.json` to ~3 weeks of history; the weekly seeder (`0 6 * * 0`) accumulates the rolling 8-event window over time.
+- IV Rank is currently a 21-day realized-vol percentile proxy (extracted from `scan_options.get_iv_rank`); upgrade to true chain-derived IV is on the deferred list.
+
+**Reference:** Full design + phase-by-phase build log in `docs/2026-04-26-agent-beta-implementation-plan-v2.md`. Ten phases were committed in sequence on `feature/ibkr-broker-adapter` between 2026-04-26 and 2026-04-27.

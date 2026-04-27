@@ -49,11 +49,23 @@ Amit (strategy, approvals via phone/Discord)
         +-- KARNA (OpenClaw agent, Claude Sonnet 4.6)
         |   +-- Discord bot: #karna-command, #karna-approvals, etc.
         |
-        +-- QuantAI Pipeline (Python cron, every 15 min during 9-16 ET Mon-Fri)
-        |   +-- market_intelligence.py (yfinance: VIX, prices, technicals)
+        +-- Agent Alpha Pipeline (Python cron, every 15 min during 9-16 ET Mon-Fri)
+        |   +-- market_intelligence.py (yfinance: VIX, prices, technicals + SPX/Beta fields)
         |   +-- scan_options.py (78 tickers x 4 strategies, SLOW: 10-15 min)
         |   +-- debate_chamber.py (Bull/Bear/Judge LLM debate)
-        |   +-- autonomous_execution.py (mleg orders to Alpaca, journal, sync)
+        |   +-- autonomous_execution.py (submits via broker.place_mleg_order, journal as A###)
+        |
+        +-- Agent Beta (Python cron, every 15 min during 9-16 ET Mon-Fri)
+        |   +-- beta_agent.py (entry point — refuses if BROKER_TYPE != ibkr)
+        |   +-- beta/regime_detector.py (12-regime classifier, deterministic)
+        |   +-- beta/strategies/{8 modules} (event_strangle, ratios, BWB, vix_calls, etc.)
+        |   +-- beta/risk_engine.py (per-source risk gates, scoped to agent_beta)
+        |   +-- beta/event_moves_seeder.py (weekly historical event-move data)
+        |   +-- journals as B###; exit_rules stored on each entry
+        |
+        +-- broker.py (adapter — BROKER_TYPE=ibkr default, alpaca fallback)
+        |   +-- IBKR Bag/ComboLeg via ib_insync (port 4002, account DUP851506)
+        |   +-- Alpaca paper REST (paper-api.alpaca.markets, fallback only)
         |
         +-- LiteLLM (Docker, localhost:4000)
         +-- Dashboard (localhost:8080, Tailscale: https://quantai.tail1465ff.ts.net/)
@@ -82,14 +94,15 @@ Amit (strategy, approvals via phone/Discord)
 ### Docs
 - `docs/quantai-knowledge.md` — Living knowledge base
 
-## Current State (April 26, 2026)
+## Current State (April 27, 2026)
 
-- Paper trading on Alpaca (~$99,368 equity)
-- 0 open positions (closed for strategy rework)
-- Pipeline works end-to-end: scan, debate, execute, journal, sync
-- 42/43 system tests passing
+- Paper trading via broker adapter; **BROKER_TYPE=ibkr is the default** (set in `.env` on 2026-04-27). Alpaca paper retained as a fallback adapter.
+- IBKR paper equity: $1,000,000 (account DUP851506). Alpaca paper kept active but no longer the active broker.
+- 0 open positions — Alpaca holdings closed via `DELETE /v2/positions` during the migration; queued for fill at Mon 9:30 ET. Journal A008/A009/A010 marked CLOSED with reason=ibkr_migration_reset.
+- Both Alpha (ETF spreads) and Beta (regime-driven SPX/XSP/VIX) live on IBKR.
+- 43/43 system tests passing on IBKR. pre_trade_check 19/19 GO.
 - Dashboard live at https://quantai.tail1465ff.ts.net/
-- IB Gateway 10.37 active at localhost:4002 (paper, DUP851506) — **verified 2026-04-26**
+- IB Gateway 10.37 active at localhost:4002 — **verified 2026-04-26**, full pipeline migration completed 2026-04-27.
 
 ## Alpaca API Gotchas
 
@@ -120,21 +133,46 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 
 ## Cron Schedule
 
+(VPS cron is in UTC — 13-20 UTC = 9-16 ET during DST.)
+
 ```
-*/15 9-16 * * 1-5   run_pipeline.py
-5 16 * * 1-5        run_pipeline.py eod
-30 9 * * 1-5        pre_trade_check.py
-* * * * *           collect_system.py
-* * * * *           collect_karna.py
-* * * * *           collect_quantai.py
+# Alpha pipeline
+*/15 13-20 * * 1-5   run_pipeline.py
+5 20 * * 1-5         run_pipeline.py eod
+30 13 * * 1-5        pre_trade_check.py
+
+# Agent Beta (regime-driven, IBKR-native — added 2026-04-27)
+*/15 13-20 * * 1-5   beta_agent.py
+0 6 * * 0            beta/event_moves_seeder.py     # weekly Sunday 6 AM UTC
+
+# Monitoring
+*/2 * * * *          heartbeat_monitor.py
+*/2 13-20 * * 1-5    position_monitor.py
+*/5 * * * *          error_detector.py
+0 22 * * 5           error_learner.py               # weekly Friday 6 PM ET
+
+# Dashboard collectors (every 1m unless noted)
+* * * * *            collect_system.py
+* * * * *            collect_karna.py
+* * * * *            collect_quantai.py
+* * * * *            collect_alpaca.py              # broker-aware; reads via broker.get_broker()
+* * * * *            collect_beta.py                # added 2026-04-27
+* * * * *            collect_cron.py
+*/5 * * * *          collect_history.py
+*/15 * * * *         collect_clawroute.py           # ClawRoute cost tracking
 ```
 
 ## What Needs Building (priority order)
 
-1. Heartbeat monitoring (Phase B)
-2. Position threshold monitor (Slice D)
-3. Strategy rework (awaiting Amit's direction)
-4. Error taxonomy + runbooks (Phase E)
+- ✅ Heartbeat monitoring (Phase B) — done 2026-04-17
+- ✅ Position threshold monitor (Slice D) — done 2026-04-17
+- ✅ Error taxonomy + runbooks (Phase E) — done 2026-04-17
+- ✅ Broker adapter + IBKR migration (ADR-004) — done 2026-04-26
+- ✅ Agent Beta (regime-driven, 8 strategies, native index options) — done 2026-04-27
+- 🔄 Beta first-week observation (active — watch beta.log + dashboard Mon-Fri)
+- ⏳ First real (non-dry-run) order via IBKR — pending market hours
+- ⏳ Strategy-level position grouping in position_monitor — deferred
+- ⏳ Strategy rework / parameter tuning — awaiting first 30 days of Beta data
 
 ## Git Rules
 

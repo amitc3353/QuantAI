@@ -1,8 +1,8 @@
 # QuantAI Knowledge Base
-Last updated: 2026-04-26 by Amit + Claude
+Last updated: 2026-04-27 by Amit + Claude
 
 ## What QuantAI is
-Autonomous options trading system. Paper trading on Alpaca ($99,368 equity). Two agent strategies (Alpha, Beta) plus manual SOFI collar. Goal: $3-10k/month income at $150k deployed. Currently in paper trading validation phase — 0/10 pre-live checklist items complete.
+Autonomous options trading system. Paper trading via broker adapter (`BROKER_TYPE=ibkr` default; Alpaca paper fallback). $1M IBKR paper equity (account DUP851506). Two autonomous agents — **Alpha** (defined-risk ETF spreads, LLM-driven debate) and **Beta** (regime-driven SPX/XSP/VIX index options, deterministic, zero-LLM) — plus manual SOFI collar. Goal: $3-10k/month income at $150k deployed. Currently in paper trading validation phase.
 
 ## Architecture (what's actually running)
 
@@ -11,13 +11,27 @@ Autonomous options trading system. Paper trading on Alpaca ($99,368 equity). Two
 2. **docker-compose (legacy, unclear role):** `trader-orchestrator`, `trader-discord`, `trader-cto`, `trader-guards` containers. All "healthy" but trader-guards only serves /health pings. No evidence these containers do meaningful work. Reconciliation deferred — not causing harm.
 
 ### v2 Pipeline flow
+
+**Agent Alpha** (LLM debate-driven, runs via `run_pipeline.py`):
 ```
 Cron (every 15m) → run_pipeline.py
-  → market_intelligence.py (VIX, prices, technicals via yfinance)
+  → market_intelligence.py (VIX, prices, technicals via yfinance + SPX fields for Beta)
   → scan_options.py "all" (78 tickers × 4 strategy types — SLOW, 10-15 min)
   → debate_chamber.py (Bull/Bear/Judge LLM debate, produces approved trades)
-  → autonomous_execution.py (builds mleg orders, submits to Alpaca, journals)
+  → autonomous_execution.py (builds mleg orders, submits via broker.place_mleg_order
+    [IBKR by default], journals as A###)
   → sheets_sync.py (syncs journal to Google Sheets)
+```
+
+**Agent Beta** (regime-driven, runs via `beta_agent.py` on a separate cron):
+```
+Cron (every 15m) → beta_agent.py
+  → load market_intelligence.json + event_moves.json
+  → require BROKER_TYPE=ibkr (refuses otherwise)
+  → regime_detector.classify_regime (12 regimes, first-match-wins)
+  → pick primary strategy (+ fallback) from regime → strategy map
+  → strategy.can_enter / risk_engine.check_risk / strategy.select_strikes via broker chain
+  → broker.place_mleg_order (IBKR), journal as B### with full exit_rules
 ```
 
 ### Key paths
@@ -203,8 +217,8 @@ Greek/quote fields are `None` when the broker can't supply (Alpaca's `/v2/option
 - `pre_trade_check.py` — broker connect + account check
 - `dashboard/collect_alpaca.py` — uses broker.get_account(); IBKR surfaces nulls for Alpaca-specific fields (last_equity, day_pnl)
 
-### BROKER_TYPE=ibkr full verification (2026-04-26)
-All tests with `sudo BROKER_TYPE=ibkr`:
+### BROKER_TYPE=ibkr full verification (2026-04-26 → system-wide flip 2026-04-27)
+All tests with `BROKER_TYPE=ibkr` (now the .env default; the system-wide flip happened 2026-04-27 alongside Beta launch):
 - `system_test.py`: **43/43 passed**
 - `pre_trade_check.py`: **19/19 — GO** (`Ibkr connected — equity $1,000,000`)
 - `position_monitor.py --dry-run`: clean (no open positions)
@@ -212,11 +226,27 @@ All tests with `sudo BROKER_TYPE=ibkr`:
 - `collect_alpaca.py`: state written, equity=1000000, day_pnl=null (IBKR expected)
 - Dashboard errors: 0 broker-related errors
 - `ibgateway.service`: active
+- Pre-existing 9 Alpaca legs closed via `DELETE /v2/positions`, queued for Mon 9:30 ET fill; A008/A009/A010 marked CLOSED with `reason=ibkr_migration_reset`.
+
+## Agent Beta (live 2026-04-27)
+
+Beta is a **regime-driven, deterministic, zero-LLM** autonomous trader targeting native SPX/XSP/VIX index options via IBKR. Runs on its own cron entry parallel to Alpha.
+
+- **12 regimes** (priority chain, first-match-wins): HALT, CRISIS, MEAN_REVERSION_OVERBOUGHT/OVERSOLD, HIGH_VOL, SQUEEZE, PRE_EVENT, TREND_UP/DOWN, LOW_VOL, RANGE, NORMAL.
+- **8 strategies** in `v2/shared-data/scripts/beta/strategies/`: event_strangle, call_ratio_backspread, put_ratio_backspread, broken_wing_butterfly, vix_calls, debit_spread, calendar_spread, credit_spread_offset (HIGH_VOL theta-offset only).
+- **Independent risk gates** (`beta/risk_engine.py`): max 3 open positions, max 2 entries/day, 5-loss circuit breaker (24h cooldown), -2% daily / -5% weekly drawdown halts, ±0.5/1.0 net delta/vega correlation. Counts only `source == 'agent_beta'` entries.
+- **Per-trade `exit_rules`** stored on the journal entry. `position_monitor.py` consults them first (take_profit_pct, stop_loss_pct, time_exit_dte, valley_danger, weekend_close, hard_time_exit_dte) and falls through to Alpha's 4-rule path for non-Beta trades. The 3:30 PM ET hard close still applies to all.
+- **Trade IDs**: `B###` prefix for `agent_beta`, `A###` for Alpha, with per-prefix counters so the two series don't collide.
+- **Refuses to run** if `BROKER_TYPE != ibkr` (Beta's strategies only work on native index options).
+- **Cron entries** added 2026-04-27: `*/15 13-20 * * 1-5 beta_agent.py`, `0 6 * * 0 beta/event_moves_seeder.py`, `* * * * * /var/dashboard/collect_beta.py`.
+
+Reference: `docs/2026-04-26-agent-beta-implementation-plan-v2.md` for full design and phase-by-phase build log.
 
 ### What's NOT done yet
-- Real (non-dry-run) order submission via IBKRBroker
+- Real (non-dry-run) order submission via IBKRBroker (pending market hours)
 - Strategy-level position grouping (stays in `position_monitor`'s journal logic)
-- Agent Beta integration
+- Beta first-week observation (Mon 2026-04-27 onwards — watch beta.log + dashboard)
+- IV Rank surface uses 21-day realized-vol percentile (proxy); upgrade to true IV from chain greeks if needed
 
 ## Dashboard v2 (built 2026-04-17)
 - **Location:** `/var/dashboard/index.html` (served), mirrored collectors in `/home/trader/dashboard/` (not served)
