@@ -68,25 +68,43 @@ _IBKR_NOISE_CODES = (
     "Error 10182,",  # "Failed to request live updates (disconnected)" — transient
 )
 
+# Connection-refused chatter from ib_insync.client / ib_insync.ib. Each
+# connect() attempt emits 2-3 of these via separate loggers. With our 3-retry
+# wrapper × 32 cron ticks/day × multiple callers, an offline IB Gateway
+# generates 3000+ events of pure noise drowning real signals. We log ONE
+# WARNING per connect() attempt ourselves; the rest is filtered.
+_IBKR_CONNECT_NOISE = (
+    "API connection failed: ConnectionRefusedError",
+    "Make sure API port on TWS/IBG is open",
+    "peer closed connection",
+    "Connect call failed",
+)
+
 
 class _IBKRNoiseFilter(logging.Filter):
-    """Drop ib_insync.wrapper records that match known-benign IBKR error codes."""
+    """Drop ib_insync records matching known-benign codes / connect chatter."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             msg = record.getMessage()
         except Exception:
             return True
-        return not msg.startswith(_IBKR_NOISE_CODES)
+        if msg.startswith(_IBKR_NOISE_CODES):
+            return False
+        if any(p in msg for p in _IBKR_CONNECT_NOISE):
+            return False
+        return True
 
 
 def _install_ib_log_filter() -> None:
     if os.environ.get("IBKR_LOG_RAW") == "1":
         return
-    target = logging.getLogger("ib_insync.wrapper")
-    # Idempotent — don't stack duplicate filters on repeated imports.
-    if not any(isinstance(f, _IBKRNoiseFilter) for f in target.filters):
-        target.addFilter(_IBKRNoiseFilter())
+    # Filter all ib_insync sub-loggers — `wrapper` for error codes,
+    # `client` / `ib` for the connection-refused chatter.
+    for name in ("ib_insync", "ib_insync.wrapper", "ib_insync.client", "ib_insync.ib"):
+        target = logging.getLogger(name)
+        if not any(isinstance(f, _IBKRNoiseFilter) for f in target.filters):
+            target.addFilter(_IBKRNoiseFilter())
 
 
 _install_ib_log_filter()
@@ -146,9 +164,9 @@ class IBKRBroker(BrokerBase):
                 return True
             except Exception as e:
                 last_err = e
-                logging.warning(
-                    "IBKRBroker connect attempt %d/3 failed: %s", attempt + 1, e
-                )
+                # Per-attempt failures logged at DEBUG to avoid 3-line floods
+                # when the gateway is offline. Single summary ERROR below.
+                logging.debug("IBKRBroker connect attempt %d/3 failed: %s", attempt + 1, e)
                 try:
                     if ib.isConnected():
                         ib.disconnect()
@@ -156,7 +174,13 @@ class IBKRBroker(BrokerBase):
                     pass
                 if attempt < 2:
                     time.sleep(5)
-        logging.error("IBKRBroker: gave up after 3 connect attempts: %s", last_err)
+        # One concise ERROR per process call — picks up port for ops clarity.
+        # The 3-attempt detail is in DEBUG above; full ib_insync chatter is
+        # filtered by _IBKRNoiseFilter. Operators see one signal, not 96.
+        logging.error(
+            "IBKRBroker: gave up after 3 connect attempts to %s:%d (last err: %s)",
+            self.host, self.port, type(last_err).__name__ if last_err else "?",
+        )
         return False
 
     def _check_md_type(self, ticker) -> None:
