@@ -489,7 +489,8 @@ class IBKRBroker(BrokerBase):
                 "CBOE",
                 tradingClass=root,
             )
-        return Option(root, spec.expiry, spec.strike, spec.right, "SMART", "USD")
+        return Option(root, spec.expiry, spec.strike, spec.right,
+                      exchange="SMART", currency="USD")
 
     # ── orders ──────────────────────────────────────────────────────────────
 

@@ -28,6 +28,8 @@ import json, os, sys, time, requests
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
+# Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
+os.environ.setdefault("IBKR_CLIENT_ID", "12")
 from broker import get_broker
 
 # Auto-load .env

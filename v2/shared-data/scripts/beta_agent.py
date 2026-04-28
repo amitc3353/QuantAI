@@ -31,6 +31,9 @@ from _logger import setup as _logger_setup
 
 _logger_setup("beta_agent")
 
+# Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
+os.environ.setdefault("IBKR_CLIENT_ID", "21")
+
 ET = ZoneInfo("America/New_York")
 CACHE = Path("/root/quantai-v2/shared-data/cache")
 JOURNAL = Path("/root/quantai-v2/shared-data/journal/paper/trades.jsonl")

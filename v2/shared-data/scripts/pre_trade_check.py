@@ -31,6 +31,8 @@ CACHE    = "/root/quantai-v2/shared-data/cache"
 JOURNAL  = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 
 sys.path.insert(0, SCRIPTS)
+# Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
+os.environ.setdefault("IBKR_CLIENT_ID", "33")
 from broker import get_broker
 
 BROKER_TYPE = os.environ.get("BROKER_TYPE", "alpaca").lower()

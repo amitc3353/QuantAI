@@ -15,6 +15,9 @@ import json, os, sys, time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+# Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
+os.environ.setdefault("IBKR_CLIENT_ID", "13")
+
 # Auto-load .env from repo root
 import pathlib
 _env_file = pathlib.Path(__file__).parent.parent.parent.parent / ".env"

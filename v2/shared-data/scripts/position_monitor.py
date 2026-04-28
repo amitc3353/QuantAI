@@ -45,6 +45,8 @@ except ImportError:
     print("ERROR: requests library not installed. Run: pip install requests")
     sys.exit(1)
 
+# Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
+os.environ.setdefault("IBKR_CLIENT_ID", "31")
 from broker import get_broker
 
 ET = ZoneInfo("America/New_York")

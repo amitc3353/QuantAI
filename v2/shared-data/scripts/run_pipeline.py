@@ -65,7 +65,14 @@ def run_script(script, *args, label=""):
     if label:
         log(label)
     cmd = ["python3", f"{SCRIPTS}/{script}"] + list(args)
-    result = subprocess.run(cmd, timeout=300)
+    # Capture stderr so debate_chamber tracebacks land in pipeline.log instead
+    # of being silently dropped — otherwise "Debate failed" gives no diagnosis.
+    result = subprocess.run(cmd, timeout=300, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0 and result.stderr:
+        log(f"--- {script} stderr ---")
+        for line in result.stderr.rstrip().splitlines()[-40:]:
+            log(f"  {line}")
+        log(f"--- end {script} stderr ---")
     return result.returncode == 0
 
 def load_state():
