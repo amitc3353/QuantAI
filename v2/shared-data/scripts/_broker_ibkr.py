@@ -66,6 +66,7 @@ _IBKR_NOISE_CODES = (
     "Error 10090,",  # "Part of requested market data is not subscribed. Delayed available."
     "Error 10168,",  # alt phrasing of subscription gap
     "Error 10182,",  # "Failed to request live updates (disconnected)" — transient
+    "Error 10197,",  # "No market data during competing live session" — paper acct + reqMDType(4) fallback
 )
 
 # Connection-refused chatter from ib_insync.client / ib_insync.ib. Each
@@ -162,7 +163,7 @@ class IBKRBroker(BrokerBase):
                 ib.connect(self.host, self.port, clientId=self.client_id, timeout=15)
                 if not ib.isConnected():
                     raise ConnectionError("connect returned without isConnected()")
-                ib.reqMarketDataType(1)
+                ib.reqMarketDataType(4)  # delayed-frozen: avoids 10197 competing-live-session on paper
                 self._ib = ib
                 accts = ib.managedAccounts()
                 logging.info("IBKRBroker connected: accounts=%s", accts)
@@ -189,12 +190,12 @@ class IBKRBroker(BrokerBase):
         return False
 
     def _check_md_type(self, ticker) -> None:
-        """Detect delayed-data fallback (marketDataType=3) once per process."""
+        """Detect unexpected live-data fallback. Types 3/4 are expected (we request 4)."""
         try:
-            if ticker.marketDataType == 3 and not self._md_type_warned:
+            if ticker.marketDataType not in (3, 4) and not self._md_type_warned:
                 logging.warning(
-                    "IBKRBroker: market data fell back to DELAYED (type 3). "
-                    "Likely missing CBOE/OPRA subscription on this account."
+                    "IBKRBroker: unexpected market data type %d (expected 3 or 4 delayed).",
+                    ticker.marketDataType,
                 )
                 self._md_type_warned = True
         except AttributeError:
