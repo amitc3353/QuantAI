@@ -34,6 +34,22 @@ Cron (every 15m) → beta_agent.py
   → broker.place_mleg_order (IBKR), journal as B### with full exit_rules
 ```
 
+**Agent Gamma** (single-strategy Connors RSI(10) pullback, two-phase cron):
+```
+Cron (4:30 PM ET) → gamma_agent.py --scan
+  → fetch ~252 daily bars × 27 symbols (4 indices + 3 ETFs + 20 stocks)
+  → compute Wilder RSI(10) + SMA(200)
+  → filters: trend (price > SMA200), oversold (RSI<30), 7-day earnings blackout, liquidity
+  → write gamma_pending_entries.json + gamma_indicator_cache.json
+
+Cron (9:33 AM ET, next morning) → gamma_agent.py --execute
+  → require BROKER_TYPE=ibkr; soft-fail if IBKR connect down (preserves pending)
+  → re-validate (RSI<35 soft bound; SMA200 still holding)
+  → strike_selector builds 14-21 DTE bull-call debit spread (0.50/0.27 deltas)
+  → broker.place_mleg_order (IBKR), journal as G### with exit_rules
+  → exit_rules: rsi_exit=40, time_stop=10 trading days, trend_break=SMA200, ±50/+150% PnL
+```
+
 ### Key paths
 - **Journal (source of truth):** `/root/quantai-v2/shared-data/journal/paper/trades.jsonl`
 - **Cache (scan results, debate, intel):** `/root/quantai-v2/shared-data/cache/`
@@ -65,6 +81,13 @@ Cron (every 15m) → beta_agent.py
 - Iron condors, butterflies
 - Range-bound premium collection
 - Submitted as 4-leg mleg orders
+
+### Agent Gamma (agent_gamma)
+- Connors RSI(10) pullback, single-strategy mean reversion
+- Universe: 27 symbols (XSP/SPX/NDX/RUT, SPY/QQQ/IWM, 20 mega-cap stocks)
+- Bull call debit spreads only (always long-direction in confirmed uptrend)
+- Two-phase cron: 4:30 PM scan, 9:33 AM execute (next day)
+- Risk: 1% per trade, max 3 open / 2 daily / 2 per sector, 3-loss circuit breaker (48h)
 
 ### Manual (Amit)
 - SOFI collar (P001, the only trade for weeks)

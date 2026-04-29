@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+"""Agent Gamma — Connors RSI(10) pullback agent.
+
+Two-phase cron:
+  --scan     30 20 * * 1-5  (4:30 PM ET, post-close)
+             Fetch daily data, compute Wilder RSI(10) + SMA(200),
+             filter for setups, write top-N to gamma_pending_entries.json.
+  --execute  33 13 * * 1-5  (9:33 AM ET, market open)
+             Read pending file, re-validate, place bull-call debit spreads
+             via shared IBKR adapter. Journal as G###.
+
+Optional flags:
+  --dry-run        skip Discord posts and order submission; log proposals only
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
+
+# Gamma owns clientId=22 to avoid collision with Alpha (1) and Beta (21)
+os.environ.setdefault("IBKR_CLIENT_ID", "22")
+
+from _logger import setup as _logger_setup
+
+_logger_setup("gamma_agent")
+
+ET = ZoneInfo("America/New_York")
+CACHE = Path("/root/quantai-v2/shared-data/cache")
+PENDING_PATH = CACHE / "gamma_pending_entries.json"
+INDICATOR_CACHE = CACHE / "gamma_indicator_cache.json"
+JOURNAL = Path("/root/quantai-v2/shared-data/journal/paper/trades.jsonl")
+DASHBOARD_STATE = Path("/var/dashboard/state/agent-gamma-state.json")
+
+# Auto-load .env (mirrors beta_agent pattern)
+import pathlib as _pl
+for _ef in [_pl.Path("/home/trader/QuantAI/.env"), _pl.Path("/root/quantai-v2/.env")]:
+    if _ef.exists():
+        for _line in _ef.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                if not os.environ.get(_k.strip()):
+                    os.environ[_k.strip()] = _v.strip()
+        break
+
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
+
+DRY_RUN = "--dry-run" in sys.argv
+SCAN = "--scan" in sys.argv
+EXECUTE = "--execute" in sys.argv
+
+PENDING_MAX_AGE_HOURS = 18  # drop pending entries older than this on --execute
+
+
+# ── small helpers ─────────────────────────────────────────────────────────────
+
+def _post_discord(msg: str) -> None:
+    if DRY_RUN or not DISCORD_BOT_TOKEN or not DISCORD_ALERTS_CH:
+        if DRY_RUN:
+            print(f"[gamma_agent] DRY-RUN discord: {msg[:120]}")
+        return
+    try:
+        import requests
+        requests.post(
+            f"https://discord.com/api/v10/channels/{DISCORD_ALERTS_CH}/messages",
+            headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}", "Content-Type": "application/json"},
+            json={"content": msg[:1900]}, timeout=10,
+        )
+    except Exception as e:
+        logging.warning("discord post failed: %s", e)
+
+
+def _write_dashboard_state(data: dict) -> None:
+    try:
+        DASHBOARD_STATE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = DASHBOARD_STATE.with_suffix(".tmp")
+        tmp.write_text(json.dumps({
+            "last_updated": datetime.now(ET).isoformat(),
+            "status": "ok",
+            "data": data,
+        }, indent=2))
+        os.replace(tmp, DASHBOARD_STATE)
+    except Exception as e:
+        logging.warning("dashboard state write failed: %s", e)
+
+
+def _journal_write(entry: dict) -> None:
+    JOURNAL.parent.mkdir(parents=True, exist_ok=True)
+    with open(JOURNAL, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _next_gamma_id(journal: list) -> str:
+    """Max-based G### generation (count-based has a gap-collision bug — see
+    the Alpha fix in commit 3a2b251)."""
+    max_n = 0
+    for t in journal:
+        tid = (t.get("id") or "")
+        if tid.startswith("G") and tid[1:].isdigit():
+            try:
+                max_n = max(max_n, int(tid[1:]))
+            except ValueError:
+                continue
+    return f"G{max_n + 1:03d}"
+
+
+# ── --scan mode (post-close) ──────────────────────────────────────────────────
+
+def run_scan() -> int:
+    print(f"[gamma_agent] SCAN start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
+
+    from gamma import UNIVERSE, MAX_DAILY_ENTRIES
+    from gamma.scanner import scan_with_indicators
+    from gamma.risk_check import (
+        check_portfolio_gates,
+        filter_setups,
+        load_journal,
+        open_gamma_positions,
+    )
+
+    journal = load_journal()
+    open_gamma = open_gamma_positions(journal)
+
+    ok, why = check_portfolio_gates(journal)
+    if not ok:
+        print(f"[gamma_agent] portfolio gates blocked: {why}")
+        _write_dashboard_state({
+            "scan_results": {"total_scanned": 0, "above_200ma": 0,
+                             "rsi_below_30": 0, "qualifying_setups": 0,
+                             "instruments_triggering": []},
+            "open_positions": len(open_gamma),
+            "max_positions": 3,
+            "next_action": f"blocked: {why}",
+            "last_scan_time": datetime.now(ET).isoformat(),
+        })
+        # Still post Discord summary so Amit knows the scan ran
+        _post_discord(f"📊 Agent Gamma | Scan paused — {why}")
+        return 0
+
+    open_symbols = {p.get("symbol") for p in open_gamma if p.get("symbol")}
+    setups, indicator_cache = scan_with_indicators(UNIVERSE, open_symbols=open_symbols)
+    print(f"[gamma_agent] {len(setups)} qualifying setups before risk filter "
+          f"(indicators computed for {len(indicator_cache)})")
+
+    # Persist indicator cache for position_monitor's RSI exit checks
+    if not DRY_RUN:
+        try:
+            INDICATOR_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            INDICATOR_CACHE.write_text(json.dumps({
+                "scan_timestamp": datetime.now(ET).isoformat(),
+                "indicators": indicator_cache,
+            }, indent=2))
+        except Exception as e:
+            logging.warning("indicator cache write failed: %s", e)
+
+    eligible = filter_setups(setups, journal)
+    print(f"[gamma_agent] {len(eligible)} after sector/limit filter")
+
+    # Write pending file (consumed by --execute next morning)
+    pending = {
+        "scan_timestamp": datetime.now(ET).isoformat(),
+        "scan_date": datetime.now(ET).date().isoformat(),
+        "entries": eligible[:MAX_DAILY_ENTRIES],
+    }
+    if not DRY_RUN:
+        try:
+            PENDING_PATH.parent.mkdir(parents=True, exist_ok=True)
+            PENDING_PATH.write_text(json.dumps(pending, indent=2))
+            print(f"[gamma_agent] wrote {len(pending['entries'])} pending entries to {PENDING_PATH}")
+        except Exception as e:
+            logging.error("failed to write pending file: %s", e)
+            return 5
+    else:
+        print(f"[gamma_agent] DRY-RUN pending: {json.dumps(pending, indent=2, default=str)}")
+
+    # Discord summary
+    scanned = len(indicator_cache)
+    if eligible:
+        lines = [
+            f"  • {s['symbol']} — RSI(10) = {s['rsi_10']:.1f} | "
+            f"{s['distance_above_200ma_pct']:.2f}% above 200 MA"
+            for s in eligible
+        ]
+        msg = (
+            "📊 Agent Gamma | Daily Scan Complete\n"
+            f"🔍 Scanned {scanned}/{len(UNIVERSE)} | "
+            f"qualifying: {len(setups)} | eligible after filters: {len(eligible)}\n"
+            "📋 Pending entries:\n" + "\n".join(lines) + "\n"
+            "⏰ Execution at next open (9:33 AM ET)"
+        )
+    else:
+        msg = (
+            "📊 Agent Gamma | Daily Scan Complete\n"
+            f"🔍 Scanned {scanned}/{len(UNIVERSE)} instruments | "
+            f"qualifying setups: {len(setups)} | eligible after filters: 0\n"
+            "📋 No entries pending."
+        )
+    _post_discord(msg)
+
+    _write_dashboard_state({
+        "scan_results": {
+            "total_scanned": 27,
+            "qualifying_setups": len(setups),
+            "eligible_after_filters": len(eligible),
+            "instruments_triggering": [s["symbol"] for s in eligible],
+        },
+        "open_positions": len(open_gamma),
+        "max_positions": 3,
+        "next_action": (f"will execute {len(eligible)} at next open"
+                        if eligible else "no entries pending"),
+        "last_scan_time": datetime.now(ET).isoformat(),
+    })
+    return 0
+
+
+# ── --execute mode (market open) ──────────────────────────────────────────────
+
+def _load_pending() -> tuple[list[dict], dict | None]:
+    """Returns (entries, raw_payload). Empty list if file missing or stale."""
+    if not PENDING_PATH.exists():
+        print("[gamma_agent] no pending file — nothing to execute")
+        return [], None
+    try:
+        payload = json.loads(PENDING_PATH.read_text())
+    except Exception as e:
+        logging.error("pending file corrupt: %s", e)
+        return [], None
+
+    ts = payload.get("scan_timestamp", "")
+    try:
+        scan_dt = datetime.fromisoformat(ts)
+        if scan_dt.tzinfo is None:
+            scan_dt = scan_dt.replace(tzinfo=ET)
+        age_h = (datetime.now(ET) - scan_dt).total_seconds() / 3600.0
+        if age_h > PENDING_MAX_AGE_HOURS:
+            print(f"[gamma_agent] pending file is {age_h:.1f}h old — discarding")
+            return [], payload
+    except Exception:
+        pass
+
+    return list(payload.get("entries") or []), payload
+
+
+def _revalidate(entry: dict) -> tuple[bool, str]:
+    """Re-check setup at execute time using fresh daily data.
+
+    Soft bound: RSI may tick up overnight from the < 30 scan signal.
+    Entry is still valid up to 35. Original Connors signal requires < 30
+    at daily close (scan phase).
+    """
+    from gamma import RSI_REVALIDATE_SOFT
+    from gamma.scanner import _fetch_history
+    from gamma._indicators import sma, wilders_rsi
+
+    symbol = entry["symbol"]
+    fetched = _fetch_history(symbol)
+    if fetched is None:
+        return False, "yfinance fetch failed"
+    closes, _ = fetched
+    if len(closes) < 220:
+        return False, "insufficient history"
+
+    close = closes[-1]
+    sma_200 = sma(closes, period=200)
+    rsi_10 = wilders_rsi(closes, period=10)
+    if sma_200 is None or rsi_10 is None:
+        return False, "indicator calc failed"
+
+    if close <= sma_200:
+        return False, f"trend break: {close:.2f} <= 200 SMA {sma_200:.2f}"
+    if rsi_10 >= RSI_REVALIDATE_SOFT:
+        return False, f"RSI {rsi_10:.1f} >= {RSI_REVALIDATE_SOFT} (soft bound)"
+
+    # Update entry with freshest values
+    entry["close"] = round(close, 2)
+    entry["rsi_10"] = round(rsi_10, 2)
+    entry["sma_200"] = round(sma_200, 2)
+    return True, f"re-validated: RSI {rsi_10:.1f}, close {close:.2f}"
+
+
+def run_execute() -> int:
+    print(f"[gamma_agent] EXECUTE start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
+
+    # IBKR-only gate (mirrors beta_agent.py:151)
+    from broker import get_broker
+    broker = get_broker()
+    if broker.name != "ibkr":
+        logging.error("Gamma requires BROKER_TYPE=ibkr (got %s)", broker.name)
+        print(f"[gamma_agent] refusing: broker is {broker.name}, not ibkr")
+        return 2
+
+    # Graceful connect-failure handling: leave pending file intact, exit 0
+    try:
+        connected = broker.connect()
+    except Exception as e:
+        logging.warning("IBKR connect raised: %s — preserving pending file for retry", e)
+        print(f"[gamma_agent] IBKR connect failed: {e} — will retry next cycle")
+        return 0
+    if not connected:
+        logging.warning("IBKR connect returned False — preserving pending file for retry")
+        print("[gamma_agent] IBKR connect returned False — will retry next cycle")
+        return 0
+
+    pending, payload = _load_pending()
+    if not pending:
+        print("[gamma_agent] no pending entries to execute")
+        return 0
+
+    acct = broker.get_account() or {}
+    equity = float(acct.get("equity") or 0)
+    if equity <= 0:
+        logging.error("get_account returned zero equity — refusing to execute")
+        return 4
+
+    from gamma.risk_check import (
+        check_portfolio_gates,
+        filter_setups,
+        load_journal,
+    )
+    from gamma.strike_selector import build_spread
+
+    journal = load_journal()
+    ok, why = check_portfolio_gates(journal)
+    if not ok:
+        print(f"[gamma_agent] portfolio gates blocked at execute: {why}")
+        _post_discord(f"⚠️ Agent Gamma | execute blocked: {why}")
+        # Don't delete pending; tomorrow's scan will overwrite
+        return 0
+
+    eligible = filter_setups(pending, journal)
+    if not eligible:
+        print("[gamma_agent] no entries pass risk filter at execute time")
+        _consume_pending_file(pending, payload, [], [])
+        return 0
+
+    today_iso = datetime.now(ET).date().isoformat()
+    placed: list[dict] = []
+    failed: list[tuple[dict, str]] = []
+
+    for setup in eligible:
+        symbol = setup["symbol"]
+        ok, reason = _revalidate(setup)
+        if not ok:
+            print(f"[gamma_agent] {symbol} re-validate FAIL: {reason}")
+            failed.append((setup, f"revalidate_fail: {reason}"))
+            continue
+        print(f"[gamma_agent] {symbol} re-validated: {reason}")
+
+        proposal = build_spread(setup, broker, equity, today_iso)
+        if not proposal:
+            print(f"[gamma_agent] {symbol} build_spread returned None")
+            failed.append((setup, "build_spread_none"))
+            continue
+
+        coid = f"gamma-{datetime.now(ET).strftime('%Y%m%d-%H%M%S')}-{symbol[:6]}"
+        proposal["client_order_id"] = coid
+
+        if DRY_RUN:
+            print(f"[gamma_agent] DRY-RUN proposal {symbol}: "
+                  f"{json.dumps(proposal, indent=2, default=str)}")
+            placed.append(proposal)
+            continue
+
+        try:
+            fill = broker.place_mleg_order(
+                proposal["legs"], qty=proposal["qty"], tif="day", client_order_id=coid,
+            )
+        except Exception as e:
+            logging.error("place_mleg_order raised for %s: %s", symbol, e)
+            failed.append((setup, f"place_exception: {e}"))
+            continue
+        if not fill:
+            logging.error("place_mleg_order returned None for %s", symbol)
+            failed.append((setup, "place_returned_none"))
+            continue
+
+        # Build journal entry
+        entry = dict(proposal)
+        entry["id"] = _next_gamma_id(journal + placed)  # reflect this batch's appends
+        entry["timestamp"] = datetime.now(ET).isoformat()
+        entry["mode"] = "paper"
+        entry["status"] = "OPEN"
+        entry["order_id"] = fill.get("order_id", "") or fill.get("id", "")
+        entry["fill_status"] = fill.get("status", "")
+        entry["filled_qty"] = fill.get("filled_qty", 0)
+        entry["avg_fill_price"] = fill.get("avg_fill_price", 0)
+        entry["notes"] = (
+            f"{symbol} RSI(10)={setup['rsi_10']:.1f}, "
+            f"{setup['distance_above_200ma_pct']:.2f}% above 200 SMA. "
+            "Pullback in confirmed uptrend."
+        )
+
+        _journal_write(entry)
+        print(f"[gamma_agent] journaled as {entry['id']} (order_id={entry['order_id']})")
+        placed.append(entry)
+
+        msg = (
+            f"🟢 Agent Gamma | ENTRY — RSI Pullback\n"
+            f"📈 {symbol} Bull Call Spread "
+            f"${entry['legs'][0].get('strike')}/${entry['legs'][1].get('strike')} | "
+            f"{entry['expiry']} expiry\n"
+            f"💰 Debit: ${entry['net_debit']:.2f} | Max risk: ${entry['total_risk']:.0f} "
+            f"({(entry.get('total_risk_pct') or 0)*100:.2f}%)\n"
+            f"📊 RSI(10): {setup['rsi_10']:.1f} | "
+            f"Price: ${setup['close']:.2f} | 200 SMA: ${setup['sma_200']:.2f}\n"
+            f"🆔 {entry['id']} | order={str(entry['order_id'])[:12]}"
+        )
+        _post_discord(msg)
+
+    _consume_pending_file(pending, payload, placed, failed)
+    _write_dashboard_state_after_execute(journal, placed)
+    return 0
+
+
+def _consume_pending_file(pending: list[dict], payload: dict | None,
+                          placed: list[dict], failed: list[tuple[dict, str]]) -> None:
+    """If everything placed cleanly, delete the pending file. If anything
+    failed, rewrite the pending file with only the still-actionable entries
+    so the next manual run can retry them. DRY-RUN never modifies the file.
+    """
+    if DRY_RUN:
+        return
+    if not failed:
+        try:
+            PENDING_PATH.unlink(missing_ok=True)
+            print("[gamma_agent] consumed pending file")
+        except Exception as e:
+            logging.warning("could not unlink pending file: %s", e)
+        return
+    # Failures present — keep only the failed entries for retry, drop placed.
+    placed_symbols = {p.get("symbol") for p in placed}
+    leftovers = [s for s in pending
+                 if s.get("symbol") not in placed_symbols]
+    new_payload = {
+        "scan_timestamp": (payload or {}).get("scan_timestamp"),
+        "scan_date": (payload or {}).get("scan_date"),
+        "entries": leftovers,
+        "retry_failures": [{"symbol": s.get("symbol"), "reason": r} for s, r in failed],
+    }
+    try:
+        PENDING_PATH.write_text(json.dumps(new_payload, indent=2))
+        print(f"[gamma_agent] {len(leftovers)} entries left in pending for retry")
+    except Exception as e:
+        logging.warning("could not rewrite pending file: %s", e)
+
+
+def _write_dashboard_state_after_execute(journal: list, placed: list[dict]) -> None:
+    from gamma.risk_check import open_gamma_positions
+    refreshed = open_gamma_positions(journal + placed)
+    closed_gamma = [t for t in journal if t.get("source") == "agent_gamma"
+                    and t.get("status") == "CLOSED"]
+    wins = [t for t in closed_gamma if (t.get("pnl") or 0) > 0]
+    win_rate = (len(wins) / len(closed_gamma)) if closed_gamma else 0.0
+    total_pnl = sum((t.get("pnl") or 0) for t in closed_gamma)
+    _write_dashboard_state({
+        "open_positions": len(refreshed),
+        "max_positions": 3,
+        "today_entries": len(placed),
+        "total_trades": len(closed_gamma) + len(refreshed),
+        "win_rate": round(win_rate, 3),
+        "total_pnl": round(total_pnl, 2),
+        "current_positions": [
+            {
+                "id": p.get("id"),
+                "symbol": p.get("symbol"),
+                "entry_rsi": p.get("rsi_at_entry"),
+                "expiry": p.get("expiry"),
+                "net_debit": p.get("net_debit"),
+            }
+            for p in refreshed
+        ],
+        "next_action": (f"placed {len(placed)} this morning"
+                        if placed else "awaiting next scan"),
+        "last_execute_time": datetime.now(ET).isoformat(),
+    })
+
+
+# ── entry point ───────────────────────────────────────────────────────────────
+
+def main() -> int:
+    if SCAN and EXECUTE:
+        print("[gamma_agent] choose --scan OR --execute, not both", file=sys.stderr)
+        return 1
+    if SCAN:
+        return run_scan()
+    if EXECUTE:
+        return run_execute()
+    print("usage: gamma_agent.py --scan | --execute  [--dry-run]", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

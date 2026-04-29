@@ -1,0 +1,155 @@
+"""Risk gates for Agent Gamma.
+
+Independent from Alpha and Beta — counts only entries with
+`source == 'agent_gamma'`.
+
+Rules (spec § 3):
+  - MAX_OPEN_POSITIONS = 3 simultaneous Gamma positions
+  - MAX_DAILY_ENTRIES  = 2 new entries per calendar day
+  - MAX_POSITIONS_SAME_SECTOR = 2
+  - Circuit breaker: 3 consecutive losses → 48h pause
+  - No double-entry on the same symbol
+"""
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from . import (
+    CIRCUIT_BREAKER_HOURS,
+    CIRCUIT_BREAKER_LOSSES,
+    INSTRUMENT_CONFIG,
+    MAX_DAILY_ENTRIES,
+    MAX_OPEN_POSITIONS,
+    MAX_POSITIONS_SAME_SECTOR,
+)
+
+ET = ZoneInfo("America/New_York")
+JOURNAL = Path("/root/quantai-v2/shared-data/journal/paper/trades.jsonl")
+
+
+def _is_gamma(t: dict) -> bool:
+    return t.get("source") == "agent_gamma"
+
+
+def _today_iso() -> str:
+    return datetime.now(ET).date().isoformat()
+
+
+def _hours_since(ts_iso: str) -> float:
+    try:
+        ts = datetime.fromisoformat(ts_iso)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ET)
+        return (datetime.now(ET) - ts).total_seconds() / 3600.0
+    except Exception:
+        return 1e9
+
+
+def load_journal(path: Path = JOURNAL) -> list:
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            continue
+    return out
+
+
+def open_gamma_positions(journal: list) -> list:
+    return [t for t in journal if _is_gamma(t) and t.get("status") == "OPEN"]
+
+
+def consecutive_gamma_losses(journal: list) -> tuple[int, str]:
+    """Count consecutive Gamma losses going back from most recent close.
+    Returns (count, last_close_timestamp)."""
+    closed = sorted(
+        [t for t in journal if _is_gamma(t) and t.get("status") == "CLOSED"],
+        key=lambda t: t.get("close_timestamp") or t.get("timestamp", ""),
+        reverse=True,
+    )
+    consec = 0
+    for t in closed:
+        if (t.get("pnl") or 0) < 0:
+            consec += 1
+        else:
+            break
+    last_ts = ""
+    if closed:
+        last_ts = closed[0].get("close_timestamp") or closed[0].get("timestamp", "")
+    return consec, last_ts
+
+
+def check_portfolio_gates(journal: list) -> tuple[bool, str]:
+    """Pre-flight check: are we allowed to enter ANYTHING right now?
+
+    Called once before iterating over candidate setups. Returns
+    (allowed, reason). If False, skip this cycle entirely.
+    """
+    open_gamma = open_gamma_positions(journal)
+    if len(open_gamma) >= MAX_OPEN_POSITIONS:
+        return False, f"max {MAX_OPEN_POSITIONS} Gamma positions already open"
+
+    today = _today_iso()
+    todays = [t for t in journal if _is_gamma(t) and t.get("timestamp", "")[:10] == today]
+    if len(todays) >= MAX_DAILY_ENTRIES:
+        return False, f"max {MAX_DAILY_ENTRIES} Gamma entries already today"
+
+    consec, last_ts = consecutive_gamma_losses(journal)
+    if consec >= CIRCUIT_BREAKER_LOSSES and last_ts:
+        hours = _hours_since(last_ts)
+        if hours < CIRCUIT_BREAKER_HOURS:
+            return False, (f"circuit breaker: {consec} consecutive losses, "
+                           f"only {hours:.1f}h since last (need {CIRCUIT_BREAKER_HOURS}h)")
+
+    return True, "ok"
+
+
+def filter_setups(setups: list[dict], journal: list,
+                  pending: list[dict] | None = None) -> list[dict]:
+    """Filter setups against per-instrument and sector limits.
+
+    `pending` lets the caller include in-flight entries (e.g. proposals
+    queued earlier in this same cycle) toward the sector / open counts.
+    """
+    pending = pending or []
+    open_gamma = open_gamma_positions(journal)
+    today = _today_iso()
+    todays = [t for t in journal if _is_gamma(t) and t.get("timestamp", "")[:10] == today]
+
+    used_slots = len(open_gamma) + len(pending)
+    available_slots = MAX_OPEN_POSITIONS - used_slots
+    todays_remaining = MAX_DAILY_ENTRIES - len(todays) - len(pending)
+
+    if available_slots <= 0 or todays_remaining <= 0:
+        return []
+
+    open_symbols = {p.get("symbol") for p in open_gamma + pending}
+    sector_count: dict[str, int] = {}
+    for p in open_gamma + pending:
+        sec = p.get("sector") or INSTRUMENT_CONFIG.get(p.get("symbol", ""), {}).get("sector", "unknown")
+        sector_count[sec] = sector_count.get(sec, 0) + 1
+
+    out = []
+    for s in setups:
+        if len(out) >= min(available_slots, todays_remaining):
+            break
+        sym = s["symbol"]
+        if sym in open_symbols:
+            continue
+        sec = s.get("sector", "unknown")
+        if sector_count.get(sec, 0) >= MAX_POSITIONS_SAME_SECTOR:
+            continue
+        out.append(s)
+        sector_count[sec] = sector_count.get(sec, 0) + 1
+        open_symbols.add(sym)
+
+    return out

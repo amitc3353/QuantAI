@@ -287,6 +287,7 @@ def _min_leg_dte(trade, today):
 _INTEL_CACHE = {"loaded_at": None, "data": {}}
 _GAP_CACHE = {"date": None, "gap_pct": None}
 _REGIME_CACHE = {"loaded_at": None, "regime": "UNKNOWN"}
+_GAMMA_INDICATOR_CACHE = {"loaded_at": None, "data": {}}
 
 
 def _load_intel_macro():
@@ -358,6 +359,99 @@ def _live_net_delta(trade, broker):
         sign = 1 if str(leg.get("side", "")).lower() == "buy" else -1
         total += sign * ratio * float(q["delta"])
     return total
+
+
+def _gamma_indicators(symbol):
+    """Return the latest cached daily indicators for `symbol` from
+    gamma_indicator_cache.json (written by gamma_agent.py --scan after market
+    close). Cached for 5 minutes between reads. Returns {} if the file is
+    missing or stale.
+    """
+    import time
+    now_ts = time.time()
+    if (_GAMMA_INDICATOR_CACHE["loaded_at"] and
+            now_ts - _GAMMA_INDICATOR_CACHE["loaded_at"] < 300):
+        return _GAMMA_INDICATOR_CACHE["data"].get(symbol, {})
+    try:
+        with open("/root/quantai-v2/shared-data/cache/gamma_indicator_cache.json") as f:
+            payload = json.load(f)
+        data = payload.get("indicators") or {}
+    except Exception:
+        data = {}
+    _GAMMA_INDICATOR_CACHE.update({"loaded_at": now_ts, "data": data})
+    return data.get(symbol, {})
+
+
+def check_gamma_exit(trade, pnl, now, broker=None):
+    """Agent Gamma exit checks (Connors RSI pullback).
+
+    Triggers (in order):
+      1. RSI(10) > 40            — primary Connors exit
+      2. Time stop (10 trading days from entry_date)
+      3. Trend break (close < 200 SMA)
+      4. Stop loss (-50% on debit)
+      5. Take profit (+150% on debit)
+
+    Returns (should_close, reason, close_fraction, partial_flag) or None
+    if the trade is not Gamma.
+    """
+    if trade.get("source") != "agent_gamma":
+        return None
+    rules = trade.get("exit_rules") or {}
+    if not rules:
+        return None
+    today = now.date()
+
+    basis = abs(trade.get("net_debit") or 0)
+    pnl_pct = (pnl / (basis * 100)) * 100 if basis > 0 else 0.0
+
+    symbol = trade.get("symbol") or trade.get("instrument")
+    indicators = _gamma_indicators(symbol) if symbol else {}
+    rsi_now = indicators.get("rsi_10")
+    close_now = indicators.get("close")
+    sma_200 = indicators.get("sma_200")
+
+    # 1. Primary: RSI(10) recovery
+    rsi_thr = rules.get("rsi_exit_threshold", 40)
+    if rsi_now is not None and rsi_now > float(rsi_thr):
+        return True, f"rsi_recovery (RSI={rsi_now:.1f}>{rsi_thr})", 1.0, None
+
+    # 2. Time stop
+    time_stop = rules.get("time_stop_days")
+    entry_date = rules.get("entry_date") or trade.get("timestamp", "")[:10]
+    if time_stop is not None and entry_date:
+        try:
+            from datetime import date as _date
+            ed = _date.fromisoformat(entry_date[:10])
+            held_days = 0
+            cur = ed
+            from datetime import timedelta as _td
+            while cur < today:
+                if cur.weekday() < 5:
+                    held_days += 1
+                cur += _td(days=1)
+            if held_days >= int(time_stop):
+                return True, f"time_stop ({held_days}>={time_stop} trading days)", 1.0, None
+        except Exception:
+            pass
+
+    # 3. Trend break: closed below 200 SMA
+    if close_now is not None and sma_200 is not None and close_now < sma_200:
+        return True, f"trend_break (close {close_now:.2f} < SMA200 {sma_200:.2f})", 1.0, None
+
+    # 4. Stop loss
+    if basis > 0:
+        sl = rules.get("stop_loss_pct", -50)
+        if pnl_pct <= float(sl):
+            return True, f"stop_loss ({pnl_pct:.0f}%<={sl}%)", 1.0, None
+
+    # 5. Take profit
+    if basis > 0:
+        tp = rules.get("take_profit_pct", 150)
+        if pnl_pct >= float(tp):
+            return True, f"take_profit ({pnl_pct:.0f}%>={tp}%)", 1.0, None
+
+    return False, "hold", 1.0, None
 
 
 def check_beta_exit(trade, pnl, now, broker=None):
@@ -604,6 +698,11 @@ def check_exit_threshold(trade, pnl, now, broker=None):
     today = now.date()
     min_dte = _min_leg_dte(trade, today)
 
+    gamma = check_gamma_exit(trade, pnl, now, broker=broker)
+    if gamma is not None:
+        should, reason, fraction, flag = gamma
+        return (True, reason, fraction, flag) if should else (False, "", 1.0, None)
+
     beta = check_beta_exit(trade, pnl, now, broker=broker)
     if beta is not None:
         should, reason, fraction, flag = beta
@@ -668,7 +767,26 @@ def post_close_alert(trade, exit_reason, pnl, is_partial=False, close_qty=None):
     basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
     pnl_pct = round(pnl / (basis * 100) * 100, 1) if basis > 0 else 0.0
 
-    if trade.get("source") == "agent_beta":
+    if trade.get("source") == "agent_gamma":
+        entry_rsi = trade.get("rsi_at_entry")
+        # Pull live RSI from indicator cache for context
+        sym = trade.get("symbol") or trade.get("instrument") or ""
+        try:
+            ind = _gamma_indicators(sym)
+            exit_rsi = ind.get("rsi_10")
+        except Exception:
+            exit_rsi = None
+        rsi_note = ""
+        if entry_rsi is not None and exit_rsi is not None:
+            rsi_note = f"📊 Entry RSI: {entry_rsi} → Exit RSI: {exit_rsi}\n"
+        msg = (
+            f"✅ Agent Gamma | EXIT — {exit_reason}\n"
+            f"📈 {instrument} {strategy}\n"
+            f"💰 P&L: ${pnl:+.2f} ({pnl_pct:+.1f}%)\n"
+            f"{rsi_note}"
+            f"📋 {trade.get('id','?')} | {datetime.now(ET).strftime('%H:%M ET')}"
+        )
+    elif trade.get("source") == "agent_beta":
         action = "SCALED" if is_partial else "CLOSED"
         qty_note = f" (×{close_qty})" if is_partial and close_qty else ""
         msg = (
