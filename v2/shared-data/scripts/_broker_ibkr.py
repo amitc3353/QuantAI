@@ -85,14 +85,6 @@ _IBKR_CONNECT_NOISE = (
     # The caller already gets None back and skips; the warning is pure noise
     # and floods at 200+ events per chain query.
     "Unknown contract: Option(",
-    # ib_insync auto-syncs completed/positions/orders on every fresh connect.
-    # With our per-cron-tick connection model + a non-empty order history, the
-    # internal reqCompletedOrders takes longer than ib_insync's default 30s
-    # timeout. The connect itself succeeds and broker calls work — only the
-    # post-connect order sync logs these. Pure noise at 1+/min via collect_alpaca.
-    "completed orders request timed out",
-    "positions request timed out",
-    "open orders request timed out",
 )
 
 
@@ -169,7 +161,13 @@ class IBKRBroker(BrokerBase):
         for attempt in range(3):
             ib = IB()
             try:
-                ib.connect(self.host, self.port, clientId=self.client_id, timeout=15)
+                # readonly=True skips ib_insync's auto-sync of open orders +
+                # completed orders at connect time. We don't read either (audit
+                # in plan); reqCompletedOrders was timing out at 15s on every
+                # cron tick (~700 events/day from collect_alpaca alone).
+                # placeOrder is unaffected — readonly is a client-side hint.
+                ib.connect(self.host, self.port, clientId=self.client_id,
+                           timeout=15, readonly=True)
                 if not ib.isConnected():
                     raise ConnectionError("connect returned without isConnected()")
                 # Type 3 (delayed live) delivers t.last and t.modelGreeks for this paper
