@@ -85,6 +85,14 @@ _IBKR_CONNECT_NOISE = (
     # The caller already gets None back and skips; the warning is pure noise
     # and floods at 200+ events per chain query.
     "Unknown contract: Option(",
+    # ib_insync auto-syncs completed/positions/orders on every fresh connect.
+    # With our per-cron-tick connection model + a non-empty order history, the
+    # internal reqCompletedOrders takes longer than ib_insync's default 30s
+    # timeout. The connect itself succeeds and broker calls work — only the
+    # post-connect order sync logs these. Pure noise at 1+/min via collect_alpaca.
+    "completed orders request timed out",
+    "positions request timed out",
+    "open orders request timed out",
 )
 
 
