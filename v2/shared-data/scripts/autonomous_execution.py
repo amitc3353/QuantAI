@@ -298,6 +298,10 @@ def execute_bull_put_spread(symbol, trade, expiry):
     short_sym = build_occ_symbol(symbol, expiry, "put", short_strike)
     long_sym  = build_occ_symbol(symbol, expiry, "put", long_strike)
 
+    # Update journal-bound legs with snapped strikes + broker OCC.
+    sell_leg["strike"], sell_leg["symbol"], sell_leg["expiry"] = short_strike, short_sym, expiry
+    buy_leg["strike"], buy_leg["symbol"], buy_leg["expiry"] = long_strike, long_sym, expiry
+
     mleg_legs = [
         {"ratio_qty": "1", "side": "sell", "symbol": short_sym},
         {"ratio_qty": "1", "side": "buy",  "symbol": long_sym},
@@ -321,6 +325,10 @@ def execute_bear_call_spread(symbol, trade, expiry):
 
     short_sym = build_occ_symbol(symbol, expiry, "call", short_strike)
     long_sym  = build_occ_symbol(symbol, expiry, "call", long_strike)
+
+    # Update journal-bound legs with snapped strikes + broker OCC.
+    sell_leg["strike"], sell_leg["symbol"], sell_leg["expiry"] = short_strike, short_sym, expiry
+    buy_leg["strike"], buy_leg["symbol"], buy_leg["expiry"] = long_strike, long_sym, expiry
 
     mleg_legs = [
         {"ratio_qty": "1", "side": "sell", "symbol": short_sym},
@@ -367,6 +375,23 @@ def execute_iron_condor(symbol, trade, expiry):
         log("  Could not find all 4 condor strikes in broker chain")
         return None
 
+    # Update journal-bound legs with the strikes actually used and broker OCC.
+    # Without this, the journal records the LLM's proposed strikes which may
+    # differ from what was placed (e.g. A011 INTC 89/86/100/105 → 89/88/100/101);
+    # position_monitor's leg-matching then fails on the mismatched legs.
+    put_sell["strike"] = put_short_s
+    put_sell["symbol"] = build_occ_symbol(symbol, expiry, "put", put_short_s)
+    put_sell["expiry"] = expiry
+    put_buy["strike"] = put_long_s
+    put_buy["symbol"] = build_occ_symbol(symbol, expiry, "put", put_long_s)
+    put_buy["expiry"] = expiry
+    call_sell["strike"] = call_short_s
+    call_sell["symbol"] = build_occ_symbol(symbol, expiry, "call", call_short_s)
+    call_sell["expiry"] = expiry
+    call_buy["strike"] = call_long_s
+    call_buy["symbol"] = build_occ_symbol(symbol, expiry, "call", call_long_s)
+    call_buy["expiry"] = expiry
+
     mleg_legs = [
         {"ratio_qty": "1", "side": "sell",
          "symbol": build_occ_symbol(symbol, expiry, "put",  put_short_s)},
@@ -400,11 +425,16 @@ def execute_generic_spread(symbol, trade, expiry):
     if not short_s or not long_s:
         return None
 
+    short_sym = build_occ_symbol(symbol, expiry, option_type, short_s)
+    long_sym  = build_occ_symbol(symbol, expiry, option_type, long_s)
+
+    # Update journal-bound legs with snapped strikes + broker OCC.
+    sell_leg["strike"], sell_leg["symbol"], sell_leg["expiry"] = short_s, short_sym, expiry
+    buy_leg["strike"], buy_leg["symbol"], buy_leg["expiry"] = long_s, long_sym, expiry
+
     mleg_legs = [
-        {"ratio_qty": "1", "side": "sell",
-         "symbol": build_occ_symbol(symbol, expiry, option_type, short_s)},
-        {"ratio_qty": "1", "side": "buy",
-         "symbol": build_occ_symbol(symbol, expiry, option_type, long_s)},
+        {"ratio_qty": "1", "side": "sell", "symbol": short_sym},
+        {"ratio_qty": "1", "side": "buy",  "symbol": long_sym},
     ]
     return place_mleg_order(symbol, mleg_legs, trade.get("strategy", "spread"))
 
@@ -439,6 +469,10 @@ def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
 
     sell_sym = build_occ_symbol(symbol, near_expiry, option_type, actual_sell_strike)
     buy_sym  = build_occ_symbol(symbol, far_expiry,  option_type, actual_buy_strike)
+
+    # Update journal-bound legs with snapped strikes + broker OCC.
+    sell_leg["strike"], sell_leg["symbol"], sell_leg["expiry"] = actual_sell_strike, sell_sym, near_expiry
+    buy_leg["strike"], buy_leg["symbol"], buy_leg["expiry"] = actual_buy_strike, buy_sym, far_expiry
 
     log(f"  Diagonal: BUY {buy_sym} + SELL {sell_sym}")
 
@@ -515,10 +549,17 @@ def log_trade(trade, agent_name, fill, intel):
             existing = [json.loads(l) for l in f if l.strip()]
 
     # Per-prefix counter so Alpha (A###) and Beta (B###) don't collide.
+    # Use max-of-existing+1, NOT count, because gaps in the sequence (e.g. ids
+    # skipped during the IBKR migration) caused count-based IDs to collide
+    # with existing entries — duplicate A010 was the symptom on 2026-04-29.
     prefix = "B" if agent_name == "agent_beta" else "A"
-    same_prefix = sum(1 for t in existing if (t.get("id") or "").startswith(prefix))
+    max_n = 0
+    for t in existing:
+        tid = (t.get("id") or "")
+        if tid.startswith(prefix) and tid[1:].isdigit():
+            max_n = max(max_n, int(tid[1:]))
     entry = {
-        "id": f"{prefix}{same_prefix+1:03d}",
+        "id": f"{prefix}{max_n+1:03d}",
         "timestamp": datetime.now(ET).isoformat(),
         "mode": "paper",
         "source": agent_name,
