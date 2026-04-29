@@ -233,7 +233,35 @@ except Exception as e:
     print(f"[debate] Proposal parse error: {e}\nRaw: {raw[:300]}")
     proposal_data = {"proposals": [], "market_summary": "Parse error"}
 
-proposals = proposal_data.get("proposals", [])
+def _to_float(v, default=0.0):
+    """Coerce LLM-returned values to float. Handles None, numeric strings,
+    strings with $/%/commas, and out-of-vocab text."""
+    if v is None:
+        return default
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip().replace("$", "").replace(",", "").replace("%", "")
+        try:
+            return float(s)
+        except ValueError:
+            return default
+    return default
+
+
+def _normalize_proposal(p: dict) -> dict:
+    """Coerce all numeric fields the formatter touches to floats with safe
+    defaults. The LLM occasionally returns strings ('1.7') or null instead of
+    numbers; without normalization the f-string formatter raises TypeError /
+    ValueError and the whole debate cycle aborts."""
+    p["estimated_credit"] = _to_float(p.get("estimated_credit"), 0.0)
+    p["max_loss"] = _to_float(p.get("max_loss"), 0.0)
+    p["max_loss_pct"] = _to_float(p.get("max_loss_pct"), 0.0)
+    p["probability_of_profit"] = _to_float(p.get("probability_of_profit"), 0.0)
+    return p
+
+
+proposals = [_normalize_proposal(p) for p in proposal_data.get("proposals", []) if isinstance(p, dict)]
 market_summary = proposal_data.get("market_summary", "")
 print(f"[debate] Proposal Agent: {len(proposals)} candidates")
 
