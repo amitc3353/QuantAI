@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .._chain_helpers import (
-    expiries_in_range, find_nearest_expiry, nearest_strike, mid, leg,
+    expiries_in_range, find_nearest_expiry, nearest_strike, mid, leg, fill_quote,
 )
 
 
@@ -54,6 +54,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         return None
     short_c = nearest_strike(chain, xsp_price, "C", expiry)
     long_c = nearest_strike(chain, xsp_price * 1.06, "C", expiry)
+    fill_quote(short_c, broker)
+    fill_quote(long_c, broker)
     sm, lm = mid(short_c), mid(long_c)
     if not (short_c and long_c and sm and lm):
         return None

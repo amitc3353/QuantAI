@@ -5,7 +5,7 @@ Regime: TREND_DOWN, CRISIS. Spec § 6.3.
 from __future__ import annotations
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "put_ratio_backspread"
@@ -47,6 +47,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         return None
     short_p = nearest_strike(chain, xsp_price, "P", expiry)
     long_p = nearest_strike(chain, xsp_price * 0.94, "P", expiry)
+    fill_quote(short_p, broker)
+    fill_quote(long_p, broker)
     sm, lm = mid(short_p), mid(long_p)
     if not (short_p and long_p and sm and lm):
         return None

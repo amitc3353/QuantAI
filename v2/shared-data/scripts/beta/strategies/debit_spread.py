@@ -5,7 +5,7 @@ Regimes: TREND_UP, TREND_DOWN, NORMAL. Spec § 6.6.
 from __future__ import annotations
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, find_by_delta, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, find_by_delta, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "debit_spread"
@@ -67,6 +67,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         or nearest_strike(chain, target_far, right, expiry)
     if not (long_atm and short_otm) or long_atm["strike"] == short_otm["strike"]:
         return None
+    fill_quote(long_atm, broker)
+    fill_quote(short_otm, broker)
     lm, sm = mid(long_atm), mid(short_otm)
     if None in (lm, sm):
         return None

@@ -5,7 +5,7 @@ Regimes: RANGE, NORMAL. Spec § 6.7.
 from __future__ import annotations
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "calendar_spread"
@@ -37,6 +37,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         return None
     short_c = nearest_strike(chain, spx, "C", short_expiry)
     long_c = nearest_strike(chain, spx, "C", long_expiry)
+    fill_quote(short_c, broker)
+    fill_quote(long_c, broker)
     sm, lm = mid(short_c), mid(long_c)
     if not (short_c and long_c and sm and lm):
         return None
@@ -45,6 +47,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         short_p = nearest_strike(chain, spx, "P", short_expiry)
         long_p = nearest_strike(chain, spx, "P", long_expiry)
         if short_p and long_p and short_p["strike"] == long_p["strike"]:
+            fill_quote(short_p, broker)
+            fill_quote(long_p, broker)
             short_c, long_c = short_p, long_p
             sm, lm = mid(short_c), mid(long_c)
         else:

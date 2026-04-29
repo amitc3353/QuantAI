@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, find_by_delta, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, find_by_delta, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "credit_spread_offset"
@@ -63,6 +63,8 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
     long_ = nearest_strike(chain, long_target, right, expiry)
     if not long_ or long_["strike"] == short["strike"]:
         return None
+    fill_quote(short, broker)
+    fill_quote(long_, broker)
     sm, lm = mid(short), mid(long_)
     if None in (sm, lm):
         return None

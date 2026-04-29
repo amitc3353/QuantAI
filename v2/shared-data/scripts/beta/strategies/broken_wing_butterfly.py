@@ -9,7 +9,7 @@ Bearish BWB (calls): mirror — buy 1 upper wide, sell 2 body, buy 1 lower narro
 from __future__ import annotations
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "broken_wing_butterfly"
@@ -77,6 +77,9 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
     narrow = nearest_strike(chain, narrow_strike_target, right, expiry)
     if not (wide and body and narrow) or len({wide["strike"], body["strike"], narrow["strike"]}) != 3:
         return None
+    fill_quote(wide, broker)
+    fill_quote(body, broker)
+    fill_quote(narrow, broker)
     wm, bm, nm = mid(wide), mid(body), mid(narrow)
     if None in (wm, bm, nm):
         return None

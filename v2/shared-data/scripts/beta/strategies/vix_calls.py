@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg
+from .._chain_helpers import find_nearest_expiry, nearest_strike, mid, leg, fill_quote
 
 
 NAME = "vix_calls"
@@ -57,6 +57,7 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
         return None
     target_strike = vix * 1.9  # midpoint of 80-100% above
     call = nearest_strike(chain, target_strike, "C", expiry)
+    fill_quote(call, broker)
     cm = mid(call)
     if not (call and cm):
         return None
