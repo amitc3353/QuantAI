@@ -193,6 +193,17 @@ def fetch_alpaca_positions():
         return None
 
 
+def _leg_occ(trade, leg):
+    """Resolve a leg's OCC symbol. Beta journal entries store the broker-
+    correct OCC (with SPXW/VIXW tradingClass prefix) directly on the leg.
+    Alpha legacy entries don't have it, so fall back to building from
+    trade.symbol — which is wrong for weeklies but correct for equity legs."""
+    sym = leg.get("symbol")
+    if sym:
+        return sym
+    return build_occ(trade["symbol"], leg["expiry"], leg["type"], leg["strike"])
+
+
 def compute_trade_pnl(trade, alpaca_pos):
     """Sum unrealized_pl across all legs present in Alpaca.
     Returns (total_pnl, legs_found). Missing legs contribute 0 — not an error.
@@ -200,7 +211,7 @@ def compute_trade_pnl(trade, alpaca_pos):
     total, found = 0.0, 0
     for leg in trade.get("legs", []):
         try:
-            occ = build_occ(trade["symbol"], leg["expiry"], leg["type"], leg["strike"])
+            occ = _leg_occ(trade, leg)
             if occ in alpaca_pos:
                 total += float(alpaca_pos[occ].get("unrealized_pl", 0))
                 found += 1
@@ -217,10 +228,12 @@ def build_closing_legs(trade, alpaca_pos):
     closing = []
     for leg in trade.get("legs", []):
         try:
-            occ = build_occ(trade["symbol"], leg["expiry"], leg["type"], leg["strike"])
+            occ = _leg_occ(trade, leg)
             if occ not in alpaca_pos:
                 continue
-            close_side = "sell" if leg["action"] == "buy" else "buy"
+            # Beta journal stores side; Alpha legacy stores action. Reverse it.
+            entry_dir = leg.get("action") or leg.get("side") or ""
+            close_side = "sell" if entry_dir == "buy" else "buy"
             closing.append({"ratio_qty": "1", "side": close_side, "symbol": occ})
         except Exception as e:
             log(f"  build_closing_legs error: {e}")
