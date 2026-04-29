@@ -165,6 +165,18 @@ def main():
         age_min = (now_utc - beat).total_seconds() / 60
         beat_status = "stale" if age_min > STALE_MIN else "ok"
 
+    # Overnight-carryover gate: a beat <18h old reflects yesterday's last
+    # pipeline run. Off-market that's expected (no cron during the gap);
+    # in the first 30 min after market open it's the warm-up window before
+    # the morning's first run lands. In both cases, demote "stale" → "ok-
+    # overnight" so the dashboard error detector doesn't flag it critical
+    # and Discord doesn't get paged.
+    if beat_status == "stale" and age_min is not None and age_min < 18 * 60:
+        market_open_min = (now.hour - 9) * 60 + (now.minute - 30) if now.weekday() < 5 else -1
+        warmup = market and 0 <= market_open_min < 30
+        if not market or warmup:
+            beat_status = "ok-overnight"
+
     if should_print_status(beat_status, market):
         print(f"[{now.strftime('%H:%M ET')}] pipeline beat={beat_status}"
               + (f" age={age_min:.1f}m" if age_min is not None else "")
@@ -185,7 +197,7 @@ def main():
         print(f"ALERT: sent Discord notification ({beat_status})")
 
     # --- Write dashboard state ---
-    if beat_status == "ok":
+    if beat_status in ("ok", "ok-overnight"):
         dash_status = "ok"
     elif not market:
         dash_status = "idle"

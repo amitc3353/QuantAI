@@ -67,6 +67,7 @@ _IBKR_NOISE_CODES = (
     "Error 10168,",  # alt phrasing of subscription gap
     "Error 10182,",  # "Failed to request live updates (disconnected)" — transient
     "Error 10197,",  # "No market data during competing live session" — paper acct + reqMDType(4) fallback
+    "Error 10091,",  # "Part of requested market data requires additional subscription" — paper acct OPRA gap
 )
 
 # Connection-refused chatter from ib_insync.client / ib_insync.ib. Each
@@ -163,7 +164,11 @@ class IBKRBroker(BrokerBase):
                 ib.connect(self.host, self.port, clientId=self.client_id, timeout=15)
                 if not ib.isConnected():
                     raise ConnectionError("connect returned without isConnected()")
-                ib.reqMarketDataType(4)  # delayed-frozen: avoids 10197 competing-live-session on paper
+                # Type 3 (delayed live) delivers t.last and t.modelGreeks for this paper
+                # account; type 4 (frozen) returns -1 because there's no prior live tick to
+                # freeze without an OPRA subscription. Bid/ask are still -1 under type 3,
+                # but we fall back to t.last / modelGreeks.optPrice in _enrich_with_quotes.
+                ib.reqMarketDataType(3)
                 self._ib = ib
                 accts = ib.managedAccounts()
                 logging.info("IBKRBroker connected: accounts=%s", accts)
@@ -352,14 +357,21 @@ class IBKRBroker(BrokerBase):
         the chain (typically <50 contracts) before passing include_quotes=True.
         IBKR has a 50-line market-data ceiling on retail accounts."""
         if len(chain) > 50:
-            # IBKR's 50-line snapshot cap is documented expected behavior; the
-            # truncate-to-50 fallback is intentional. Logged at INFO so it
-            # doesn't flood the dashboard warning catalog.
+            # IBKR's 50-line snapshot cap is documented expected behavior. Sort
+            # by distance from median strike before truncating so ATM strikes
+            # (the ones strategies actually need) survive the cut — the previous
+            # naive [:50] gave 25 deepest-OTM puts on the nearest expiry, which
+            # broke compute_spx_chain_metrics on any chain with >50 entries.
+            strikes = sorted({float(c.get("strike", 0)) for c in chain if c.get("strike")})
+            anchor = strikes[len(strikes) // 2] if strikes else 0
             logging.info(
-                "IBKRBroker._enrich_with_quotes: %d entries exceeds 50-line cap; truncating",
-                len(chain),
+                "IBKRBroker._enrich_with_quotes: %d entries exceeds 50-line cap; "
+                "truncating to ATM-nearest 50 (anchor=%.2f)",
+                len(chain), anchor,
             )
-            chain_to_quote = chain[:50]
+            chain_to_quote = sorted(
+                chain, key=lambda c: abs(float(c.get("strike") or 0) - anchor)
+            )[:50]
         else:
             chain_to_quote = chain
         try:
@@ -379,14 +391,24 @@ class IBKRBroker(BrokerBase):
                 self._ib.qualifyContracts(contract)
                 t = self._ib.reqMktData(contract, "", snapshot=False, regulatorySnapshot=False)
                 tickers.append((entry, t))
-            self._ib.sleep(3)
+            # 5s for delayed feed: bid/ask snapshot + modelGreeks population.
+            self._ib.sleep(5)
             for entry, t in tickers:
                 self._check_md_type(t)
+                # Paper accounts without OPRA see bid/ask=-1; t.last and the IBKR-
+                # computed modelGreeks.optPrice (theoretical mid) are still populated.
                 bid = float(t.bid) if t.bid and t.bid > 0 else None
                 ask = float(t.ask) if t.ask and t.ask > 0 else None
                 last = float(t.last) if t.last and t.last > 0 else None
                 entry["bid"], entry["ask"], entry["last"] = bid, ask, last
-                entry["mid"] = _safe_mid(bid, ask)
+                mid = _safe_mid(bid, ask)
+                if mid is None and t.modelGreeks and t.modelGreeks.optPrice:
+                    op = _to_float(t.modelGreeks.optPrice)
+                    if op and op > 0:
+                        mid = round(op, 2)
+                if mid is None and last is not None:
+                    mid = last
+                entry["mid"] = mid
                 if t.modelGreeks:
                     entry["delta"] = _to_float(t.modelGreeks.delta)
                     entry["gamma"] = _to_float(t.modelGreeks.gamma)
@@ -415,11 +437,23 @@ class IBKRBroker(BrokerBase):
             contract = self._make_underlying(symbol)
             self._ib.qualifyContracts(contract)
             t = self._ib.reqMktData(contract, "", snapshot=False, regulatorySnapshot=False)
-            self._ib.sleep(2)
+            self._ib.sleep(4)  # delayed feed needs more settle time than live
             self._check_md_type(t)
             bid = float(t.bid) if t.bid and t.bid > 0 else None
             ask = float(t.ask) if t.ask and t.ask > 0 else None
             last = float(t.last) if t.last and t.last > 0 else None
+            # Paper account fallback: prefer marketPrice() (handles delayed feed)
+            # over None. Index spot usually returns last but no bid/ask.
+            mid = _safe_mid(bid, ask)
+            if mid is None:
+                try:
+                    mp = float(t.marketPrice())
+                    if mp and mp > 0:
+                        mid = mp
+                except Exception:
+                    pass
+            if mid is None and last is not None:
+                mid = last
             try:
                 self._ib.cancelMktData(contract)
             except Exception:
@@ -428,7 +462,7 @@ class IBKRBroker(BrokerBase):
                 "bid": bid,
                 "ask": ask,
                 "last": last,
-                "mid": _safe_mid(bid, ask),
+                "mid": mid,
             }
         except Exception as e:
             logging.warning("IBKRBroker.get_quote(%s) failed: %s", symbol, e)
@@ -445,18 +479,28 @@ class IBKRBroker(BrokerBase):
             contract = self._option_from_spec(spec)
             self._ib.qualifyContracts(contract)
             t = self._ib.reqMktData(contract, "", snapshot=False, regulatorySnapshot=False)
-            self._ib.sleep(2)
+            self._ib.sleep(5)  # delayed feed needs time for greeks population
             self._check_md_type(t)
             bid = float(t.bid) if t.bid and t.bid > 0 else None
             ask = float(t.ask) if t.ask and t.ask > 0 else None
             last = float(t.last) if t.last and t.last > 0 else None
             delta = gamma = theta = vega = iv = None
+            opt_price = None
             if t.modelGreeks:
                 delta = _to_float(t.modelGreeks.delta)
                 gamma = _to_float(t.modelGreeks.gamma)
                 theta = _to_float(t.modelGreeks.theta)
                 vega = _to_float(t.modelGreeks.vega)
                 iv = _to_float(getattr(t.modelGreeks, "impliedVol", None))
+                opt_price = _to_float(getattr(t.modelGreeks, "optPrice", None))
+            # Paper account fallback: bid/ask are -1 without OPRA; use IBKR's
+            # theoretical optPrice or last as a single-point mid estimate so
+            # downstream strategy code (mid != None gate) still works.
+            mid = _safe_mid(bid, ask)
+            if mid is None and opt_price and opt_price > 0:
+                mid = round(opt_price, 2)
+            if mid is None and last is not None:
+                mid = last
             try:
                 self._ib.cancelMktData(contract)
             except Exception:
@@ -465,7 +509,7 @@ class IBKRBroker(BrokerBase):
                 "bid": bid,
                 "ask": ask,
                 "last": last,
-                "mid": _safe_mid(bid, ask),
+                "mid": mid,
                 "delta": delta,
                 "gamma": gamma,
                 "theta": theta,

@@ -85,6 +85,26 @@ def mid(entry: dict) -> Optional[float]:
     return None
 
 
+def fill_quote(entry: dict, broker) -> dict:
+    """Populate quote fields on a chain entry whose bulk-snapshot was skipped
+    by the 50-line cap. No-op if mid/delta already populated. Mutates and
+    returns the entry. Safe to call repeatedly."""
+    if entry is None or broker is None:
+        return entry
+    if entry.get("mid") is not None and entry.get("delta") is not None:
+        return entry
+    try:
+        q = broker.get_option_quote(entry.get("symbol", ""))
+    except Exception:
+        return entry
+    if not q:
+        return entry
+    for k in ("bid", "ask", "last", "mid", "delta", "gamma", "theta", "vega", "iv"):
+        if q.get(k) is not None:
+            entry[k] = q[k]
+    return entry
+
+
 def occ_for(entry: dict) -> str:
     return entry.get("symbol", "")
 

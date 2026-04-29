@@ -117,11 +117,15 @@ def compute_spx_chain_metrics(broker, spx_price: float, dte_target: int = 7) -> 
     if broker is None or spx_price <= 0:
         return out
     try:
-        strike_low = spx_price * 0.98
-        strike_high = spx_price * 1.02
+        # Tight strike band so the 50-line snapshot cap captures ATM ±1% only.
+        strike_low = spx_price * 0.99
+        strike_high = spx_price * 1.01
+        # Skip 0DTE: IBKR's model greeks degenerate at 0DTE near ATM (delta=±1
+        # collapse, mid often None) and these metrics are meant to characterize
+        # the upcoming-event horizon, not pin risk.
         chain = broker.fetch_option_chain(
             "SPX",
-            dte_range=(0, dte_target),
+            dte_range=(1, dte_target),
             strike_range=(strike_low, strike_high),
             include_quotes=True,
         )
@@ -133,7 +137,14 @@ def compute_spx_chain_metrics(broker, spx_price: float, dte_target: int = 7) -> 
         expiries = sorted({e["expiry"] for e in chain if e.get("expiry")})
         if not expiries:
             return out
-        target_expiry = expiries[0]
+        # Pick expiry closest to dte_target rather than soonest, so a 7d-target
+        # call lands on ~7d expiry not on the next-trading-day weekly.
+        from datetime import date as _date, datetime as _dt
+        today = _date.today()
+        def _dte(s):
+            try: return (_dt.strptime(s, "%Y-%m-%d").date() - today).days
+            except Exception: return 999
+        target_expiry = min(expiries, key=lambda s: abs(_dte(s) - dte_target))
         contracts = [e for e in chain if e["expiry"] == target_expiry]
         atm_strike = min({c["strike"] for c in contracts}, key=lambda k: abs(k - spx_price))
         atm_call = next((c for c in contracts if c["strike"] == atm_strike and c["right"] == "C"), None)

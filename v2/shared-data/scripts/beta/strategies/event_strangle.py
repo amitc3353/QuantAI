@@ -10,7 +10,7 @@ from datetime import datetime, date
 from typing import Optional
 
 from .._chain_helpers import (
-    expiries_in_range, filter_chain, nearest_strike, mid, leg, dte,
+    expiries_in_range, filter_chain, nearest_strike, mid, leg, dte, fill_quote,
 )
 
 
@@ -82,11 +82,19 @@ def select_strikes(intel: dict, broker, account_equity: float) -> Optional[dict]
     expiry = expiries[0]
     put = nearest_strike(chain, spx * 0.985, "P", expiry)
     call = nearest_strike(chain, spx * 1.015, "C", expiry)
+    # 1.5% OTM strikes typically fall outside the 50-line bulk-snapshot cap
+    # (which prioritizes ATM). Fill quotes on-demand for these specific legs.
+    fill_quote(put, broker)
+    fill_quote(call, broker)
     pm, cm = mid(put), mid(call)
     if not (put and call and pm and cm):
         return None
     cost = pm + cm
-    if cost > spx * 0.015:
+    # 2.5% cap (was 1.5%): the strategy thesis is buying vol before catalysts,
+    # which is supposed to be expensive in elevated-IVR pre-event regimes. A
+    # tighter cap blocked legitimate entries on every CPI/FOMC day. Edge comes
+    # from the realized move exceeding cost, not from buying cheap.
+    if cost > spx * 0.025:
         return None
     return {
         "legs": [leg("buy", put), leg("buy", call)],
