@@ -143,6 +143,7 @@ class IBKRBroker(BrokerBase):
         self.account = os.environ.get("IBKR_ACCOUNT", "")
         self._ib: Optional[IB] = None
         self._md_type_warned = False
+        self._last_order_error: Optional[str] = None  # set on place_mleg_order failure
         if BROKER_DRY_RUN:
             logging.warning("IBKRBroker: BROKER_DRY_RUN=1 — orders will not be submitted")
 
@@ -551,7 +552,9 @@ class IBKRBroker(BrokerBase):
         tif: str = "day",
         client_order_id: Optional[str] = None,
     ) -> Optional[dict]:
+        self._last_order_error = None  # reset on each call
         if not legs:
+            self._last_order_error = "empty legs list"
             logging.error("IBKRBroker.place_mleg_order: empty legs")
             return None
         try:
@@ -559,6 +562,7 @@ class IBKRBroker(BrokerBase):
             for leg in legs:
                 spec = _parse_occ(leg["symbol"])
                 if spec is None:
+                    self._last_order_error = f"unparsable OCC symbol: {leg.get('symbol')!r}"
                     logging.error("IBKRBroker.place_mleg_order: unparsable leg %r", leg)
                     return None
                 specs_with_legs.append((spec, leg))
@@ -569,9 +573,11 @@ class IBKRBroker(BrokerBase):
                 )
                 return dict(DRY_RUN_SENTINEL, client_order_id=client_order_id)
             if not self.connect():
+                self._last_order_error = "broker connect failed"
                 return None
             roots = {s.root.upper() for s, _ in specs_with_legs}
             if len(roots) != 1:
+                self._last_order_error = f"legs span multiple underlying roots: {roots}"
                 logging.error("IBKRBroker.place_mleg_order: legs span multiple roots %s", roots)
                 return None
             root = roots.pop()
@@ -580,6 +586,10 @@ class IBKRBroker(BrokerBase):
                 contract = self._option_from_spec(spec)
                 qualified = self._ib.qualifyContracts(contract)
                 if not qualified:
+                    self._last_order_error = (
+                        f"qualifyContracts failed for {leg['symbol']} "
+                        f"(strike={spec.strike}, expiry={spec.expiry}, right={spec.right})"
+                    )
                     logging.error("IBKRBroker: failed to qualify leg %s", leg["symbol"])
                     return None
                 qc = qualified[0]
@@ -613,6 +623,7 @@ class IBKRBroker(BrokerBase):
             self._ib.sleep(1)
             return self._trade_to_result(trade, client_order_id)
         except Exception as e:
+            self._last_order_error = f"{type(e).__name__}: {e}"
             logging.error("IBKRBroker.place_mleg_order failed: %s", e)
             return None
 

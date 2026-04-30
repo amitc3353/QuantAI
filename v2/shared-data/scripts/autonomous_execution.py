@@ -262,9 +262,11 @@ def place_mleg_order(symbol, legs_config, strategy_name):
         return {"id": "dry-run", "status": "simulated"}
 
     coid = f"{strategy_name[:30]}-{int(time.time())}"
-    result = get_broker().place_mleg_order(legs_config, qty=1, client_order_id=coid)
+    broker = get_broker()
+    result = broker.place_mleg_order(legs_config, qty=1, client_order_id=coid)
     if result is None:
-        log("  ❌ mleg order failed (broker returned None)")
+        reason = getattr(broker, "_last_order_error", None) or "unknown"
+        log(f"  ❌ mleg order failed — {reason}")
         return None
     order_id = (result.get("order_id") or "")[:8]
     log(f"  ✅ mleg order placed | ID: {order_id}")

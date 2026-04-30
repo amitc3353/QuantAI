@@ -106,6 +106,28 @@ def count_open_agent_trades():
                 if t.get("status") == "OPEN"
                 and t.get("source", "").startswith("agent")])
 
+def count_journal_entries_today() -> int:
+    """Count journal entries timestamped today (ET date). Used to detect whether
+    autonomous_execution.py actually wrote a new trade so the daily budget counter
+    is only incremented on genuine fills — not on silent broker failures."""
+    if not os.path.exists(JOURNAL):
+        return 0
+    try:
+        count = 0
+        for line in open(JOURNAL):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                t = json.loads(line)
+                if t.get("timestamp", "")[:10] == today:
+                    count += 1
+            except Exception:
+                pass
+        return count
+    except Exception:
+        return 0
+
 def is_market_open():
     h, m = now.hour, now.minute
     # Market hours: 9:30 AM – 4:00 PM ET weekdays
@@ -216,12 +238,17 @@ def run_entry(state):
         log("Debate failed — skipping execution")
         return state
 
+    journal_before = count_journal_entries_today()
     run_script("autonomous_execution.py", label="Executing approved trades...")
+    journal_after = count_journal_entries_today()
 
-    state["entries_today"] += 1
-    state["last_entry_time"] = now.isoformat()
-    save_state(state)
-    log(f"Entry {state['entries_today']} complete")
+    if journal_after > journal_before:
+        state["entries_today"] += 1
+        state["last_entry_time"] = now.isoformat()
+        save_state(state)
+        log(f"Entry {state['entries_today']} complete ({journal_after - journal_before} new journal entry/entries)")
+    else:
+        log("⚠️  Execution produced no journal entry — broker likely returned None. Not counting toward daily budget.")
     return state
 
 

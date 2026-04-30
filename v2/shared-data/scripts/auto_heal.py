@@ -188,7 +188,19 @@ class RunLock:
         self.fd = None
 
     def __enter__(self):
-        self.fd = open(self.path, "w")
+        try:
+            self.fd = open(self.path, "w")
+        except PermissionError:
+            # Stale lock owned by a different user (e.g. created by 'trader'
+            # during a dry-run but now invoked as root via cron). Root can unlink
+            # files in /tmp even if owned by another user (sticky-bit bypass).
+            try:
+                self.path.unlink()
+                log_line(f"WARN: removed stale lock owned by another user: {self.path}")
+            except Exception as unlink_err:
+                log_line(f"ERROR: cannot acquire or remove lock {self.path}: {unlink_err}")
+                sys.exit(1)
+            self.fd = open(self.path, "w")
         try:
             fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
