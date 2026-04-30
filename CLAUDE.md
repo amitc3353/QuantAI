@@ -160,7 +160,23 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 * * * * *            collect_cron.py
 */5 * * * *          collect_history.py
 */15 * * * *         collect_clawroute.py           # ClawRoute cost tracking
+
+# Auto-Heal (Claude-driven; added 2026-04-29) — see docs/runbooks/runbook-auto-heal.md
+30 12 * * 1-5        auto_heal.py --mode=apply      # 08:30 ET pre-market (overnight breakage)
+0  15 * * 1-5        auto_heal.py --mode=observe    # 11:00 ET mid-trading (read-only, queues digest)
+0  18 * * 1-5        auto_heal.py --mode=observe    # 14:00 ET mid-afternoon (read-only)
+45 20 * * 1-5        auto_heal.py --mode=apply      # 16:45 ET post-close (drains digest, applies)
 ```
+
+## Auto-Heal
+
+Claude-driven triage layer that sits **on top of** the rule-based monitors (`error_detector.py`, `heartbeat_monitor.py`, `position_monitor.py`, `error_learner.py`). Runs 4×/day around the trading window.
+
+- **Out-of-window slots (12:30 / 20:45 UTC)** can mutate. Auto-applies safe-class fixes; queues riskier ones to `#karna-approvals` for one-tap ✅ on Discord.
+- **In-window slots (15:00 / 18:00 UTC)** are read-only. Queue findings into a daily digest posted at 20:45.
+- Hard rules enforced in Python (not LLM-overrideable): no `.env`, no openclaw/ibgateway service touch, no journal mutation, path allowlist, `.bak` before any edit, 80-line diff cap, 3-attempt budget, open-position guard on trading-path files.
+- Operator commands: `auto_heal.py --status` / `--dry-run` / `--rollback <fix_id>` / `--reset <fix_id>`.
+- Full doc: `docs/runbooks/runbook-auto-heal.md`.
 
 ## What Needs Building (priority order)
 
@@ -169,6 +185,7 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 - ✅ Error taxonomy + runbooks (Phase E) — done 2026-04-17
 - ✅ Broker adapter + IBKR migration (ADR-004) — done 2026-04-26
 - ✅ Agent Beta (regime-driven, 8 strategies, native index options) — done 2026-04-27
+- ✅ Auto-Heal routine (Claude-driven, 4×/day, Discord ✅ approvals) — done 2026-04-29
 - 🔄 Beta first-week observation (active — watch beta.log + dashboard Mon-Fri)
 - ⏳ First real (non-dry-run) order via IBKR — pending market hours
 - ⏳ Strategy-level position grouping in position_monitor — deferred

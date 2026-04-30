@@ -1,0 +1,19 @@
+{
+  "fix_id": "canary",
+  "created_at": "2026-04-29T00:00:00+00:00",
+  "expires_at": "2099-12-31T00:00:00+00:00",
+  "severity": "info",
+  "fix_class": "safe_auto",
+  "auto_apply": true,
+  "description": "Canary no-op fix — exercises the .bak / lock / receipt machinery on the first apply run. Touches a sentinel file under auto_heal_data/, then immediately deletes it. Verifies end-to-end before any real fix is attempted.",
+  "runbook": "docs/runbooks/runbook-auto-heal.md",
+  "target_files": [],
+  "shell_commands": [
+    "touch /home/trader/QuantAI/v2/shared-data/scripts/auto_heal_data/.canary_sentinel",
+    "rm -f /home/trader/QuantAI/v2/shared-data/scripts/auto_heal_data/.canary_sentinel"
+  ],
+  "discord_message_id": null,
+  "channel_id": null,
+  "status": "approved_safe_auto",
+  "consume_once": true
+}

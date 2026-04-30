@@ -1,0 +1,5 @@
+pending_fixes/*.json
+!pending_fixes/canary.json
+applied/*.json
+digest_buffer/*.jsonl
+state.json
