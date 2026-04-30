@@ -530,7 +530,7 @@ def check_beta_exit(trade, pnl, now, broker=None):
             "FOMC": "fomc_days_away", "GDP": "gdp_days_away",
         }
         days_field = days_field_map.get(event_type)
-        if days_field and macro.get("is_event_day") and (macro.get(days_field) or 999) == 0:
+        if days_field and macro.get("is_event_day") and macro.get(days_field, 999) == 0:
             try:
                 entry_ts = datetime.fromisoformat(trade.get("timestamp", ""))
                 if entry_ts.tzinfo is None:
@@ -636,7 +636,7 @@ def check_beta_exit(trade, pnl, now, broker=None):
         event_buf = rules.get(buf_key)
         if event_buf is not None:
             for d in ("fomc_days_away", "cpi_days_away", "jobs_days_away"):
-                if (macro.get(d) or 999) <= int(event_buf):
+                if macro.get(d, 999) <= int(event_buf):
                     return True, f"{buf_key} ({d}={macro.get(d)})", 1.0, None
             break
 
