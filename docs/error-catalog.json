@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-04-26",
+  "last_updated": "2026-05-01",
   "description": "QuantAI error catalog. Each entry classifies a known error pattern, links to a runbook, and optionally specifies an auto-fix action. Patterns are case-insensitive substrings unless the entry sets is_regex=true. Categories: recurring (seen 3+ times), novel (seen once), transient (self-heals). Auto-actions: retry, restart_service, skip, none.",
   "errors": [
     {
@@ -548,6 +548,48 @@
       "last_seen": "2026-04-26",
       "occurrence_count": 0,
       "source": "seeded:2026-04-26"
+    },
+    {
+      "id": "ibkr-restart-window-refuse",
+      "pattern": "in IB Gateway restart window",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "skip",
+      "description": "_is_in_restart_window guard correctly refusing to connect during 23:30-00:15 ET nightly IB Gateway restart. Expected behavior; no action needed.",
+      "runbook": "runbooks/runbook-ibkr-nightly-restart.md",
+      "first_seen": "2026-04-30",
+      "last_seen": "2026-04-30",
+      "occurrence_count": 45,
+      "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "ibkr-clientid-conflict",
+      "pattern": "client id is already in use",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "retry",
+      "description": "Stale ib_insync connection holding a clientId across the gateway restart. Self-resolves once the orphaned peer disconnects (usually within ~1h post-restart). Trace clientId=41 owner separately.",
+      "runbook": "runbooks/runbook-ibkr-nightly-restart.md",
+      "first_seen": "2026-04-30",
+      "last_seen": "2026-04-30",
+      "occurrence_count": 188,
+      "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "ibkr-connect-timeout-restart",
+      "pattern": "API connection failed: TimeoutError",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "retry",
+      "description": "IB Gateway slow to accept connections post-restart. Auto-retries by the 3-attempt wrapper. Becomes actionable only if it persists past 01:30 ET.",
+      "runbook": "runbooks/runbook-ibkr-nightly-restart.md",
+      "first_seen": "2026-04-30",
+      "last_seen": "2026-04-30",
+      "occurrence_count": 125,
+      "source": "seeded:friday-prep-2026-05-01"
     }
   ]
 }
