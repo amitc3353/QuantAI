@@ -264,6 +264,10 @@ def post(channel_env: str, msg: str, dry_run: bool) -> str | None:
             headers={
                 "Authorization": f"Bot {token}",
                 "Content-Type": "application/json",
+                # Cloudflare WAF in front of Discord returns HTTP 403 / err 1010
+                # ("Bot Access Denied") when User-Agent is missing or generic.
+                # Discord docs require: "DiscordBot (<url>, <version>)".
+                "User-Agent": "DiscordBot (https://github.com/karna/quantai, 1.0)",
             },
             method="POST",
         )
@@ -288,7 +292,10 @@ def react(channel_env: str, message_id: str, emoji: str, dry_run: bool) -> bool:
         req = urllib.request.Request(
             f"https://discord.com/api/v10/channels/{ch}/messages/{message_id}/reactions/{encoded}/@me",
             data=b"",
-            headers={"Authorization": f"Bot {token}"},
+            headers={
+                "Authorization": f"Bot {token}",
+                "User-Agent": "DiscordBot (https://github.com/karna/quantai, 1.0)",
+            },
             method="PUT",
         )
         with urllib.request.urlopen(req, timeout=8) as r:
@@ -308,7 +315,10 @@ def has_human_reaction(channel_env: str, message_id: str, emoji: str) -> bool:
     try:
         req = urllib.request.Request(
             f"https://discord.com/api/v10/channels/{ch}/messages/{message_id}/reactions/{encoded}",
-            headers={"Authorization": f"Bot {token}"},
+            headers={
+                "Authorization": f"Bot {token}",
+                "User-Agent": "DiscordBot (https://github.com/karna/quantai, 1.0)",
+            },
         )
         with urllib.request.urlopen(req, timeout=8) as r:
             users = json.loads(r.read())
