@@ -590,6 +590,62 @@
       "last_seen": "2026-04-30",
       "occurrence_count": 125,
       "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "ibkr-error-1100-connectivity-lost",
+      "pattern": "Error 1100, reqId -1: Connectivity between IBKR and Trader Workstation has been lost",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "retry",
+      "description": "IB Gateway socket-level disconnect, typically during nightly restart (23:45 ET) or transient network blip. Always paired with an Error 1102 (restored) once back. No action required unless persists past the restart window.",
+      "runbook": "runbooks/runbook-ibkr-nightly-restart.md",
+      "first_seen": "2026-05-01",
+      "last_seen": "2026-05-01",
+      "occurrence_count": 6,
+      "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "ibkr-positions-timeout-restart",
+      "pattern": "positions request timed out",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "retry",
+      "description": "ib_insync positions() call did not return within timeout \u2014 usually because the API connection was severed mid-call by the nightly gateway restart. Resolves on next collector cycle.",
+      "runbook": "runbooks/runbook-ibkr-nightly-restart.md",
+      "first_seen": "2026-05-01",
+      "last_seen": "2026-05-01",
+      "occurrence_count": 3,
+      "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "openclaw-elevated-unavailable",
+      "pattern": "elevated is not available right now (runtime=direct)",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "skip",
+      "description": "OpenClaw tool harness blocked an elevated-mode tool call because the runtime is direct. Self-corrects on next dispatch. Non-trading.",
+      "runbook": "",
+      "first_seen": "2026-05-01",
+      "last_seen": "2026-05-01",
+      "occurrence_count": 1,
+      "source": "seeded:friday-prep-2026-05-01"
+    },
+    {
+      "id": "openclaw-exec-allowlist-miss",
+      "pattern": "exec denied: allowlist miss",
+      "is_regex": false,
+      "category": "transient",
+      "severity": "transient",
+      "auto_action": "skip",
+      "description": "OpenClaw tool sandbox refused a command that's not on the allowlist. Expected security gate; non-trading.",
+      "runbook": "",
+      "first_seen": "2026-05-01",
+      "last_seen": "2026-05-01",
+      "occurrence_count": 1,
+      "source": "seeded:friday-prep-2026-05-01"
     }
   ]
 }
