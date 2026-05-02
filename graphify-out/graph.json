@@ -1604,81 +1604,81 @@
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L283",
-      "id": "auto_heal_rationale_283",
       "community": 2,
-      "norm_label": "bot self-reacts to a message (creates the voting button)."
+      "norm_label": "bot self-reacts to a message (creates the voting button).",
+      "id": "auto_heal_rationale_283"
     },
     {
       "label": "True if at least one non-bot user has reacted with `emoji`.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L309",
-      "id": "auto_heal_rationale_309",
       "community": 2,
-      "norm_label": "true if at least one non-bot user has reacted with `emoji`."
+      "norm_label": "true if at least one non-bot user has reacted with `emoji`.",
+      "id": "auto_heal_rationale_309"
     },
     {
       "label": "Build the compact bundle we'll send to Claude. All read-only.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L367",
-      "id": "auto_heal_rationale_367",
       "community": 2,
-      "norm_label": "build the compact bundle we'll send to claude. all read-only."
+      "norm_label": "build the compact bundle we'll send to claude. all read-only.",
+      "id": "auto_heal_rationale_367"
     },
     {
       "label": "Send the bundle to Claude via ClawRoute and parse the JSON response.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L489",
-      "id": "auto_heal_rationale_489",
       "community": 2,
-      "norm_label": "send the bundle to claude via clawroute and parse the json response."
+      "norm_label": "send the bundle to claude via clawroute and parse the json response.",
+      "id": "auto_heal_rationale_489"
     },
     {
       "label": "Stable id from proposal content so dedupe works across runs.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L549",
-      "id": "auto_heal_rationale_549",
       "community": 2,
-      "norm_label": "stable id from proposal content so dedupe works across runs."
+      "norm_label": "stable id from proposal content so dedupe works across runs.",
+      "id": "auto_heal_rationale_549"
     },
     {
       "label": "Apply a unified diff via `patch -p0`. Returns (ok, detail, baks_created).",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L616",
-      "id": "auto_heal_rationale_616",
       "community": 2,
-      "norm_label": "apply a unified diff via `patch -p0`. returns (ok, detail, baks_created)."
+      "norm_label": "apply a unified diff via `patch -p0`. returns (ok, detail, baks_created).",
+      "id": "auto_heal_rationale_616"
     },
     {
       "label": "Iterate pending_fixes; apply approved + safe-auto; report counts.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L691",
-      "id": "auto_heal_rationale_691",
       "community": 2,
-      "norm_label": "iterate pending_fixes; apply approved + safe-auto; report counts."
+      "norm_label": "iterate pending_fixes; apply approved + safe-auto; report counts.",
+      "id": "auto_heal_rationale_691"
     },
     {
       "label": "Aggregate today's digest_buffer entries and return a summary dict.",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L769",
-      "id": "auto_heal_rationale_769",
       "community": 2,
-      "norm_label": "aggregate today's digest_buffer entries and return a summary dict."
+      "norm_label": "aggregate today's digest_buffer entries and return a summary dict.",
+      "id": "auto_heal_rationale_769"
     },
     {
       "label": "Post a Discord card for a propose_wait proposal; return (channel_env, message_id",
       "file_type": "rationale",
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L808",
-      "id": "auto_heal_rationale_808",
       "community": 2,
-      "norm_label": "post a discord card for a propose_wait proposal; return (channel_env, message_id"
+      "norm_label": "post a discord card for a propose_wait proposal; return (channel_env, message_id",
+      "id": "auto_heal_rationale_808"
     },
     {
       "label": "test_broker.py",
@@ -18840,9 +18840,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_283",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_283",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18852,9 +18852,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_309",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_309",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18864,9 +18864,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_367",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_367",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18876,9 +18876,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_489",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_489",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18888,9 +18888,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_549",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_549",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18900,9 +18900,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_616",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_616",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18912,9 +18912,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_691",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_691",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18924,9 +18924,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_769",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_769",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "uses",
@@ -18936,9 +18936,9 @@
       "weight": 0.8,
       "_src": "auto_heal_rationale_808",
       "_tgt": "llm_client_client",
+      "confidence_score": 0.5,
       "source": "auto_heal_rationale_808",
-      "target": "llm_client_client",
-      "confidence_score": 0.5
+      "target": "llm_client_client"
     },
     {
       "relation": "contains",
@@ -22786,8 +22786,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_279",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_279",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_279"
@@ -22798,8 +22798,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_302",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_302",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_302"
@@ -22810,8 +22810,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_357",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_357",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_357"
@@ -22822,8 +22822,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_479",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_479",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_479"
@@ -22834,8 +22834,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_539",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_539",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_539"
@@ -22846,8 +22846,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_606",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_606",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_606"
@@ -22858,8 +22858,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_681",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_681",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_681"
@@ -22870,8 +22870,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_759",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_759",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_759"
@@ -22882,8 +22882,8 @@
       "source_file": "v2/shared-data/scripts/auto_heal.py",
       "source_location": "L486",
       "weight": 0.8,
-      "_src": "auto_heal_rationale_798",
-      "_tgt": "llm_client_client",
+      "_src": "llm_client_client",
+      "_tgt": "auto_heal_rationale_798",
       "confidence_score": 0.5,
       "source": "llm_client_client",
       "target": "auto_heal_rationale_798"
