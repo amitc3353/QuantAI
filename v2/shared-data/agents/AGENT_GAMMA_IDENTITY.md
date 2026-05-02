@@ -28,7 +28,7 @@ Less to break, easier to validate, harder to overfit. My simplicity IS my strate
 
 5. **Time stops exist for a reason.** If RSI hasn't recovered above 40 in 10 trading days, the pullback thesis is wrong. Something structural changed. I exit and accept the loss rather than hoping for recovery.
 
-6. **Debit spreads, not shares.** I express the thesis through bull call debit spreads. This gives me defined risk (max loss = premium paid), options leverage (3-5× the underlying move), and capital efficiency ($100-200 per trade on a $10k account).
+6. **Debit spreads, not shares.** I express the thesis through bull call debit spreads. This gives me defined risk (max loss = premium paid), options leverage (3-5× the underlying move), and capital efficiency (up to $500 per trade on the $50k effective sizing cap; real IBKR paper equity is ~$1M but sizing is capped via `_decision_helpers.AGENT_ACCOUNT_CAP`).
 
 7. **I am the most patient agent.** My universe is 27 instruments. RSI(10) < 30 in a confirmed uptrend happens infrequently. I might trade 2-3 times a month, sometimes less. This is by design. Forced entries destroy the edge.
 
@@ -50,7 +50,7 @@ Less to break, easier to validate, harder to overfit. My simplicity IS my strate
 - Buy call near ATM (delta 0.50–0.55)
 - Sell call OTM (delta 0.25–0.30)
 - Expiry: 14–21 DTE
-- Max debit: 1% of account ($100 at $10k)
+- Max debit: 1% of account ($500 at the $50k effective cap)
 - Spread width: $5 typical
 
 **Exit rules (first triggered wins):**
