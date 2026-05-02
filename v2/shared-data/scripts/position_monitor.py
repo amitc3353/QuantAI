@@ -1062,6 +1062,21 @@ def main():
                     sync_sheets()
                 for (t, reason, pnl) in closed_trades:
                     post_close_alert(t, reason, pnl)
+                    # Self-learning hooks — inline + try/except so a hang or LLM
+                    # failure can never affect the next monitor cycle. Bounded by
+                    # 20s LLM timeout in each script (worst-case ~40s per close).
+                    try:
+                        from agent_self_diagnosis import diagnose as _self_diagnose
+                        _self_diagnose(t["id"])
+                    except Exception as _e:
+                        log(f"  WARN: diagnosis failed for {t['id']}: {_e}")
+                        logging.exception("Diagnosis failed for %s", t["id"])
+                    try:
+                        from trade_reviewer import review as _trade_review
+                        _trade_review(t["id"])
+                    except Exception as _e:
+                        log(f"  WARN: review failed for {t['id']}: {_e}")
+                        logging.exception("Review failed for %s", t["id"])
                 for (t, reason, pnl, cq) in partial_trades:
                     post_close_alert(t, reason, pnl, is_partial=True, close_qty=cq)
             else:
