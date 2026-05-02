@@ -315,10 +315,16 @@ def run_execute() -> int:
         return 0
 
     acct = broker.get_account() or {}
-    equity = float(acct.get("equity") or 0)
-    if equity <= 0:
+    real_equity = float(acct.get("equity") or 0)
+    if real_equity <= 0:
         logging.error("get_account returned zero equity — refusing to execute")
         return 4
+    # Cap effective equity for position sizing. Real broker equity (~$1M paper)
+    # would oversize every spread; cap reflects Gamma's design intent.
+    from _decision_helpers import effective_equity, AGENT_ACCOUNT_CAP
+    equity = effective_equity(real_equity)
+    if real_equity > AGENT_ACCOUNT_CAP:
+        print(f"[gamma_agent] sizing-cap applied: real ${real_equity:,.0f} → ${equity:,.0f}")
 
     from gamma.risk_check import (
         check_portfolio_gates,

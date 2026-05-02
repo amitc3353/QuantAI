@@ -177,7 +177,14 @@ def main() -> int:
     if not acct:
         logging.error("get_account returned None")
         return 4
-    equity = float(acct.get("equity") or 0)
+    # Cap effective equity for position sizing. Real broker equity (~$1M paper)
+    # would oversize every trade. risk_engine.check_risk reads real equity
+    # separately for drawdown gates — only this sizing path is capped.
+    from _decision_helpers import effective_equity, AGENT_ACCOUNT_CAP
+    real_equity = float(acct.get("equity") or 0)
+    equity = effective_equity(real_equity)
+    if real_equity > AGENT_ACCOUNT_CAP:
+        print(f"[beta_agent] sizing-cap applied: real ${real_equity:,.0f} → ${equity:,.0f}")
 
     candidate_strategies = REGIME_STRATEGY_MAP.get(regime, [])
     if not candidate_strategies:

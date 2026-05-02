@@ -14,6 +14,12 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import logging
 
+# Position-sizing notional cap. ALL Alpha max_loss_pct calculations use this,
+# not real broker equity. See _decision_helpers.AGENT_ACCOUNT_CAP for the
+# rationale (cap real $1M paper equity at $50k for sane sizing).
+sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
+from _decision_helpers import AGENT_ACCOUNT_CAP
+
 # Suppress yfinance/urllib3 404 noise
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("urllib3").setLevel(logging.CRITICAL)
@@ -270,7 +276,7 @@ def scan_credit_spreads(tickers, vix):
                 "strategy": direction, "expiry": target_exp,
                 "short_strike": short_strike, "long_strike": long_strike,
                 "credit": credit, "max_loss": max_loss,
-                "max_loss_pct": round(max_loss / 20000 * 100, 2),
+                "max_loss_pct": round(max_loss / AGENT_ACCOUNT_CAP * 100, 2),
                 "iv_rank": iv_rank, "rsi": rsi, "macd": macd,
                 "above_ema200": above_ema,
                 "score": round((iv_rank or 50) * 0.4 + (50 - abs(rsi - 45)) * 0.4 + credit * 10 * 0.2, 1),
@@ -391,7 +397,7 @@ def scan_diagonals(tickers, vix):
                 continue  # Should always be a debit, not credit
 
             # Max loss = net debit paid
-            max_loss_pct = round(net_debit / 20000 * 100, 3)
+            max_loss_pct = round(net_debit / AGENT_ACCOUNT_CAP * 100, 3)
             if max_loss_pct > 2.0:
                 continue
 
@@ -514,7 +520,7 @@ def scan_iron_condors(tickers, vix):
                 continue
 
             width = abs(float(put_short["strike"]) - float(put_long["strike"]))
-            max_loss_pct = round((width - total_credit) / 20000 * 100, 2)
+            max_loss_pct = round((width - total_credit) / AGENT_ACCOUNT_CAP * 100, 2)
             if max_loss_pct > 2.0:
                 continue
 

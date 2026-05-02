@@ -1,6 +1,7 @@
-"""Shared helpers for building the `decision` object on trade entries.
+"""Shared helpers + constants for trade-entry sizing and decision context.
 
-Used by autonomous_execution.py (Alpha), beta_agent.py (Beta), and gamma_agent.py
+Used by autonomous_execution.py (Alpha), scan_options.py (Alpha scanner),
+debate_chamber.py (Alpha LLM prompt), beta_agent.py (Beta), and gamma_agent.py
 (Gamma). The `decision` object captures entry-time thesis, conviction, data
 freshness, and pipeline timing — the raw material for agent_self_diagnosis.py.
 
@@ -14,6 +15,38 @@ from zoneinfo import ZoneInfo
 
 
 _ET = ZoneInfo("America/New_York")
+
+
+# ── Position sizing cap ──────────────────────────────────────────────────────
+# All agents size positions against this cap, NOT against real broker equity.
+# IBKR paper account holds ~$1M; sizing against that produces trades 20× too
+# big for the strategies' design parameters. This cap brings actual sizing in
+# line with each agent's mandate:
+#   Alpha — 2% × $50k = $1,000 max loss per trade
+#   Beta  — 1% × $50k = $500   max loss per trade
+#   Gamma — 1% × $50k = $500   max loss per trade
+#
+# Real broker equity is still used for:
+#   - Dashboard / monitoring (collect_alpaca, collect_beta, etc.)
+#   - Risk-gate drawdown halts in beta/risk_engine.py (real losses)
+#   - pre_trade_check.py display
+# Only the qty-calculation path uses this cap.
+AGENT_ACCOUNT_CAP = 50_000
+
+
+def effective_equity(broker_equity: float | int | None) -> float:
+    """Return min(broker_equity, AGENT_ACCOUNT_CAP), floored at 0.
+
+    Treats None or non-positive input as 0. Use ONLY for position sizing
+    calculations — dashboards and drawdown gates should use real equity.
+    """
+    try:
+        eq = float(broker_equity or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if eq <= 0:
+        return 0.0
+    return min(eq, AGENT_ACCOUNT_CAP)
 
 
 def age_of(timestamp_iso: str | None) -> int:

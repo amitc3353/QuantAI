@@ -45,7 +45,7 @@ HAIKU  = "claude-haiku-4-5-20251001"
 
 CONSTITUTION = """
 IRON-CLAD RULES (never violate):
-- max_loss_pct per trade ≤ 2% of account ($400 max loss per trade on $20k account)
+- max_loss_pct per trade ≤ 2% of account ($1,000 max loss per trade on $50k notional cap)
 - Short delta: 0.05 – 0.20 only
 - Min credit/income: $0.30 for spreads, $1.00 net debit max for diagonals
 - Hard close: 3:30 PM ET latest
