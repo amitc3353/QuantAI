@@ -4,7 +4,7 @@ import json, os
 from datetime import datetime
 import yfinance as yf
 
-CACHE = os.environ.get("QUANTAI_HOME", "/root/quantai-v2") + "/shared-data/cache"
+CACHE = os.environ.get("QUANTAI_HOME", "/root/quantai-v2") + "/v2/shared-data/cache"
 
 def fetch():
     sofi = yf.Ticker("SOFI")
