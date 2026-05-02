@@ -398,6 +398,36 @@ def run_execute() -> int:
             "Pullback in confirmed uptrend."
         )
 
+        from _decision_helpers import age_of, rsi_depth_score
+        _thesis = (
+            f"{symbol} RSI(10)={setup['rsi_10']:.1f}, above 200 SMA by "
+            f"{setup['distance_above_200ma_pct']:.2f}%. Connors pullback signal — "
+            f"oversold dip in confirmed uptrend (historical win rate ~89%)."
+        )
+        entry["decision"] = {
+            "conviction_score": rsi_depth_score(setup.get("rsi_10")),
+            "thesis": _thesis,
+            "key_risk": (
+                "Sector rotation extending the pullback past 200 SMA; "
+                "broad market regime change overriding individual technicals."
+            ),
+            "invalidation": (
+                f"{symbol} closes below 200 SMA ({setup['sma_200']:.2f}) "
+                f"or RSI(10) > 40 hasn't fired by 10 trading days."
+            ),
+            "alternatives_considered": [],
+            "skills_consulted": ["rsi-pullback-mechanics", "earnings-risk", "sector-correlation"],
+            "regime_at_entry": "uptrend",
+            "vix_at_entry": setup.get("vix"),
+            "vix_data_age_seconds": age_of(setup.get("vix_timestamp")),
+            "chain_data_age_seconds": age_of(setup.get("chain_timestamp")),
+            "market_intel_age_seconds": age_of(
+                setup.get("scan_timestamp")
+                or (payload.get("generated_at") if payload else None)
+            ),
+            "pipeline_stage_durations": setup.get("stage_durations", {}),
+        }
+
         _journal_write(entry)
         print(f"[gamma_agent] journaled as {entry['id']} (order_id={entry['order_id']})")
         placed.append(entry)

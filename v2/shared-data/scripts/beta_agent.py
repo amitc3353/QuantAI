@@ -297,6 +297,35 @@ def main() -> int:
         "skew": _macro.get("spx_put_call_skew"),
         "historical_avg_move_pct": (event_moves.get(entry.get("event_type") or "") or {}).get("avg_8"),
     }
+    from _decision_helpers import age_of, signal_strength_score
+    _thesis = (
+        f"{regime} regime detected (VIX {_macro.get('vix')}, "
+        f"IV-rank {_macro.get('spx_iv_rank')}). "
+        f"Assigned strategy: {smod.NAME} on {smod.INSTRUMENT}. "
+        f"Reason: {reason}"
+    )
+    _key_risk = (
+        f"Regime misclassification or fast regime shift before exit. "
+        f"Event-window risk if event_type={entry.get('event_type') or 'none'}."
+    )
+    _invalidation = (
+        f"Regime transitions to HALT/CRISIS, or VIX exceeds {smod.NAME}'s threshold, "
+        f"or strategy-specific exit_rules trigger ({list((entry.get('exit_rules') or {}).keys())})."
+    )
+    entry["decision"] = {
+        "conviction_score": signal_strength_score(strikes, regime),
+        "thesis": _thesis,
+        "key_risk": _key_risk,
+        "invalidation": _invalidation,
+        "alternatives_considered": [s for s in candidate_strategies if s != smod.NAME],
+        "skills_consulted": ["regime-classification", "iv-surface-reading", "greeks-management"],
+        "regime_at_entry": regime,
+        "vix_at_entry": _macro.get("vix"),
+        "vix_data_age_seconds": age_of(_macro.get("vix_timestamp") or _macro.get("timestamp")),
+        "chain_data_age_seconds": age_of(strikes.get("chain_timestamp")),
+        "market_intel_age_seconds": age_of(intel.get("timestamp")),
+        "pipeline_stage_durations": strikes.get("stage_durations", {}),
+    }
     _journal_write(entry)
     print(f"[beta_agent] journaled as {entry['id']}")
 

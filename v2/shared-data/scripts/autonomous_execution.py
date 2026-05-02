@@ -560,6 +560,8 @@ def log_trade(trade, agent_name, fill, intel):
         tid = (t.get("id") or "")
         if tid.startswith(prefix) and tid[1:].isdigit():
             max_n = max(max_n, int(tid[1:]))
+    from _decision_helpers import age_of, alpha_conviction_from_judge
+    macro = intel.get("macro", {}) or {}
     entry = {
         "id": f"{prefix}{max_n+1:03d}",
         "timestamp": datetime.now(ET).isoformat(),
@@ -571,13 +573,27 @@ def log_trade(trade, agent_name, fill, intel):
         "estimated_credit": trade.get("estimated_credit", 0),
         "max_loss_pct": trade.get("max_loss_pct", 0),
         "underlying_price": intel.get("symbols", {}).get(symbol, {}).get("price", 0),
-        "vix_at_entry": intel.get("macro", {}).get("vix", 0),
+        "vix_at_entry": macro.get("vix", 0),
         "regime_at_entry": intel.get("market_regime", "normal"),
         "thesis": trade.get("thesis", ""),
         "invalidation": trade.get("invalidation", ""),
         "order_id": fill.get("id", "") if fill else "",
         "status": "OPEN",
         "notes": f"Auto-executed by {agent_name}",
+        "decision": {
+            "conviction_score": alpha_conviction_from_judge(trade.get("judge_score")),
+            "thesis": trade.get("thesis", ""),
+            "key_risk": trade.get("key_risk", ""),
+            "invalidation": trade.get("invalidation", ""),
+            "alternatives_considered": trade.get("alternatives_considered", []),
+            "skills_consulted": trade.get("skills_consulted", []),
+            "regime_at_entry": intel.get("market_regime", "normal"),
+            "vix_at_entry": macro.get("vix", 0),
+            "vix_data_age_seconds": age_of(macro.get("vix_timestamp") or macro.get("timestamp")),
+            "chain_data_age_seconds": age_of(trade.get("chain_timestamp")),
+            "market_intel_age_seconds": age_of(intel.get("timestamp")),
+            "pipeline_stage_durations": trade.get("stage_durations", {}),
+        },
     }
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(entry) + "\n")
