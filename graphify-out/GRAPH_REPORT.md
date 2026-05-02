@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-05-02)
 
 ## Corpus Check
-- 0 files · ~99,999 words
+- 80 files · ~144,962 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -11,36 +11,36 @@
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
-- [[_COMMUNITY_Alpaca SDK Wrappers|Alpaca SDK Wrappers]]
+- [[_COMMUNITY_Community 1|Community 1]]
 - [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
 - [[_COMMUNITY_Auto-Heal Subsystem|Auto-Heal Subsystem]]
 - [[_COMMUNITY_Beta Strategy Modules|Beta Strategy Modules]]
 - [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
 - [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
-- [[_COMMUNITY_Position Monitor + Discord|Position Monitor + Discord]]
-- [[_COMMUNITY_Health Check Probes|Health Check Probes]]
+- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
+- [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
 - [[_COMMUNITY_Discord Chat Agent|Discord Chat Agent]]
 - [[_COMMUNITY_Pre-Trade Context Builder|Pre-Trade Context Builder]]
-- [[_COMMUNITY_Journal Agent Operating Manual|Journal Agent Operating Manual]]
+- [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
+- [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
+- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
 - [[_COMMUNITY_Risk Engine + Risk Checks|Risk Engine + Risk Checks]]
-- [[_COMMUNITY_Market Intelligence Pipeline|Market Intelligence Pipeline]]
-- [[_COMMUNITY_CTO Listener & Tasks|CTO Listener & Tasks]]
-- [[_COMMUNITY_Agent Skills (Cross-Agent)|Agent Skills (Cross-Agent)]]
-- [[_COMMUNITY_Decision Helpers + Journal Update|Decision Helpers + Journal Update]]
 - [[_COMMUNITY_Weekly Synthesis (Sonnet)|Weekly Synthesis (Sonnet)]]
 - [[_COMMUNITY_Self-Diagnosis + Trade Review (Haiku)|Self-Diagnosis + Trade Review (Haiku)]]
-- [[_COMMUNITY_Scan Options + Debate|Scan Options + Debate]]
-- [[_COMMUNITY_IBKR Broker Layer|IBKR Broker Layer]]
-- [[_COMMUNITY_Backup + Vault + Encryption|Backup + Vault + Encryption]]
-- [[_COMMUNITY_Centralized Logger + Errors|Centralized Logger + Errors]]
-- [[_COMMUNITY_Dashboard Collectors|Dashboard Collectors]]
-- [[_COMMUNITY_Trade Analytics + Sheets Sync|Trade Analytics + Sheets Sync]]
-- [[_COMMUNITY_Gamma RSI Pullback|Gamma RSI Pullback]]
-- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
 - [[_COMMUNITY_Self-Improve + Self-Evolution|Self-Improve + Self-Evolution]]
-- [[_COMMUNITY_Architecture Decisions (ADR)|Architecture Decisions (ADR)]]
-- [[_COMMUNITY_Agent Identity — Who I Am|Agent Identity — Who I Am]]
-- [[_COMMUNITY_Discord Bot Cogs|Discord Bot Cogs]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
+- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
+- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
+- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
+- [[_COMMUNITY_Community 30|Community 30]]
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
 - [[_COMMUNITY_Community 33|Community 33]]
@@ -51,7 +51,7 @@
 - [[_COMMUNITY_Community 38|Community 38]]
 - [[_COMMUNITY_Community 39|Community 39]]
 - [[_COMMUNITY_Community 40|Community 40]]
-- [[_COMMUNITY_Community 41|Community 41]]
+- [[_COMMUNITY_Self-Improve + Self-Evolution|Self-Improve + Self-Evolution]]
 - [[_COMMUNITY_Community 42|Community 42]]
 - [[_COMMUNITY_Community 43|Community 43]]
 - [[_COMMUNITY_Community 44|Community 44]]
@@ -75,7 +75,7 @@
 - [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 68|Community 68]]
-- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
 - [[_COMMUNITY_Community 70|Community 70]]
 - [[_COMMUNITY_Community 71|Community 71]]
 - [[_COMMUNITY_Community 72|Community 72]]
@@ -110,7 +110,7 @@
 - [[_COMMUNITY_Community 101|Community 101]]
 - [[_COMMUNITY_Community 102|Community 102]]
 - [[_COMMUNITY_Community 103|Community 103]]
-- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
 - [[_COMMUNITY_Community 105|Community 105]]
 - [[_COMMUNITY_Community 106|Community 106]]
 - [[_COMMUNITY_Community 107|Community 107]]
@@ -127,7 +127,7 @@
 - [[_COMMUNITY_Community 118|Community 118]]
 - [[_COMMUNITY_Community 119|Community 119]]
 - [[_COMMUNITY_Community 120|Community 120]]
-- [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
 - [[_COMMUNITY_Community 124|Community 124]]
@@ -160,8 +160,8 @@
 - [[_COMMUNITY_Community 151|Community 151]]
 - [[_COMMUNITY_Community 152|Community 152]]
 - [[_COMMUNITY_Community 153|Community 153]]
-- [[_COMMUNITY_Community 154|Community 154]]
-- [[_COMMUNITY_Community 155|Community 155]]
+- [[_COMMUNITY_Journal Agent Operating Manual|Journal Agent Operating Manual]]
+- [[_COMMUNITY_Journal Agent Operating Manual|Journal Agent Operating Manual]]
 - [[_COMMUNITY_Community 156|Community 156]]
 - [[_COMMUNITY_Community 157|Community 157]]
 - [[_COMMUNITY_Community 158|Community 158]]
@@ -223,7 +223,7 @@
 Cohesion: 0.03
 Nodes (103): AlpacaBroker, BrokerBase, _build_occ(), close_position(), connect(), disconnect(), fetch_option_chain(), get_account() (+95 more)
 
-### Community 1 - "Alpaca SDK Wrappers"
+### Community 1 - "Community 1"
 Cohesion: 0.04
 Nodes (101): cancel_all_orders(), cancel_order(), close_all_positions(), close_position(), _generate_hash(), get_account(), get_data_client(), get_latest_quote() (+93 more)
 
@@ -247,11 +247,11 @@ Nodes (65): load_journal(), Load last N days of trades from an agent's journal.,
 Cohesion: 0.04
 Nodes (70): Agent Alpha Core Principles, Diagonal Spreads (Primary Strategy), Agent Alpha — What I Do NOT Do, Why Agents Did Not Trade, discord.py, py_vollib, FastAPI (guard-engine dep), alpaca-py (+62 more)
 
-### Community 7 - "Position Monitor + Discord"
+### Community 7 - "Earnings Calendar + Journal"
 Cohesion: 0.06
 Nodes (60): _close_position(), _estimate_condor_current_cost(), guard_check(), load_params(), log_trade(), make_embed(), monitor_positions(), post_discord() (+52 more)
 
-### Community 8 - "Health Check Probes"
+### Community 8 - "Guard Engine + Tests"
 Cohesion: 0.06
 Nodes (60): build_health_embeds(), build_startup_embed(), check_agent_journals(), check_alpaca_connection(), check_cache_freshness(), check_config_sanity(), check_data_quality(), check_discord_webhooks() (+52 more)
 
@@ -263,27 +263,27 @@ Nodes (59): chat_with_claude(), ChatAgent, cmd_decide(), cmd_remember(), handle_
 Cohesion: 0.06
 Nodes (49): build_context(), build_context_embed(), _build_summary(), _cache_path(), _get_agent1_params(), _get_agent2_params(), main(), context_builder.py — Pre-Trade Context Score (0–100) =========================== (+41 more)
 
-### Community 11 - "Journal Agent Operating Manual"
+### Community 11 - "Alpha Identity & Strategy"
 Cohesion: 0.05
 Nodes (48): Alpaca API Gotchas (mleg qty, no position_intent), Cron Schedule, Journal Agent Alpha/Beta Trade Tracking, Journal Agent Trade Closing Protocol, Journal Agent Trade Logging Protocol, Journal Agent Operating Manual, Journal Agent Core Belief (journal as most valuable asset), Journal Agent Soul (trading diary identity) (+40 more)
 
-### Community 12 - "Risk Engine + Risk Checks"
+### Community 12 - "Alpaca Broker Layer"
 Cohesion: 0.11
 Nodes (43): build_closing_legs(), build_occ(), check_beta_exit(), check_exit_threshold(), check_gamma_exit(), compute_trade_pnl(), _current_beta_regime(), fetch_alpaca_positions() (+35 more)
 
-### Community 13 - "Market Intelligence Pipeline"
+### Community 13 - "Community 13"
 Cohesion: 0.08
 Nodes (40): analyze_bull_put_spread(), analyze_covered_call(), analyze_iron_condor(), analyze_option(), classify_moneyness(), compute_greeks(), compute_iv(), dte_to_years() (+32 more)
 
-### Community 14 - "CTO Listener & Tasks"
+### Community 14 - "Guard Engine + Tests"
 Cohesion: 0.13
 Nodes (38): build_occ_symbol(), check_guards(), count_open_agent_trades(), execute_bear_call_spread(), execute_bull_put_spread(), execute_diagonal_spread(), execute_generic_spread(), execute_iron_condor() (+30 more)
 
-### Community 15 - "Agent Skills (Cross-Agent)"
+### Community 15 - "Earnings Calendar + Journal"
 Cohesion: 0.05
 Nodes (42): Agent Alpha Skills Loaded, Beta Event Strangles, Beta 12-Regime Classification System, Agent Beta Skills Loaded, Connors RSI Pullback Strategy, Agent Gamma Skills Loaded, Stuck OPEN trades A008/A009/A010 finding, Beta Plan v2 Phases (10 phases) (+34 more)
 
-### Community 16 - "Decision Helpers + Journal Update"
+### Community 16 - "Risk Engine + Risk Checks"
 Cohesion: 0.11
 Nodes (29): _journal_write(), _load_strategy(), main(), _next_beta_id(), _post_discord(), _simulate_slippage(), _write_dashboard_state(), age_of() (+21 more)
 
@@ -295,51 +295,51 @@ Nodes (30): post_to_channel(), Single Discord posting surface for v2 cron script
 Cohesion: 0.11
 Nodes (28): main(), parse_args(), _build_context(), _call_haiku(), _concurrent_positions(), diagnose(), _load_agent_identity(), main() (+20 more)
 
-### Community 19 - "Scan Options + Debate"
+### Community 19 - "Self-Improve + Self-Evolution"
 Cohesion: 0.1
 Nodes (32): backtest_agent1_params(), backtest_agent2_params(), get_trade_pairs(), backtester.py — Param Change Validator ========================================, Re-simulate a historical Agent 1 trade with different params.     Returns what t, Backtest Agent 1 param change against last N days of journal data.     Returns v, Backtest Agent 2 param change. Uses 60 days (longer because CC trades are weekly, Main entry point called by self_improve.py before creating any PR.      agent: " (+24 more)
 
-### Community 20 - "IBKR Broker Layer"
+### Community 20 - "Community 20"
 Cohesion: 0.09
 Nodes (28): analyze_overall_correlation(), analyze_per_signal_correlation(), build_correlation_embed(), _build_summary(), load_context_scores(), load_trade_outcomes(), load_weights(), match_scores_to_outcomes() (+20 more)
 
-### Community 21 - "Backup + Vault + Encryption"
+### Community 21 - "Community 21"
 Cohesion: 0.14
 Nodes (24): compute_adx_14(), compute_bb_width_percentile(), compute_ema_slope(), compute_iv_rank_252d(), compute_spx_chain_metrics(), SPX-derived intelligence helpers for Agent Beta.  market_intelligence.py imports, ATM straddle, implied move %, ATM bid-ask spread, 25-delta put/call skew.     Fa, ADX(14) per spec § 3B. Pandas Series in. Float out, or None on failure. (+16 more)
 
-### Community 22 - "Centralized Logger + Errors"
+### Community 22 - "Community 22"
 Cohesion: 0.2
 Nodes (26): action_restart_service(), action_retry(), action_skip(), classify_lines(), handle_known(), handle_unknown(), line_matches_entry(), load_catalog() (+18 more)
 
-### Community 23 - "Dashboard Collectors"
+### Community 23 - "Community 23"
 Cohesion: 0.13
 Nodes (20): handle_cto_scan(), On-demand CTO tech intelligence scan., analyze_findings(), build_cto_scan_embeds(), main(), _parse_arxiv_entries(), cto_agent.py — CTO Tech Intelligence Agent =====================================, Fetch recent papers from arXiv in quantitative finance categories.     arXiv API (+12 more)
 
-### Community 24 - "Trade Analytics + Sheets Sync"
+### Community 24 - "Heartbeat Monitor"
 Cohesion: 0.24
 Nodes (18): count_journal_entries_today(), count_open_agent_trades(), in_opening_volatility_window(), intel_is_fresh(), is_market_open(), load_intel(), load_state(), log() (+10 more)
 
-### Community 25 - "Gamma RSI Pullback"
+### Community 25 - "Earnings Calendar + Journal"
 Cohesion: 0.24
 Nodes (16): discover_tickers(), get_avg_volume(), get_earnings(), get_iv_rank(), get_price(), get_technicals(), Pull liquid, optionable tickers from multiple sources., Poor man's covered call/put — diagonal spread.     Sell near-term option, buy fu (+8 more)
 
-### Community 26 - "Heartbeat Monitor"
+### Community 26 - "Earnings Calendar + Journal"
 Cohesion: 0.23
 Nodes (17): _cache_path(), fetch_fred_series(), get_economic_calendar(), get_fred_macro(), get_macro_context(), get_news_sentiment(), _get_watchlist_earnings_calendar(), main() (+9 more)
 
-### Community 27 - "Self-Improve + Self-Evolution"
+### Community 27 - "Community 27"
 Cohesion: 0.16
 Nodes (17): build_prompt(), main(), post_discord(), process_task(), cto_listener.py — Dockerized CTO Task Runner ===================================, Read the queue file. Returns the task dict if status=pending,     else None. Mat, Update the queue file's status field., Build the Claude Code prompt, matching the bash script's format. (+9 more)
 
-### Community 28 - "Architecture Decisions (ADR)"
+### Community 28 - "Community 28"
 Cohesion: 0.27
 Nodes (15): line_signature(), load_catalog(), log(), looks_like_error(), main(), match_catalog(), now_et(), post_discord() (+7 more)
 
-### Community 29 - "Agent Identity — Who I Am"
+### Community 29 - "Alpha Identity & Strategy"
 Cohesion: 0.14
 Nodes (17): ADR-001: Adopt Graphify for Knowledge Graphs, ADR-004: Migrate Alpaca to IBKR, Agent Alpha — Who I Am, Agent Beta — Who I Am, Agent Gamma — Who I Am, Infra Agent Operating Manual, Beta Plan v1 Context (SUPERSEDED), Beta v1 INSTRUMENT_MAP (SPY/VXX proxies) (+9 more)
 
-### Community 30 - "Discord Bot Cogs"
+### Community 30 - "Community 30"
 Cohesion: 0.23
 Nodes (14): build_cto_embeds(), collect_agent_stats(), collect_cache_health(), collect_eod_scores(), collect_system_metrics(), generate_cto_report(), main(), cto_report.py — Weekly CTO Report ==================================== Runs ever (+6 more)
 
@@ -383,7 +383,7 @@ Nodes (5): ADR-002: ClawRoute as Single LLM Ingress, Auto-Heal Layer, Legacy err
 Cohesion: 0.5
 Nodes (4): Design Principles (LLMs for judgment, cost-conscious, data sovereignty), Rationale: Design Principles Trade-offs, API Keys Configuration, Data Sources (yfinance, Finnhub, Alpha Vantage, Alpaca)
 
-### Community 41 - "Community 41"
+### Community 41 - "Self-Improve + Self-Evolution"
 Cohesion: 0.67
 Nodes (2): _compute_observations(), set_nested()
 
@@ -479,7 +479,7 @@ Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated opti
 Cohesion: 1.0
 Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
-### Community 69 - "Community 69"
+### Community 69 - "Heartbeat Monitor"
 Cohesion: 1.0
 Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
 
@@ -619,7 +619,7 @@ Nodes (1): Fallback for any other spread — detect put/call from legs and build
 Cohesion: 1.0
 Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
-### Community 104 - "Community 104"
+### Community 104 - "Heartbeat Monitor"
 Cohesion: 1.0
 Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
 
@@ -687,7 +687,7 @@ Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be 
 Cohesion: 1.0
 Nodes (1): Returns (should_close, exit_reason).      For Beta trades (exit_rules present):
 
-### Community 121 - "Community 121"
+### Community 121 - "Alpaca Broker Layer"
 Cohesion: 1.0
 Nodes (1): Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)
 
@@ -819,11 +819,11 @@ Nodes (1): Git Rules (local main is source of truth)
 Cohesion: 1.0
 Nodes (1): Prevent Accidental Damage Rules
 
-### Community 154 - "Community 154"
+### Community 154 - "Journal Agent Operating Manual"
 Cohesion: 1.0
 Nodes (1): Journal Agent Stats Commands
 
-### Community 155 - "Community 155"
+### Community 155 - "Journal Agent Operating Manual"
 Cohesion: 1.0
 Nodes (1): Journal Agent Weekly Digest Format
 
@@ -930,7 +930,7 @@ Nodes (1): Close Order Failed Symptom
 ## Knowledge Gaps
 - **615 isolated node(s):** `Find next M### id not already in the journal.`, `Green for CLOSED wins, red for CLOSED losses, yellow for OPEN.`, `Return age in seconds of an ISO8601 timestamp. 0 if missing/unparseable.`, `Map RSI(10) reading to a 1-10 conviction score.      Connors threshold is 30. De`, `Map Beta strike-selection comfort to a 1-10 conviction score.      Heuristic: ho` (+610 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 41`** (4 nodes): `self_evolution.py`, `_compute_observations()`, `set_nested()`, `self_evolution.py`
+- **Thin community `Self-Improve + Self-Evolution`** (4 nodes): `self_evolution.py`, `_compute_observations()`, `set_nested()`, `self_evolution.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 49`** (2 nodes): `Script Inventory`, `system_test.py (43-check health test)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -966,7 +966,7 @@ Nodes (1): Close Order Failed Symptom
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 68`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 69`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
+- **Thin community `Heartbeat Monitor`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 70`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1036,7 +1036,7 @@ Nodes (1): Close Order Failed Symptom
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 103`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 104`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
+- **Thin community `Heartbeat Monitor`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 105`** (1 nodes): `Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1070,7 +1070,7 @@ Nodes (1): Close Order Failed Symptom
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 120`** (1 nodes): `Returns (should_close, exit_reason).      For Beta trades (exit_rules present):`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (1 nodes): `Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)`
+- **Thin community `Alpaca Broker Layer`** (1 nodes): `Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 122`** (1 nodes): `Beta-specific exit rules sourced from trade['exit_rules']. Returns     (should_c`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1136,9 +1136,9 @@ Nodes (1): Close Order Failed Symptom
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 153`** (1 nodes): `Prevent Accidental Damage Rules`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 154`** (1 nodes): `Journal Agent Stats Commands`
+- **Thin community `Journal Agent Operating Manual`** (1 nodes): `Journal Agent Stats Commands`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 155`** (1 nodes): `Journal Agent Weekly Digest Format`
+- **Thin community `Journal Agent Operating Manual`** (1 nodes): `Journal Agent Weekly Digest Format`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 156`** (1 nodes): `Research Agent Soul (intelligence engine)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1194,11 +1194,11 @@ Nodes (1): Close Order Failed Symptom
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `post()` connect `Position Monitor + Discord` to `Alpaca Broker Layer`, `Alpaca SDK Wrappers`, `Auto-Heal Subsystem`, `Earnings Calendar + Journal`, `Health Check Probes`, `Discord Chat Agent`, `Risk Engine + Risk Checks`, `CTO Listener & Tasks`, `Decision Helpers + Journal Update`, `Weekly Synthesis (Sonnet)`, `Scan Options + Debate`, `Dashboard Collectors`, `Self-Improve + Self-Evolution`, `Discord Bot Cogs`?**
+- **Why does `post()` connect `Earnings Calendar + Journal` to `Alpaca Broker Layer`, `Community 1`, `Auto-Heal Subsystem`, `Earnings Calendar + Journal`, `Guard Engine + Tests`, `Discord Chat Agent`, `Alpaca Broker Layer`, `Guard Engine + Tests`, `Risk Engine + Risk Checks`, `Weekly Synthesis (Sonnet)`, `Self-Improve + Self-Evolution`, `Community 23`, `Community 27`, `Community 30`?**
   _High betweenness centrality (0.284) - this node is a cross-community bridge._
 - **Why does `Client` connect `Auto-Heal Subsystem` to `Weekly Synthesis (Sonnet)`, `Self-Diagnosis + Trade Review (Haiku)`?**
   _High betweenness centrality (0.092) - this node is a cross-community bridge._
-- **Why does `chat()` connect `Auto-Heal Subsystem` to `Position Monitor + Discord`?**
+- **Why does `chat()` connect `Auto-Heal Subsystem` to `Earnings Calendar + Journal`?**
   _High betweenness centrality (0.076) - this node is a cross-community bridge._
 - **Are the 58 inferred relationships involving `BrokerBase` (e.g. with `IBKRBroker` and `_IBKRNoiseFilter`) actually correct?**
   _`BrokerBase` has 58 INFERRED edges - model-reasoned connections that need verification._
