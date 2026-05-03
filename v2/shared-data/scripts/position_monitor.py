@@ -742,6 +742,98 @@ def check_exit_threshold(trade, pnl, now, broker=None):
     return False, "", 1.0, None
 
 
+# ── Ghost-position reconciliation ─────────────────────────────────────────────
+
+_GHOST_ALERT_FILE = Path("/tmp/quantai-ghost-positions-alerted.json")
+_GHOST_ALERT_COOLDOWN_MIN = 60   # re-alert at most once per hour per symbol
+
+
+def _ghost_alert_ok(symbol: str) -> bool:
+    """Return True if we have not alerted for *symbol* within the cooldown window."""
+    try:
+        if not _GHOST_ALERT_FILE.exists():
+            return True
+        data = json.loads(_GHOST_ALERT_FILE.read_text())
+        last_str = data.get(symbol)
+        if not last_str:
+            return True
+        from datetime import timezone as _tz
+        last = datetime.fromisoformat(last_str)
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=_tz.utc)
+        elapsed_min = (datetime.now(_tz.utc) - last).total_seconds() / 60.0
+        return elapsed_min >= _GHOST_ALERT_COOLDOWN_MIN
+    except Exception:
+        return True  # fail-open: never silently suppress an alert
+
+
+def _record_ghost_alert(symbol: str):
+    try:
+        from datetime import timezone as _tz
+        data: dict = {}
+        if _GHOST_ALERT_FILE.exists():
+            try:
+                data = json.loads(_GHOST_ALERT_FILE.read_text())
+            except Exception:
+                pass
+        data[symbol] = datetime.now(_tz.utc).isoformat()
+        _GHOST_ALERT_FILE.write_text(json.dumps(data))
+    except Exception:
+        pass
+
+
+def reconcile_ghost_positions(broker_positions: dict, open_trades: list):
+    """Compare broker option positions against journal open entries.
+
+    Fires a 🔴 Discord alert for every broker option position that cannot be
+    traced to any leg of any OPEN journal entry.  These "ghost positions" may
+    arise from:
+      - place_mleg_order returning None after the order was live at IBKR
+      - A manual order placed in TWS that bypassed the pipeline
+      - A partial close that left a residual leg
+
+    *broker_positions*: {occ_symbol: pos_dict} from fetch_alpaca_positions()
+    *open_trades*: list of OPEN journal trades (already filtered by the caller)
+
+    Returns set of ghost OCC symbols found this cycle.
+    """
+    # Collect every OCC symbol referenced by open journal entries.
+    journal_occs: set = set()
+    for t in open_trades:
+        for leg in t.get("legs", []):
+            sym = _leg_occ(t, leg)
+            if sym:
+                journal_occs.add(sym)
+
+    ghosts: set = set()
+    for sym, pos in broker_positions.items():
+        qty = pos.get("qty", 0)
+        if qty == 0:
+            continue  # zero-qty positions are stale API artefacts; ignore
+        if sym not in journal_occs:
+            ghosts.add(sym)
+
+    for sym in sorted(ghosts):
+        if _ghost_alert_ok(sym):
+            pos = broker_positions[sym]
+            qty = pos.get("qty", 0)
+            side = "long" if qty > 0 else "short"
+            mv = pos.get("market_value", 0)
+            msg = (
+                f"🔴 **Ghost position detected** — `{sym}` "
+                f"({side} qty={abs(qty)}, MV=${mv:+.2f}) "
+                f"is open at IBKR but has **no matching journal entry**. "
+                f"Possible cause: order confirmation lost after submit. "
+                f"Check TWS and journal immediately."
+            )
+            log(f"GHOST POSITION: {sym} qty={qty} — alerting Discord")
+            logging.error("Ghost position: %s qty=%d not in any open journal entry", sym, qty)
+            post_discord(msg)
+            _record_ghost_alert(sym)
+
+    return ghosts
+
+
 # ── Discord ────────────────────────────────────────────────────────────────────
 
 def post_discord(msg):
@@ -889,6 +981,12 @@ def main():
         return
 
     log(f"Broker: {len(alpaca_pos)} option position(s) found")
+
+    # Ghost-position reconciliation: alert on broker positions with no journal entry.
+    # This catches orders that were submitted but whose confirmation was lost (Phase 5
+    # partial-fill safeguard — last line of defence before position_monitor's own
+    # exit logic would otherwise ignore untracked positions entirely).
+    reconcile_ghost_positions(alpaca_pos, open_trades)
 
     # Build P&L map
     pnl_map = {}

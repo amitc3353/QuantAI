@@ -619,9 +619,45 @@ class IBKRBroker(BrokerBase):
             if client_order_id:
                 order.orderRef = client_order_id
             order.smartComboRoutingParams = []
-            trade = self._ib.placeOrder(bag, order)
-            self._ib.sleep(1)
-            return self._trade_to_result(trade, client_order_id)
+            order_submitted = False
+            try:
+                trade = self._ib.placeOrder(bag, order)
+                order_submitted = True
+                self._ib.sleep(1)
+                return self._trade_to_result(trade, client_order_id)
+            except Exception as e:
+                self._last_order_error = f"{type(e).__name__}: {e}"
+                logging.error("IBKRBroker.place_mleg_order failed after submit=%s: %s",
+                              order_submitted, e)
+                if order_submitted:
+                    # Exception fired AFTER the order was sent to the gateway.
+                    # The order may be live at IBKR even though we have no Trade object.
+                    # Flush async callbacks then search open orders for the client_order_id.
+                    try:
+                        self._ib.sleep(0.5)
+                    except Exception:
+                        pass
+                    recovered = self._find_open_order_by_ref(client_order_id)
+                    if recovered is not None:
+                        logging.warning(
+                            "IBKRBroker.place_mleg_order: order recovered from open orders "
+                            "(coid=%s orderId=%s) — returning result despite exception",
+                            client_order_id, recovered.get("order_id"),
+                        )
+                        return recovered
+                    logging.error(
+                        "IBKRBroker.place_mleg_order: order submitted but not found in "
+                        "open orders (coid=%s) — caller must reconcile via get_open_orders()",
+                        client_order_id,
+                    )
+                return None
+            finally:
+                # Always flush any pending async callbacks so subsequent operations
+                # see a consistent state (e.g. position_monitor querying right after).
+                try:
+                    self._ib.sleep(0.5)
+                except Exception:
+                    pass
         except Exception as e:
             self._last_order_error = f"{type(e).__name__}: {e}"
             logging.error("IBKRBroker.place_mleg_order failed: %s", e)
@@ -648,6 +684,54 @@ class IBKRBroker(BrokerBase):
         except Exception as e:
             logging.warning("IBKRBroker.get_order_status(%s) failed: %s", order_id, e)
             return None
+
+    def _find_open_order_by_ref(self, client_order_id: Optional[str]) -> Optional[dict]:
+        """Search open/recent trades for one matching client_order_id (orderRef).
+
+        Called as a recovery path when place_mleg_order throws AFTER placeOrder()
+        was already dispatched.  Returns a result dict (same shape as
+        _trade_to_result) if found, else None.  Never raises.
+        """
+        if not client_order_id:
+            return None
+        try:
+            for trade in self._ib.openTrades():
+                ref = trade.order.orderRef or ""
+                if ref == client_order_id:
+                    return self._trade_to_result(trade, client_order_id)
+            # openTrades() only covers working orders — also check trades()
+            # which covers recently filled / submitted this session.
+            for trade in self._ib.trades():
+                ref = trade.order.orderRef or ""
+                if ref == client_order_id:
+                    return self._trade_to_result(trade, client_order_id)
+        except Exception as ex:
+            logging.warning("IBKRBroker._find_open_order_by_ref(%s) failed: %s",
+                            client_order_id, ex)
+        return None
+
+    def get_open_orders(self, client_order_id: Optional[str] = None) -> list:
+        """Return list of result dicts for open/submitted orders.
+
+        If *client_order_id* is provided, filter to that order only (returns
+        a list of 0 or 1 items so callers can use the same pattern as the
+        general case).  Used by callers to reconcile after a place_mleg_order
+        that returned None.
+        """
+        if not self.connect():
+            return []
+        try:
+            out = []
+            for trade in self._ib.openTrades():
+                ref = trade.order.orderRef or ""
+                oid = str(trade.order.permId or trade.order.orderId or "")
+                if client_order_id and ref != client_order_id and oid != client_order_id:
+                    continue
+                out.append(self._trade_to_result(trade, ref or None))
+            return out
+        except Exception as e:
+            logging.warning("IBKRBroker.get_open_orders failed: %s", e)
+            return []
 
     def _trade_to_result(self, trade, client_order_id: Optional[str]) -> dict:
         status = trade.orderStatus.status if trade.orderStatus else "Submitted"

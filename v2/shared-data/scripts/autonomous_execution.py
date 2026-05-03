@@ -266,8 +266,25 @@ def place_mleg_order(symbol, legs_config, strategy_name):
     result = broker.place_mleg_order(legs_config, qty=1, client_order_id=coid)
     if result is None:
         reason = getattr(broker, "_last_order_error", None) or "unknown"
-        log(f"  ❌ mleg order failed — {reason}")
-        return None
+        # Partial-fill safeguard: the order packet may have reached the gateway
+        # even if place_mleg_order returned None (connection drop after submit).
+        # Query open orders before concluding failure.
+        recovered_orders = []
+        try:
+            recovered_orders = broker.get_open_orders(client_order_id=coid)
+        except Exception as _rec_err:
+            log(f"  ⚠️  get_open_orders reconciliation failed: {_rec_err}")
+        if recovered_orders:
+            result = recovered_orders[0]
+            log(f"  ⚠️  place_mleg_order returned None but order found in open orders "
+                f"(coid={coid} orderId={result.get('order_id','?')}) — treating as submitted")
+            logging.warning(
+                "autonomous_execution: order recovered from open orders after None result "
+                "(coid=%s orderId=%s reason=%s)", coid, result.get("order_id"), reason,
+            )
+        else:
+            log(f"  ❌ mleg order failed — {reason}")
+            return None
     order_id = (result.get("order_id") or "")[:8]
     log(f"  ✅ mleg order placed | ID: {order_id}")
     # Preserve the legacy {id, status} shape for downstream callers/journaling.

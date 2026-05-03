@@ -274,8 +274,24 @@ def main() -> int:
 
     fill = broker.place_mleg_order(proposal["legs"], qty=qty, tif="day", client_order_id=coid)
     if not fill:
-        logging.error("place_mleg_order returned None")
-        return 5
+        # Partial-fill safeguard: the order packet may have reached the gateway
+        # even if place_mleg_order returned None (connection drop after submit).
+        recovered_orders = []
+        try:
+            recovered_orders = broker.get_open_orders(client_order_id=coid)
+        except Exception as _rec_err:
+            logging.warning("beta_agent: get_open_orders reconciliation failed: %s", _rec_err)
+        if recovered_orders:
+            fill = recovered_orders[0]
+            logging.warning(
+                "beta_agent: order recovered from open orders after None result "
+                "(coid=%s orderId=%s)", coid, fill.get("order_id"),
+            )
+            print(f"[beta_agent] ⚠️  order recovered from open orders (coid={coid} "
+                  f"orderId={fill.get('order_id','?')}) — treating as submitted")
+        else:
+            logging.error("place_mleg_order returned None")
+            return 5
 
     # Journal write
     entry = dict(proposal)
