@@ -47,6 +47,12 @@ COOLDOWN_MIN = 30    # minimum minutes between Discord alerts per beat name
 OFF_HOURS_LOG_INTERVAL_MIN = 60   # off-hours: log status line at most this often
 LOG_THROTTLE_FILE = Path("/tmp/quantai-heartbeat-last-log.json")
 
+IBKR_HOST = "127.0.0.1"
+IBKR_PORT = 4002
+IBKR_PROBE_COOLDOWN_MIN = 30
+IBKR_PROBE_FAIL_FILE = Path("/tmp/quantai-heartbeats/ibkr_probe_fail.json")
+IBKR_CONSECUTIVE_FAILS_ALERT = 2  # alert after ~4 min (2 consecutive 2-min ticks)
+
 
 def is_market_hours():
     """NYSE equity options hours: 09:30 → 16:00 ET, Mon-Fri."""
@@ -148,6 +154,41 @@ def record_log(beat_status: str):
         pass
 
 
+def probe_ibkr_port() -> bool:
+    """Return True if IBKR Gateway port 4002 is accepting connections."""
+    import socket
+    s = socket.socket()
+    s.settimeout(2)
+    try:
+        return s.connect_ex((IBKR_HOST, IBKR_PORT)) == 0
+    finally:
+        s.close()
+
+
+def get_ibkr_probe_state() -> dict:
+    """Read persistent probe failure state (survives process restarts)."""
+    if not IBKR_PROBE_FAIL_FILE.exists():
+        return {"consecutive_fails": 0, "first_fail_at": None}
+    try:
+        return json.loads(IBKR_PROBE_FAIL_FILE.read_text())
+    except Exception:
+        return {"consecutive_fails": 0, "first_fail_at": None}
+
+
+def update_ibkr_probe_state(connected: bool) -> dict:
+    """Persist probe state; return updated state dict."""
+    BEAT_DIR.mkdir(parents=True, exist_ok=True)
+    if connected:
+        state = {"consecutive_fails": 0, "first_fail_at": None}
+    else:
+        existing = get_ibkr_probe_state()
+        fails = existing.get("consecutive_fails", 0) + 1
+        first = existing.get("first_fail_at") or datetime.now(timezone.utc).isoformat()
+        state = {"consecutive_fails": fails, "first_fail_at": first}
+    IBKR_PROBE_FAIL_FILE.write_text(json.dumps(state))
+    return state
+
+
 def main():
     BEAT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(ET)
@@ -196,8 +237,39 @@ def main():
         record_cooldown("pipeline")
         print(f"ALERT: sent Discord notification ({beat_status})")
 
+    # --- Probe IBKR port 4002 (runs every tick, all hours including weekends) ---
+    ibkr_connected = probe_ibkr_port()
+    ibkr_probe_state = update_ibkr_probe_state(ibkr_connected)
+    ibkr_status = "ok" if ibkr_connected else "refused"
+    consecutive_fails = ibkr_probe_state.get("consecutive_fails", 0)
+    first_fail_at = ibkr_probe_state.get("first_fail_at")
+
+    print(f"[{now.strftime('%H:%M ET')}] ibkr_port={ibkr_status}"
+          + (f" consecutive_fails={consecutive_fails}" if not ibkr_connected else ""))
+
+    if not ibkr_connected and consecutive_fails >= IBKR_CONSECUTIVE_FAILS_ALERT:
+        if cooldown_ok("ibkr_port"):
+            outage_mins = ""
+            if first_fail_at:
+                try:
+                    first_dt = datetime.fromisoformat(first_fail_at)
+                    if first_dt.tzinfo is None:
+                        first_dt = first_dt.replace(tzinfo=timezone.utc)
+                    elapsed = (datetime.now(timezone.utc) - first_dt).total_seconds() / 60
+                    outage_mins = f" (down ~{elapsed:.0f}m)"
+                except Exception:
+                    pass
+            msg = (
+                f"🔴 **IBKR Gateway port 4002 REFUSED**{outage_mins} — broker connection down. "
+                f"IB Gateway process alive but not accepting API connections. "
+                f"**Fix:** `sudo systemctl restart ibgateway` then wait 90s and verify."
+            )
+            post_discord(msg)
+            record_cooldown("ibkr_port")
+            print("ALERT: sent Discord notification (ibkr_port refused)")
+
     # --- Write dashboard state ---
-    if beat_status in ("ok", "ok-overnight"):
+    if beat_status in ("ok", "ok-overnight") and ibkr_connected:
         dash_status = "ok"
     elif not market:
         dash_status = "idle"
@@ -214,6 +286,11 @@ def main():
                 "age_min": round(age_min, 1) if age_min is not None else None,
                 "last_beat": beat.isoformat() if beat else None,
                 "stale_threshold_min": STALE_MIN,
+            },
+            "ibkr_port": {
+                "status": ibkr_status,
+                "consecutive_fails": consecutive_fails,
+                "first_fail_at": first_fail_at,
             },
         },
     }
