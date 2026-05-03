@@ -22,9 +22,10 @@ from pathlib import Path
 sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 
 from _journal_update import find_trade, update_trade_entry, DEFAULT_JOURNAL
+from _paths import TRADE_REVIEWS_DIR as _REVIEWS_DIR
 
 REPO_AGENTS_DIR = Path("/home/trader/QuantAI/v2/shared-data/agents")
-RUNTIME_REVIEWS_DIR = Path("/root/quantai-v2/shared-data/trade_reviews")
+RUNTIME_REVIEWS_DIR = _REVIEWS_DIR
 LLM_TIMEOUT = 20
 
 try:

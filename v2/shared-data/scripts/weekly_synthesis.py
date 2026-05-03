@@ -28,12 +28,15 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 
 from _journal_update import DEFAULT_JOURNAL
+from _paths import (
+    CAPABILITY_REQUESTS_DIR as REQUESTS_DIR,
+    TRADE_REVIEWS_DIR as REVIEWS_DIR,
+    WEEKLY_REPORTS_DIR as REPORTS_DIR,
+)
+from _decision_helpers import this_week_monday
 
 ET = ZoneInfo("America/New_York")
 REPO_AGENTS_DIR = Path("/home/trader/QuantAI/v2/shared-data/agents")
-REQUESTS_DIR = Path("/root/quantai-v2/shared-data/capability_requests")
-REVIEWS_DIR = Path("/root/quantai-v2/shared-data/trade_reviews")
-REPORTS_DIR = Path("/root/quantai-v2/shared-data/weekly_reports")
 LLM_TIMEOUT = 90  # seconds — synthesis is bigger than per-trade calls
 
 DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
@@ -62,10 +65,8 @@ except Exception:
 
 
 def _last_monday(now: datetime) -> datetime:
-    """Return Monday 00:00 ET of the current week (or this Monday if today is Mon)."""
-    now_et = now.astimezone(ET)
-    monday = now_et - timedelta(days=now_et.weekday())
-    return monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    """Return Monday 00:00 ET of the current week. Delegates to _decision_helpers."""
+    return this_week_monday(now)
 
 
 def _parse_dt(s: str | None) -> datetime | None:

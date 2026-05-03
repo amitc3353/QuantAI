@@ -18,17 +18,18 @@ Item IDs come from the dashboard tile's `id` field (see
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sys
 from datetime import date
 from pathlib import Path
 
-TRACKER = Path("/root/quantai-v2/shared-data/learning_tracker.json")
-STATE = Path("/var/dashboard/state/quantai-learning.json")
+from _paths import LEARNING_TRACKER as TRACKER, LEARNING_STATE as STATE
 
 
-def _read_tracker() -> dict:
+def _read_tracker_raw() -> dict:
+    """Read tracker without acquiring lock (caller must hold lock)."""
     if not TRACKER.exists():
         return {"resolved": {}}
     try:
@@ -44,11 +45,39 @@ def _read_tracker() -> dict:
     return data
 
 
-def _write_tracker(data: dict) -> None:
+def _read_tracker() -> dict:
+    """Read tracker (safe to call without holding lock — read-only use)."""
+    return _read_tracker_raw()
+
+
+def _modify_tracker(fn) -> None:
+    """Apply fn(data) -> data to the tracker file under exclusive lock.
+
+    The lock covers the full read-modify-write so concurrent invocations
+    cannot interleave their reads and overwrite each other's changes.
+    """
     TRACKER.parent.mkdir(parents=True, exist_ok=True)
-    tmp = TRACKER.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2))
-    os.replace(tmp, TRACKER)
+    lock_path = TRACKER.with_suffix(".lock")
+    with open(lock_path, "w") as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            data = _read_tracker_raw()
+            data = fn(data)
+            tmp = TRACKER.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, TRACKER)
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
+
+
+def _write_tracker(data: dict) -> None:
+    """Write a pre-built tracker dict under exclusive lock.
+
+    Prefer _modify_tracker for read-modify-write; use this only when
+    the caller has already computed the full new state without needing
+    to re-read (e.g. in tests that build the dict from scratch).
+    """
+    _modify_tracker(lambda _: data)
 
 
 def _read_state() -> dict | None:
@@ -104,10 +133,6 @@ def _resolve(item_id: str, note: str) -> int:
     open_items = state.get("data", {}).get("open_items", []) if state else []
     matched = next((it for it in open_items if it["id"] == item_id), None)
 
-    tracker = _read_tracker()
-    if item_id in tracker["resolved"]:
-        print(f"warning: {item_id} is already resolved (overwriting note)")
-
     entry = {
         "resolved_date": date.today().isoformat(),
         "resolution_note": note,
@@ -120,8 +145,19 @@ def _resolve(item_id: str, note: str) -> int:
             "type": matched.get("type"),
             "title": matched.get("title"),
         })
-    tracker["resolved"][item_id] = entry
-    _write_tracker(tracker)
+
+    already_resolved = False
+
+    def _apply(data: dict) -> dict:
+        nonlocal already_resolved
+        already_resolved = item_id in data["resolved"]
+        data["resolved"][item_id] = entry
+        return data
+
+    _modify_tracker(_apply)
+
+    if already_resolved:
+        print(f"warning: {item_id} is already resolved (overwriting note)")
 
     print(f"resolved: {item_id}")
     print(f"  date: {entry['resolved_date']}")
@@ -133,12 +169,17 @@ def _resolve(item_id: str, note: str) -> int:
 
 
 def _unresolve(item_id: str) -> int:
+    # Check existence before locking to give a fast error without holding the lock
     tracker = _read_tracker()
     if item_id not in tracker["resolved"]:
         print(f"error: {item_id} is not currently resolved", file=sys.stderr)
         return 1
-    del tracker["resolved"][item_id]
-    _write_tracker(tracker)
+
+    def _apply(data: dict) -> dict:
+        data["resolved"].pop(item_id, None)
+        return data
+
+    _modify_tracker(_apply)
     print(f"un-resolved: {item_id}")
     return 0
 

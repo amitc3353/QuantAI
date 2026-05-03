@@ -10,7 +10,7 @@ treats missing freshness data as itself a capability gap (correct behavior).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -123,3 +123,31 @@ def alpha_conviction_from_judge(judge_score: int | float | None) -> int:
     except (TypeError, ValueError):
         return 5
     return max(1, min(10, int(round(s / 10))))
+
+
+# ── Week boundary helpers ────────────────────────────────────────────────────
+# Single source of truth used by collect_learning.py and weekly_synthesis.py
+# to avoid divergence at week boundaries.
+
+def week_start_for(timestamp_iso: str | None) -> str:
+    """Return Monday of the week containing timestamp_iso as YYYY-MM-DD.
+
+    Falls back to today's Monday when the input is missing or unparseable.
+    """
+    try:
+        d = datetime.fromisoformat(str(timestamp_iso)[:10]).date()
+    except Exception:
+        d = datetime.now(_ET).date()
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def this_week_monday(now: datetime | None = None) -> datetime:
+    """Return Monday 00:00 ET of the current week (or the week containing `now`).
+
+    Used as the canonical week-start for weekly_synthesis and tests.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    now_et = now.astimezone(_ET)
+    monday = now_et - timedelta(days=now_et.weekday())
+    return monday.replace(hour=0, minute=0, second=0, microsecond=0)

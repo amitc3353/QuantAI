@@ -12,7 +12,9 @@ from __future__ import annotations
 import json
 import os
 
-DEFAULT_JOURNAL = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
+from _paths import JOURNAL as _DEFAULT_JOURNAL
+
+DEFAULT_JOURNAL: str = str(_DEFAULT_JOURNAL)
 
 
 def update_trade_entry(trade_id: str, fields: dict, journal_path: str = DEFAULT_JOURNAL) -> bool:
