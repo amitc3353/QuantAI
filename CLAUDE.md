@@ -190,6 +190,14 @@ Claude-driven triage layer that sits **on top of** the rule-based monitors (`err
 - ⏳ First real (non-dry-run) order via IBKR — pending market hours
 - ⏳ Strategy-level position grouping in position_monitor — deferred
 - ⏳ Strategy rework / parameter tuning — awaiting first 30 days of Beta data
+- 🚨 **`place_mleg_order` partial-fill safeguard — MUST fix before live trading.**
+  If an exception fires after `self._ib.placeOrder()` sends the order to the gateway,
+  the caller gets `None` and may log "order failed" while the order is actually live at
+  IBKR — ghost position with no journal entry, no monitoring, no stop loss.
+  Fix: (1) `finally: self._ib.sleep(0.5)` in `_broker_ibkr.py` to flush async callbacks;
+  (2) post-`None` open-orders reconciliation check in `autonomous_execution.py`/`beta_agent.py`;
+  (3) position_monitor journal vs. broker position reconciliation with 🔴 Discord alert
+  on unknown positions. See Phase 5 in docs/runbooks/runbook-ibkr-connection.md.
 
 ## Git Rules
 

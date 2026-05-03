@@ -155,12 +155,18 @@ def record_log(beat_status: str):
 
 
 def probe_ibkr_port() -> bool:
-    """Return True if IBKR Gateway port 4002 is accepting connections."""
+    """Return True if IBKR Gateway port 4002 is accepting connections.
+
+    Catches all exceptions — this function must never crash the caller.
+    OSError can be raised by connect_ex() on some platforms/network conditions.
+    """
     import socket
     s = socket.socket()
     s.settimeout(2)
     try:
         return s.connect_ex((IBKR_HOST, IBKR_PORT)) == 0
+    except OSError:
+        return False
     finally:
         s.close()
 
