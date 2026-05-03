@@ -384,9 +384,25 @@ def run_execute() -> int:
             failed.append((setup, f"place_exception: {e}"))
             continue
         if not fill:
-            logging.error("place_mleg_order returned None for %s", symbol)
-            failed.append((setup, "place_returned_none"))
-            continue
+            # Partial-fill safeguard: the order packet may have reached the gateway
+            # even if place_mleg_order returned None (connection drop after submit).
+            recovered_orders = []
+            try:
+                recovered_orders = broker.get_open_orders(client_order_id=coid)
+            except Exception as _rec_err:
+                logging.warning("gamma_agent: get_open_orders reconciliation failed: %s", _rec_err)
+            if recovered_orders:
+                fill = recovered_orders[0]
+                logging.warning(
+                    "gamma_agent: order recovered from open orders after None result "
+                    "(coid=%s orderId=%s symbol=%s)", coid, fill.get("order_id"), symbol,
+                )
+                print(f"[gamma_agent] ⚠️  order recovered from open orders (coid={coid} "
+                      f"orderId={fill.get('order_id','?')}) — treating as submitted")
+            else:
+                logging.error("place_mleg_order returned None for %s", symbol)
+                failed.append((setup, "place_returned_none"))
+                continue
 
         # Build journal entry
         entry = dict(proposal)
