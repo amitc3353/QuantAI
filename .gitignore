@@ -23,3 +23,20 @@ graphify-out/cache/
 graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/.graphify_python
+
+# Backup snapshots and retired files (local working snapshots; never committed).
+# Operators take .bak / .retired copies of scripts before risky edits — those
+# stay on disk for rollback but should never enter git history.
+*.bak
+*.bak.*
+*.retired
+*.retired.*
+
+# Auto-heal historical state (predates the Sentinel cutover on 2026-05-03;
+# kept on disk for forensics, not for the repo).
+v2/shared-data/scripts/auto_heal_data/dismissed_*/
+v2/shared-data/scripts/auto_heal_data/fix_history/
+
+# Runtime lock + scheduling state (ephemeral, machine-local).
+.claude/scheduled_tasks.lock
+/tmp/quantai-heartbeats/
