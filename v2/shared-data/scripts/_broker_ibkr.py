@@ -120,6 +120,25 @@ ET = ZoneInfo("America/New_York")
 
 _INDEX_ROOTS = {"XSP", "SPX", "SPXW", "VIX", "VIXW", "RUT", "NDX"}
 
+# Phase 5b broker status taxonomy (added 2026-05-05 after A021/A022/A020 incidents).
+# Reused by entry path (place_mleg_order) and close path (place_close_order).
+# IBKR statuses sourced from ib_insync OrderStatus.status canonical values.
+_BROKER_TERMINAL_FAILURE_STATUSES = {
+    # The order is dead — submission failed or order was canceled.
+    "cancelled", "canceled", "apicancelled", "apicanceled",
+    "rejected", "inactive",
+}
+_BROKER_INDETERMINATE_STATUSES = {
+    # Order is working but hasn't filled yet. Caller should poll, not resubmit.
+    "submitted", "presubmitted", "pendingsubmit", "pendingcancel",
+    "apipending",
+}
+_BROKER_SUCCESS_STATUSES = {"filled", "simulated"}
+
+# How long place_mleg_order will poll an indeterminate-status order before
+# returning a _working dict. Combo orders sometimes take 2-3s to settle.
+ENTRY_POLL_SECONDS = 5.0
+
 
 def _is_in_restart_window(now: Optional[datetime] = None) -> bool:
     """IB Gateway restarts at 23:45 ET. Refuse to connect 23:30-00:15."""
@@ -282,6 +301,42 @@ class IBKRBroker(BrokerBase):
         except Exception as e:
             logging.error("IBKRBroker.get_positions failed: %s", e)
             return []
+
+    def verify_legs_flat(self, legs: list) -> list:
+        """Phase 5 close-path safeguard (added 2026-05-04 after A018 incident).
+
+        Query current broker positions and return the OCC symbols of any leg in
+        *legs* that still has non-zero qty on the broker.
+
+        Empty list = all legs flat = close confirmed = safe to mark journal CLOSED.
+        Non-empty list = some legs still open = close did NOT actually complete =
+        do NOT mark journal CLOSED; alert + retry.
+
+        *legs* is the journal's leg list; each leg has at minimum `symbol`
+        (OCC-formatted, e.g. "INTC260515P00094000").
+        Returns: list of OCC symbols still showing non-zero broker qty.
+        Never raises — returns ['_verify_failed'] on any unexpected error so the
+        caller fails-closed rather than silently marking CLOSED.
+        """
+        try:
+            broker_positions = self.get_positions()
+        except Exception as e:
+            logging.error("verify_legs_flat: get_positions failed: %s", e)
+            return ["_verify_failed"]
+        # Normalize broker symbols to OCC format (no spaces)
+        broker_qty = {}
+        for p in broker_positions:
+            sym_norm = (p.get("symbol") or "").replace(" ", "").upper()
+            if sym_norm:
+                broker_qty[sym_norm] = int(p.get("qty") or 0)
+        unflat = []
+        for leg in legs:
+            leg_sym = (leg.get("symbol") or "").replace(" ", "").upper()
+            if not leg_sym:
+                continue
+            if broker_qty.get(leg_sym, 0) != 0:
+                unflat.append(leg_sym)
+        return unflat
 
     # ── option chains ───────────────────────────────────────────────────────
 
@@ -624,7 +679,55 @@ class IBKRBroker(BrokerBase):
                 trade = self._ib.placeOrder(bag, order)
                 order_submitted = True
                 self._ib.sleep(1)
-                return self._trade_to_result(trade, client_order_id)
+                # Phase 5b status validation (added 2026-05-05 after A021/A022 incident):
+                # Don't blindly return _trade_to_result. Check the broker's status
+                # and treat Cancelled/Rejected/Inactive as failures (return None)
+                # so the caller doesn't write a phantom journal entry.
+                #
+                # Indeterminate (Submitted/PreSubmitted) → poll briefly for terminal,
+                # then return with _working flag if still indeterminate.
+                result = self._trade_to_result(trade, client_order_id)
+                raw_status = (result.get("status") or "").strip()
+                status_norm = raw_status.lower()
+                if status_norm in _BROKER_TERMINAL_FAILURE_STATUSES:
+                    self._last_order_error = (
+                        f"broker rejected order (status={raw_status})"
+                    )
+                    logging.error(
+                        "IBKRBroker.place_mleg_order: broker REJECTED order "
+                        "coid=%s status=%s — returning None so journal stays accurate",
+                        client_order_id, raw_status,
+                    )
+                    return None
+                if status_norm in _BROKER_INDETERMINATE_STATUSES:
+                    # Poll for up to ENTRY_POLL_SECONDS for terminal state
+                    deadline = time.time() + ENTRY_POLL_SECONDS
+                    while time.time() < deadline:
+                        try:
+                            self._ib.sleep(0.5)
+                        except Exception:
+                            break
+                        result = self._trade_to_result(trade, client_order_id)
+                        status_norm = (result.get("status") or "").strip().lower()
+                        if status_norm in _BROKER_TERMINAL_FAILURE_STATUSES:
+                            logging.error(
+                                "IBKRBroker.place_mleg_order: order transitioned "
+                                "to %s after polling — returning None",
+                                result.get("status"),
+                            )
+                            return None
+                        if status_norm == "filled":
+                            return result
+                    # Still indeterminate — flag _working so caller can decide
+                    result["_working"] = True
+                    logging.warning(
+                        "IBKRBroker.place_mleg_order: order still %s after "
+                        "%.1fs polling — returning _working state coid=%s",
+                        result.get("status"), ENTRY_POLL_SECONDS, client_order_id,
+                    )
+                    return result
+                # status is Filled or unknown-non-failure → success path
+                return result
             except Exception as e:
                 self._last_order_error = f"{type(e).__name__}: {e}"
                 logging.error("IBKRBroker.place_mleg_order failed after submit=%s: %s",
@@ -684,6 +787,33 @@ class IBKRBroker(BrokerBase):
         except Exception as e:
             logging.warning("IBKRBroker.get_order_status(%s) failed: %s", order_id, e)
             return None
+
+    def poll_order(self, order_id: str) -> Optional[dict]:
+        """Phase 5b helper (added 2026-05-05): query an existing order's
+        current state and return a status-classified dict.
+
+        Returns dict with extra `_state` field:
+          - "filled"      → order has filled, safe to mark CLOSED in journal
+          - "working"     → order still pending at broker; do not resubmit
+          - "failed"      → order canceled/rejected; safe to retry submission
+          - "missing"     → order not found at broker (returns None)
+
+        Used by position_monitor.place_close_order's state machine: instead of
+        resubmitting a close that returned Submitted on a prior cycle, poll
+        the existing order_id to see if it's now filled.
+        """
+        result = self.get_order_status(order_id)
+        if result is None:
+            return None
+        status_norm = (result.get("status") or "").strip().lower()
+        if status_norm in _BROKER_SUCCESS_STATUSES:
+            result["_state"] = "filled"
+        elif status_norm in _BROKER_TERMINAL_FAILURE_STATUSES:
+            result["_state"] = "failed"
+        else:
+            # Submitted, PreSubmitted, etc. — still working
+            result["_state"] = "working"
+        return result
 
     def _find_open_order_by_ref(self, client_order_id: Optional[str]) -> Optional[dict]:
         """Search open/recent trades for one matching client_order_id (orderRef).

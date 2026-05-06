@@ -416,9 +416,9 @@ class TestReconcileGhostPositions:
         broker_pos = {"SPY251219C00600000": {"qty": 1, "market_value": 100}}
         trades = [_open_trade("A001", [_leg("SPY251219C00600000")])]
 
-        ghosts = pm.reconcile_ghost_positions(broker_pos, trades)
+        result = pm.reconcile_ghost_positions(broker_pos, trades)
 
-        assert ghosts == set()
+        assert result["ghosts"] == set()
         assert discord_calls == []
 
     def test_ghost_detected_when_position_not_in_journal(self, pm, tmp_path):
@@ -429,9 +429,9 @@ class TestReconcileGhostPositions:
         broker_pos = {"SPY251219C00600000": {"qty": 1, "market_value": 200}}
         trades = []  # no open journal entries
 
-        ghosts = pm.reconcile_ghost_positions(broker_pos, trades)
+        result = pm.reconcile_ghost_positions(broker_pos, trades)
 
-        assert "SPY251219C00600000" in ghosts
+        assert "SPY251219C00600000" in result["ghosts"]
         assert any("Ghost position" in c for c in discord_calls)
 
     def test_ghost_alert_message_contains_symbol(self, pm, tmp_path):
@@ -455,9 +455,9 @@ class TestReconcileGhostPositions:
         broker_pos = {"SPY251219C00600000": {"qty": 0, "market_value": 0}}
         trades = []
 
-        ghosts = pm.reconcile_ghost_positions(broker_pos, trades)
+        result = pm.reconcile_ghost_positions(broker_pos, trades)
 
-        assert ghosts == set()
+        assert result["ghosts"] == set()
         assert discord_calls == []
 
     def test_multiple_ghosts_all_alerted(self, pm, tmp_path):
@@ -471,9 +471,9 @@ class TestReconcileGhostPositions:
         }
         trades = []
 
-        ghosts = pm.reconcile_ghost_positions(broker_pos, trades)
+        result = pm.reconcile_ghost_positions(broker_pos, trades)
 
-        assert len(ghosts) == 2
+        assert len(result["ghosts"]) == 2
         assert len(discord_calls) == 2
 
     def test_cooldown_suppresses_repeat_alert(self, pm, tmp_path):
@@ -537,16 +537,17 @@ class TestReconcileGhostPositions:
         }
         trades = [_open_trade("A001", [_leg(occ_known)])]
 
-        ghosts = pm.reconcile_ghost_positions(broker_pos, trades)
+        result = pm.reconcile_ghost_positions(broker_pos, trades)
 
-        assert occ_ghost in ghosts
-        assert occ_known not in ghosts
+        assert occ_ghost in result["ghosts"]
+        assert occ_known not in result["ghosts"]
         assert len(discord_calls) == 1
 
     def test_returns_empty_set_when_no_positions(self, pm, tmp_path):
         pm.post_discord = lambda msg: None
-        ghosts = pm.reconcile_ghost_positions({}, [])
-        assert ghosts == set()
+        result = pm.reconcile_ghost_positions({}, [])
+        assert result["ghosts"] == set()
+        assert result["journal_lies"] == set()
 
     def test_ghost_alert_message_contains_fix_guidance(self, pm, tmp_path):
         """Alert message must tell operator what to check."""

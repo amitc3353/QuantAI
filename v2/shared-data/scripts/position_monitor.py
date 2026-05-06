@@ -240,9 +240,33 @@ def build_closing_legs(trade, alpaca_pos):
     return closing
 
 
+# Phase 5 close-path safeguard (added 2026-05-04 after A018 incident):
+# Order statuses that mean "close did NOT fill" and must be treated as failure.
+# A018's close was Cancelled by IBKR Error 201 ("opposite-side order exists"),
+# but the prior code treated any non-None broker response as success, marking
+# the journal CLOSED with synthetic P&L while 4 legs remained open on broker.
+_CLOSE_TERMINAL_FAILURE_STATUSES = {
+    "cancelled", "canceled", "apicancelled", "apicanceled",
+    "rejected", "inactive",
+}
+_CLOSE_INDETERMINATE_STATUSES = {
+    "submitted", "presubmitted", "pendingsubmit", "pendingcancel",
+}
+_CLOSE_SUCCESS_STATUSES = {"filled", "simulated"}
+
+
 def place_close_order(trade, legs, close_qty=1):
     """Place a close order through the active broker. 1 leg → plain order;
-    2-4 legs → mleg combo. Returns order dict on success, None on failure.
+    2-4 legs → mleg combo. Returns:
+      - dict with status="Filled"            → caller marks journal CLOSED
+      - dict with _working=True              → caller persists working_close_order_id;
+                                                next cycle polls instead of resubmitting
+      - None                                 → close failed terminally; caller may retry submission
+
+    Phase 5b close-path state machine (2026-05-05): indeterminate (Submitted)
+    must NOT trigger a resubmission loop (A020 reproduction — 5 reverse closes
+    accumulated in 10 min). State preserved across cycles via the journal's
+    new `working_close_order_id` field.
     """
     if DRY_RUN:
         log(f"  [DRY RUN] Would close {trade['id']} qty={close_qty} with {len(legs)} legs:")
@@ -253,6 +277,41 @@ def place_close_order(trade, legs, close_qty=1):
     if not (1 <= len(legs) <= 4):
         log(f"  Close order skipped: unexpected leg count {len(legs)} for {trade.get('id','?')}")
         return None
+
+    # Phase 5b: if the trade has a working_close_order_id from a prior cycle,
+    # POLL that order instead of resubmitting (A020 prevention).
+    working_id = trade.get("working_close_order_id")
+    if working_id:
+        broker = get_broker()
+        if hasattr(broker, "poll_order"):
+            poll_result = broker.poll_order(working_id)
+            if poll_result is None:
+                log(f"  Close-poll: order {working_id} NOT FOUND at broker — treating as failed")
+                return None  # caller can retry submission
+            state = poll_result.get("_state")
+            log(f"  Close-poll: working_close_order_id={working_id[:12]} state={state} "
+                f"status={poll_result.get('status')} filled={poll_result.get('filled_qty', 0)}")
+            if state == "filled":
+                return {
+                    "id": working_id,
+                    "status": poll_result.get("status", "Filled"),
+                    "filled_qty": poll_result.get("filled_qty", 0),
+                    "avg_fill_price": poll_result.get("avg_fill_price", 0.0),
+                }
+            if state == "failed":
+                log(f"  Close-poll: order {working_id[:12]} terminally failed — clearing working_id")
+                return None  # next cycle can retry submission
+            # state == "working" — still pending, return _working flag
+            return {
+                "id": working_id,
+                "status": poll_result.get("status", "Submitted"),
+                "filled_qty": poll_result.get("filled_qty", 0),
+                "avg_fill_price": poll_result.get("avg_fill_price", 0.0),
+                "_working": True,
+            }
+        # Broker doesn't support poll_order (e.g., paper Alpaca) — fall through
+        # to fresh submission. Log this since it's a degraded path.
+        log(f"  Close-poll skipped: broker has no poll_order (degraded — re-submitting)")
 
     import time as _t
     coid = f"close-{trade.get('id','?')}-{int(_t.time())}"
@@ -265,9 +324,43 @@ def place_close_order(trade, legs, close_qty=1):
         log(f"  Close order FAILED ({len(legs)}-leg qty={close_qty}): broker returned None")
         logging.error("Close order FAILED %d-leg qty=%d: broker returned None", len(legs), close_qty)
         return None
+
+    # Layer 1 in _broker_ibkr.py already validated entry status — but defense
+    # in depth: re-classify here in case close_position bypassed validation.
+    raw_status = (result.get("status") or "").strip()
+    status_norm = raw_status.lower()
+
+    if status_norm in _CLOSE_TERMINAL_FAILURE_STATUSES:
+        log(f"  Close order REJECTED for {trade.get('id','?')}: status={raw_status!r} "
+            f"(broker reported terminal failure)")
+        logging.error("Close order rejected for %s: status=%s — journal NOT marked CLOSED",
+                      trade.get('id'), raw_status)
+        return None
+
+    if status_norm in _CLOSE_INDETERMINATE_STATUSES or result.get("_working"):
+        # Order is working at broker. DO NOT resubmit on next cycle — POLL instead.
+        # Caller persists working_close_order_id so the polling path activates.
+        order_id = result.get("order_id", "") or coid
+        log(f"  Close order WORKING at broker for {trade.get('id','?')}: "
+            f"status={raw_status!r} order_id={order_id[:12]} — will poll next cycle")
+        return {
+            "id": order_id,
+            "status": raw_status,
+            "filled_qty": result.get("filled_qty", 0),
+            "avg_fill_price": result.get("avg_fill_price", 0.0),
+            "_working": True,
+        }
+
+    # Status is "Filled" or unknown-but-non-failure
     order_id = (result.get("order_id") or "")[:8]
-    log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''} qty={close_qty}): {order_id}")
-    return {"id": result.get("order_id", ""), "status": result.get("status", "submitted")}
+    log(f"  Close order placed ({len(legs)} leg{'s' if len(legs)!=1 else ''} qty={close_qty}): "
+        f"{order_id} status={raw_status}")
+    return {
+        "id": result.get("order_id", ""),
+        "status": result.get("status", "submitted"),
+        "filled_qty": result.get("filled_qty", 0),
+        "avg_fill_price": result.get("avg_fill_price", 0.0),
+    }
 
 
 # ── Exit logic ─────────────────────────────────────────────────────────────────
@@ -782,37 +875,69 @@ def _record_ghost_alert(symbol: str):
         pass
 
 
-def reconcile_ghost_positions(broker_positions: dict, open_trades: list):
-    """Compare broker option positions against journal open entries.
+def reconcile_ghost_positions(broker_positions: dict, open_trades: list,
+                              all_trades: list | None = None):
+    """Compare broker option positions against journal entries.
 
-    Fires a 🔴 Discord alert for every broker option position that cannot be
-    traced to any leg of any OPEN journal entry.  These "ghost positions" may
-    arise from:
-      - place_mleg_order returning None after the order was live at IBKR
-      - A manual order placed in TWS that bypassed the pipeline
-      - A partial close that left a residual leg
+    THREE failure modes detected:
+      1. **True ghost** — broker has a position that is referenced by NO journal
+         entry at all (open or closed). Phase 5 (2026-05-03).
+      2. **Journal lie** — broker has a position whose contract IS referenced by
+         a journal entry, but that entry is marked CLOSED. The close didn't
+         actually complete on the broker (A018). Added 2026-05-04.
+      3. **Entry phantom** — journal entry is marked OPEN, but ZERO of its legs
+         exist on the broker. The entry order was rejected (e.g. IBKR Error 201)
+         but the journal recorded it as filled (A021/A022). Added 2026-05-05.
 
-    *broker_positions*: {occ_symbol: pos_dict} from fetch_alpaca_positions()
-    *open_trades*: list of OPEN journal trades (already filtered by the caller)
+    *broker_positions*: {occ_symbol: pos_dict}
+    *open_trades*: list of OPEN journal trades
+    *all_trades*: optional — full list including CLOSED. If provided, enables
+        journal-lie detection. If None, only true ghost detection runs.
 
-    Returns set of ghost OCC symbols found this cycle.
+    Returns dict: {"ghosts": set, "journal_lies": set, "entry_phantoms": set}.
     """
-    # Collect every OCC symbol referenced by open journal entries.
-    journal_occs: set = set()
+    # Collect OCC symbols referenced by OPEN journal entries.
+    open_occs: set = set()
     for t in open_trades:
         for leg in t.get("legs", []):
             sym = _leg_occ(t, leg)
             if sym:
-                journal_occs.add(sym)
+                open_occs.add(sym)
+
+    # If caller supplied all_trades, build a map: occ_symbol → CLOSED trade_id
+    # (most recent CLOSED entry that references this contract).
+    closed_occ_to_tid: dict = {}
+    if all_trades is not None:
+        # Sort by close timestamp descending so we pick the most recent close
+        def _close_ts(tr):
+            return tr.get("close_timestamp") or tr.get("exit_timestamp") or ""
+        for t in sorted(all_trades, key=_close_ts, reverse=True):
+            if t.get("status") != "CLOSED":
+                continue
+            tid = t.get("trade_id") or t.get("id")
+            if not tid:
+                continue
+            for leg in t.get("legs", []):
+                sym = _leg_occ(t, leg)
+                if sym and sym not in closed_occ_to_tid:
+                    closed_occ_to_tid[sym] = tid
 
     ghosts: set = set()
+    journal_lies: set = set()  # set of (occ_symbol, claimed_closed_tid) tuples
     for sym, pos in broker_positions.items():
         qty = pos.get("qty", 0)
         if qty == 0:
             continue  # zero-qty positions are stale API artefacts; ignore
-        if sym not in journal_occs:
+        if sym in open_occs:
+            continue  # legitimate open position — fine
+        # Not in any open entry. Is it in a CLOSED entry?
+        claimed_tid = closed_occ_to_tid.get(sym)
+        if claimed_tid:
+            journal_lies.add((sym, claimed_tid))
+        else:
             ghosts.add(sym)
 
+    # Alert: true ghosts (no journal reference at all)
     for sym in sorted(ghosts):
         if _ghost_alert_ok(sym):
             pos = broker_positions[sym]
@@ -827,11 +952,83 @@ def reconcile_ghost_positions(broker_positions: dict, open_trades: list):
                 f"Check TWS and journal immediately."
             )
             log(f"GHOST POSITION: {sym} qty={qty} — alerting Discord")
-            logging.error("Ghost position: %s qty=%d not in any open journal entry", sym, qty)
+            logging.error("Ghost position: %s qty=%d not in any journal entry", sym, qty)
             post_discord(msg)
             _record_ghost_alert(sym)
 
-    return ghosts
+    # Alert: journal lies (journal claims CLOSED but broker still has position)
+    # Group by claimed_tid so we send one alert per lying journal entry, not per leg.
+    lies_by_tid: dict = {}
+    for sym, tid in journal_lies:
+        lies_by_tid.setdefault(tid, []).append(sym)
+    for tid, syms in sorted(lies_by_tid.items()):
+        # Use the trade_id as the cooldown key so we don't spam per-leg
+        if _ghost_alert_ok(f"journal-lie:{tid}"):
+            sym_list = ", ".join(f"`{s}`" for s in sorted(syms)[:6])
+            msg = (
+                f"🔴 **Journal lie detected** — trade `{tid}` is marked CLOSED in the "
+                f"journal but **{len(syms)} leg(s) still open on broker**:\n"
+                f"  {sym_list}\n"
+                f"This means a close order was reported as filled but never actually "
+                f"completed (e.g., IBKR Error 201, ApiCancelled). "
+                f"**Manual review required** — the journal P&L is fabricated."
+            )
+            log(f"JOURNAL LIE: {tid} has {len(syms)} legs still on broker — alerting")
+            logging.error("Journal lie detected: %s — claimed CLOSED but %d legs still open: %s",
+                          tid, len(syms), syms)
+            post_discord(msg)
+            _record_ghost_alert(f"journal-lie:{tid}")
+
+    # Phase 5b entry-phantom detection (added 2026-05-05 after A021/A022 incident).
+    # An OPEN journal entry whose legs are entirely absent from the broker means
+    # the entry order was rejected (e.g., IBKR Error 201) but the response was
+    # mishandled — journal recorded as OPEN with order_id even though nothing
+    # actually filled. Detection is purely observational; resolution is manual
+    # (operator must decide whether to re-enter the trade or mark the journal
+    # entry as PHANTOM_NEVER_FILLED).
+    entry_phantoms: set = set()
+    # Build set of OCC symbols actually present at broker with non-zero qty
+    broker_active_syms = {
+        sym for sym, p in broker_positions.items()
+        if (p.get("qty") or 0) != 0
+    }
+    for t in open_trades:
+        tid = t.get("trade_id") or t.get("id")
+        if not tid:
+            continue
+        leg_syms = set()
+        for leg in t.get("legs", []):
+            sym = _leg_occ(t, leg)
+            if sym:
+                leg_syms.add(sym)
+        if not leg_syms:
+            continue  # malformed entry without legs — nothing to compare
+        # If ZERO of the entry's legs are at broker, it's a phantom
+        if not (leg_syms & broker_active_syms):
+            entry_phantoms.add(tid)
+
+    # Alert: entry phantoms — one alert per trade
+    for tid in sorted(entry_phantoms):
+        if _ghost_alert_ok(f"entry-phantom:{tid}"):
+            msg = (
+                f"🔴 **Entry phantom detected** — trade `{tid}` is marked OPEN in the "
+                f"journal but **NONE of its legs are on the broker**.\n"
+                f"This means the entry order never actually filled "
+                f"(e.g., IBKR rejected it as Error 201). "
+                f"The journal `order_id` is misleading — the trade was never executed. "
+                f"**Manual review required** — operator must decide whether to "
+                f"re-enter or mark the journal entry as PHANTOM_NEVER_FILLED."
+            )
+            log(f"ENTRY PHANTOM: {tid} has 0 legs on broker — alerting")
+            logging.error("Entry phantom detected: %s — journal OPEN but broker has no matching legs", tid)
+            post_discord(msg)
+            _record_ghost_alert(f"entry-phantom:{tid}")
+
+    return {
+        "ghosts": ghosts,
+        "journal_lies": journal_lies,
+        "entry_phantoms": entry_phantoms,
+    }
 
 
 # ── Discord ────────────────────────────────────────────────────────────────────
@@ -982,11 +1179,11 @@ def main():
 
     log(f"Broker: {len(alpaca_pos)} option position(s) found")
 
-    # Ghost-position reconciliation: alert on broker positions with no journal entry.
-    # This catches orders that were submitted but whose confirmation was lost (Phase 5
-    # partial-fill safeguard — last line of defence before position_monitor's own
-    # exit logic would otherwise ignore untracked positions entirely).
-    reconcile_ghost_positions(alpaca_pos, open_trades)
+    # Ghost-position reconciliation (Phase 5 + journal-lie detection 2026-05-04):
+    #   - True ghost: broker has position, no journal reference at all
+    #   - Journal lie: broker has position, journal says CLOSED for that contract
+    # all_trades passed so journal-lie detection works (compares against CLOSED entries).
+    reconcile_ghost_positions(alpaca_pos, open_trades, all_trades=all_trades)
 
     # Build P&L map
     pnl_map = {}
@@ -1071,6 +1268,9 @@ def main():
         order = place_close_order(t, legs, close_qty)
         if order is None:
             attempts[tid] = prior + 1
+            # Phase 5b: clear working_close_order_id so next cycle can re-submit fresh
+            if t.get("working_close_order_id"):
+                journal_updates[tid] = {"working_close_order_id": None}
             log(f"  Close order failed for {tid} (attempt {attempts[tid]}/{MAX_CLOSE_ATTEMPTS})")
             logging.warning("Close order failed for %s (attempt %d/%d)", tid, attempts[tid], MAX_CLOSE_ATTEMPTS)
             if attempts[tid] >= MAX_CLOSE_ATTEMPTS:
@@ -1081,6 +1281,52 @@ def main():
                     f"`{tid}` {t.get('symbol','?')} {(t.get('strategy') or '').upper()} — manual review"
                 )
             continue
+
+        # Phase 5b state machine (added 2026-05-05 after A020 retry-loop incident):
+        # If close order is still working at broker, persist its order_id so next
+        # cycle POLLS the existing order instead of submitting a new close. This
+        # prevents the 5x-reverse-close accumulation we saw with A020.
+        if order.get("_working"):
+            working_id = order.get("id") or ""
+            log(f"  Close order WORKING for {tid}: order_id={working_id[:12]} — "
+                f"persisting working_close_order_id; next cycle will poll, not resubmit")
+            journal_updates[tid] = {"working_close_order_id": working_id}
+            attempts.pop(tid, None)  # don't count working state as a failed attempt
+            continue
+
+        # Phase 5 close-path safeguard (added 2026-05-04): post-close broker
+        # verification. Even if place_close_order returned a Filled status, query
+        # the broker fresh and confirm every leg of this trade is actually flat.
+        # If any leg is still open, the close did NOT complete in reality and we
+        # MUST NOT write a fabricated CLOSED record to the journal.
+        # Skips the check on full closes during DRY_RUN (no real orders placed).
+        if not DRY_RUN and not is_partial:
+            try:
+                broker = get_broker()
+                if hasattr(broker, "verify_legs_flat"):
+                    unflat = broker.verify_legs_flat(t.get("legs") or [])
+                else:
+                    unflat = []  # broker doesn't support verification — skip (e.g., paper Alpaca)
+            except Exception as _verify_err:
+                log(f"  POST-CLOSE VERIFICATION ERRORED for {tid}: {_verify_err} — failing closed")
+                logging.error("verify_legs_flat raised for %s: %s", tid, _verify_err)
+                unflat = ["_verify_errored"]
+            if unflat:
+                attempts[tid] = prior + 1
+                log(f"  POST-CLOSE VERIFICATION FAILED for {tid}: {len(unflat)} leg(s) still open: {unflat}")
+                logging.error(
+                    "Post-close verification failed for %s — close order returned status='%s' "
+                    "but broker still has positions: %s. Refusing to mark journal CLOSED.",
+                    tid, order.get("status"), unflat,
+                )
+                post_discord(
+                    f"🔴 **Journal-lie prevented** for `{tid}` — "
+                    f"close order reported status `{order.get('status','?')}` "
+                    f"but {len(unflat)} leg(s) still open on broker:\n"
+                    f"  `{', '.join(unflat[:4])}`\n"
+                    f"Journal NOT marked CLOSED. Will retry next cycle."
+                )
+                continue  # do NOT mark CLOSED — let the next cycle re-evaluate
 
         basis = abs(t.get("net_debit") or t.get("net_credit") or t.get("estimated_credit") or 0)
         pnl_pct = round(pnl / (basis * 100), 4) if basis else 0.0
@@ -1121,6 +1367,8 @@ def main():
                 "pnl":             round(pnl, 2),
                 "pnl_pct":         pnl_pct,
                 "close_order_id":  order.get("id", ""),
+                # Phase 5b: clear working_close_order_id on successful close
+                "working_close_order_id": None,
             }
             if holding_days is not None:
                 upd["holding_days"] = holding_days

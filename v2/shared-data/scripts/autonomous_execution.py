@@ -71,7 +71,40 @@ ALLOWED_STRATEGIES = {
     "bull_put_spread", "bear_call_spread", "iron_condor", "iron_butterfly",
     "calendar_spread", "diagonal_spread", "jade_lizard", "put_spread", "call_spread",
 }
-MANUAL_ONLY = {"covered_call", "collar", "cash_secured_put", "covered_strangle"}
+REQUIRES_SHARES = {"covered_call", "collar", "cash_secured_put", "covered_strangle"}
+
+
+def check_no_overlapping_positions(proposed_legs: list, existing_positions: list) -> tuple[bool, str]:
+    """Phase 5b pre-trade dedupe (added 2026-05-05 after A021/A022 incident).
+
+    Reject any proposed entry whose leg contracts overlap with positions already
+    in the portfolio. IBKR Error 201 ("Cannot have open orders on both sides of
+    the same US Option contract") will reject such orders silently as
+    Cancelled — this check surfaces the conflict BEFORE submission with a
+    readable error.
+
+    *proposed_legs*: list of dicts, each with `symbol` (OCC string)
+    *existing_positions*: list of dicts (typically from broker.get_positions()),
+       each with `symbol` and `qty` keys
+    Returns (ok, reason).
+        ok=True  → no overlaps, proceed with submission
+        ok=False → at least one leg's contract is already in portfolio (qty != 0)
+    """
+    occupied = {
+        (p.get("symbol") or "").replace(" ", "").upper(): int(p.get("qty") or 0)
+        for p in (existing_positions or [])
+    }
+    # Strip zero-qty entries (stale broker artifacts)
+    occupied = {k: v for k, v in occupied.items() if k and v != 0}
+    for leg in proposed_legs or []:
+        sym = (leg.get("symbol") or "").replace(" ", "").upper()
+        if sym and sym in occupied:
+            return False, (
+                f"overlap: leg {sym!r} already in portfolio "
+                f"(qty={occupied[sym]:+d}). IBKR will reject with Error 201."
+            )
+    return True, "ok"
+
 
 def log(msg):
     print(f"[{datetime.now(ET).strftime('%H:%M:%S')}] {msg}")
@@ -263,6 +296,23 @@ def place_mleg_order(symbol, legs_config, strategy_name):
 
     coid = f"{strategy_name[:30]}-{int(time.time())}"
     broker = get_broker()
+
+    # Phase 5b pre-trade exposure dedupe (added 2026-05-05 after A021/A022 incident).
+    # IBKR rejects orders with "Error 201" if any leg's contract has open
+    # positions on the opposite side. Surface this BEFORE submission so we get
+    # a readable rejection instead of an opaque Cancelled status.
+    try:
+        existing_positions = broker.get_positions() if hasattr(broker, "get_positions") else []
+    except Exception as _pos_err:
+        log(f"  ⚠️  pre-trade get_positions failed (non-fatal): {_pos_err}")
+        existing_positions = []
+    overlap_ok, overlap_reason = check_no_overlapping_positions(legs_config, existing_positions)
+    if not overlap_ok:
+        log(f"  ❌ pre-trade dedupe blocked {strategy_name}: {overlap_reason}")
+        logging.warning("autonomous_execution: pre-trade dedupe blocked %s: %s",
+                        strategy_name, overlap_reason)
+        return None
+
     result = broker.place_mleg_order(legs_config, qty=1, client_order_id=coid)
     if result is None:
         reason = getattr(broker, "_last_order_error", None) or "unknown"
@@ -536,8 +586,8 @@ def check_guards(trade, intel):
     macro    = intel.get("macro", {})
     strategy = trade.get("strategy", "").lower().replace(" ", "_")
 
-    if strategy in MANUAL_ONLY:
-        return False, f"{strategy} requires shares — Amit executes manually"
+    if strategy in REQUIRES_SHARES:
+        return False, f"{strategy} rejected — requires share ownership; agents trade defined-risk strategies only"
     if macro.get("vix", 0) >= VIX_HALT:
         return False, f"VIX {macro.get('vix',0):.1f} >= {VIX_HALT}"
     if trade.get("max_loss_pct", 99) > MAX_LOSS_PCT:
