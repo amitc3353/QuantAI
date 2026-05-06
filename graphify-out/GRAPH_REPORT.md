@@ -1,45 +1,45 @@
-# Graph Report - .  (2026-05-02)
+# Graph Report - QuantAI  (2026-05-06)
 
 ## Corpus Check
-- 80 files · ~144,962 words
+- 121 files · ~201,659 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1756 nodes · 3197 edges · 177 communities detected
-- Extraction: 82% EXTRACTED · 18% INFERRED · 0% AMBIGUOUS · INFERRED: 572 edges (avg confidence: 0.73)
+- 2800 nodes · 4752 edges · 242 communities detected
+- Extraction: 74% EXTRACTED · 26% INFERRED · 0% AMBIGUOUS · INFERRED: 1249 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
+- [[_COMMUNITY_Community 0|Community 0]]
 - [[_COMMUNITY_Community 1|Community 1]]
-- [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
-- [[_COMMUNITY_Auto-Heal Subsystem|Auto-Heal Subsystem]]
-- [[_COMMUNITY_Beta Strategy Modules|Beta Strategy Modules]]
-- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
-- [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
-- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
-- [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
-- [[_COMMUNITY_Discord Chat Agent|Discord Chat Agent]]
-- [[_COMMUNITY_Pre-Trade Context Builder|Pre-Trade Context Builder]]
-- [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
-- [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
 - [[_COMMUNITY_Community 13|Community 13]]
-- [[_COMMUNITY_Guard Engine + Tests|Guard Engine + Tests]]
-- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
-- [[_COMMUNITY_Risk Engine + Risk Checks|Risk Engine + Risk Checks]]
-- [[_COMMUNITY_Weekly Synthesis (Sonnet)|Weekly Synthesis (Sonnet)]]
-- [[_COMMUNITY_Self-Diagnosis + Trade Review (Haiku)|Self-Diagnosis + Trade Review (Haiku)]]
-- [[_COMMUNITY_Self-Improve + Self-Evolution|Self-Improve + Self-Evolution]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
 - [[_COMMUNITY_Community 20|Community 20]]
 - [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
-- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
-- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
-- [[_COMMUNITY_Earnings Calendar + Journal|Earnings Calendar + Journal]]
+- [[_COMMUNITY_Community 24|Community 24]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
 - [[_COMMUNITY_Community 27|Community 27]]
 - [[_COMMUNITY_Community 28|Community 28]]
-- [[_COMMUNITY_Alpha Identity & Strategy|Alpha Identity & Strategy]]
+- [[_COMMUNITY_Community 29|Community 29]]
 - [[_COMMUNITY_Community 30|Community 30]]
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
@@ -51,13 +51,14 @@
 - [[_COMMUNITY_Community 38|Community 38]]
 - [[_COMMUNITY_Community 39|Community 39]]
 - [[_COMMUNITY_Community 40|Community 40]]
-- [[_COMMUNITY_Self-Improve + Self-Evolution|Self-Improve + Self-Evolution]]
+- [[_COMMUNITY_Community 41|Community 41]]
 - [[_COMMUNITY_Community 42|Community 42]]
 - [[_COMMUNITY_Community 43|Community 43]]
 - [[_COMMUNITY_Community 44|Community 44]]
 - [[_COMMUNITY_Community 45|Community 45]]
 - [[_COMMUNITY_Community 46|Community 46]]
 - [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
 - [[_COMMUNITY_Community 49|Community 49]]
 - [[_COMMUNITY_Community 50|Community 50]]
 - [[_COMMUNITY_Community 51|Community 51]]
@@ -67,16 +68,12 @@
 - [[_COMMUNITY_Community 55|Community 55]]
 - [[_COMMUNITY_Community 56|Community 56]]
 - [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
-- [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 64|Community 64]]
-- [[_COMMUNITY_Community 65|Community 65]]
-- [[_COMMUNITY_Community 66|Community 66]]
-- [[_COMMUNITY_Community 67|Community 67]]
-- [[_COMMUNITY_Community 68|Community 68]]
-- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
-- [[_COMMUNITY_Community 70|Community 70]]
 - [[_COMMUNITY_Community 71|Community 71]]
 - [[_COMMUNITY_Community 72|Community 72]]
 - [[_COMMUNITY_Community 73|Community 73]]
@@ -110,7 +107,7 @@
 - [[_COMMUNITY_Community 101|Community 101]]
 - [[_COMMUNITY_Community 102|Community 102]]
 - [[_COMMUNITY_Community 103|Community 103]]
-- [[_COMMUNITY_Heartbeat Monitor|Heartbeat Monitor]]
+- [[_COMMUNITY_Community 104|Community 104]]
 - [[_COMMUNITY_Community 105|Community 105]]
 - [[_COMMUNITY_Community 106|Community 106]]
 - [[_COMMUNITY_Community 107|Community 107]]
@@ -127,7 +124,7 @@
 - [[_COMMUNITY_Community 118|Community 118]]
 - [[_COMMUNITY_Community 119|Community 119]]
 - [[_COMMUNITY_Community 120|Community 120]]
-- [[_COMMUNITY_Alpaca Broker Layer|Alpaca Broker Layer]]
+- [[_COMMUNITY_Community 121|Community 121]]
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
 - [[_COMMUNITY_Community 124|Community 124]]
@@ -160,8 +157,8 @@
 - [[_COMMUNITY_Community 151|Community 151]]
 - [[_COMMUNITY_Community 152|Community 152]]
 - [[_COMMUNITY_Community 153|Community 153]]
-- [[_COMMUNITY_Journal Agent Operating Manual|Journal Agent Operating Manual]]
-- [[_COMMUNITY_Journal Agent Operating Manual|Journal Agent Operating Manual]]
+- [[_COMMUNITY_Community 154|Community 154]]
+- [[_COMMUNITY_Community 155|Community 155]]
 - [[_COMMUNITY_Community 156|Community 156]]
 - [[_COMMUNITY_Community 157|Community 157]]
 - [[_COMMUNITY_Community 158|Community 158]]
@@ -169,6 +166,9 @@
 - [[_COMMUNITY_Community 160|Community 160]]
 - [[_COMMUNITY_Community 161|Community 161]]
 - [[_COMMUNITY_Community 162|Community 162]]
+- [[_COMMUNITY_Community 163|Community 163]]
+- [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 165|Community 165]]
 - [[_COMMUNITY_Community 166|Community 166]]
 - [[_COMMUNITY_Community 167|Community 167]]
 - [[_COMMUNITY_Community 168|Community 168]]
@@ -187,30 +187,95 @@
 - [[_COMMUNITY_Community 181|Community 181]]
 - [[_COMMUNITY_Community 182|Community 182]]
 - [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 187|Community 187]]
+- [[_COMMUNITY_Community 188|Community 188]]
+- [[_COMMUNITY_Community 189|Community 189]]
+- [[_COMMUNITY_Community 190|Community 190]]
+- [[_COMMUNITY_Community 191|Community 191]]
+- [[_COMMUNITY_Community 192|Community 192]]
+- [[_COMMUNITY_Community 193|Community 193]]
+- [[_COMMUNITY_Community 194|Community 194]]
+- [[_COMMUNITY_Community 195|Community 195]]
+- [[_COMMUNITY_Community 196|Community 196]]
+- [[_COMMUNITY_Community 197|Community 197]]
+- [[_COMMUNITY_Community 198|Community 198]]
+- [[_COMMUNITY_Community 199|Community 199]]
+- [[_COMMUNITY_Community 200|Community 200]]
+- [[_COMMUNITY_Community 201|Community 201]]
+- [[_COMMUNITY_Community 202|Community 202]]
+- [[_COMMUNITY_Community 203|Community 203]]
+- [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
+- [[_COMMUNITY_Community 207|Community 207]]
+- [[_COMMUNITY_Community 208|Community 208]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 211|Community 211]]
+- [[_COMMUNITY_Community 212|Community 212]]
+- [[_COMMUNITY_Community 213|Community 213]]
+- [[_COMMUNITY_Community 214|Community 214]]
+- [[_COMMUNITY_Community 215|Community 215]]
+- [[_COMMUNITY_Community 216|Community 216]]
+- [[_COMMUNITY_Community 217|Community 217]]
+- [[_COMMUNITY_Community 218|Community 218]]
+- [[_COMMUNITY_Community 219|Community 219]]
+- [[_COMMUNITY_Community 220|Community 220]]
+- [[_COMMUNITY_Community 221|Community 221]]
+- [[_COMMUNITY_Community 222|Community 222]]
+- [[_COMMUNITY_Community 223|Community 223]]
+- [[_COMMUNITY_Community 224|Community 224]]
+- [[_COMMUNITY_Community 225|Community 225]]
+- [[_COMMUNITY_Community 226|Community 226]]
+- [[_COMMUNITY_Community 227|Community 227]]
+- [[_COMMUNITY_Community 228|Community 228]]
+- [[_COMMUNITY_Community 229|Community 229]]
+- [[_COMMUNITY_Community 230|Community 230]]
+- [[_COMMUNITY_Community 231|Community 231]]
+- [[_COMMUNITY_Community 232|Community 232]]
+- [[_COMMUNITY_Community 233|Community 233]]
+- [[_COMMUNITY_Community 234|Community 234]]
+- [[_COMMUNITY_Community 235|Community 235]]
+- [[_COMMUNITY_Community 236|Community 236]]
+- [[_COMMUNITY_Community 237|Community 237]]
+- [[_COMMUNITY_Community 238|Community 238]]
+- [[_COMMUNITY_Community 239|Community 239]]
+- [[_COMMUNITY_Community 240|Community 240]]
+- [[_COMMUNITY_Community 241|Community 241]]
+- [[_COMMUNITY_Community 242|Community 242]]
+- [[_COMMUNITY_Community 243|Community 243]]
+- [[_COMMUNITY_Community 244|Community 244]]
+- [[_COMMUNITY_Community 245|Community 245]]
+- [[_COMMUNITY_Community 246|Community 246]]
+- [[_COMMUNITY_Community 247|Community 247]]
+- [[_COMMUNITY_Community 248|Community 248]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `BrokerBase` - 62 edges
-2. `Client` - 51 edges
-3. `IBKRBroker` - 37 edges
+1. `Client` - 89 edges
+2. `BrokerBase` - 74 edges
+3. `IBKRBroker` - 40 edges
 4. `post()` - 31 edges
-5. `main()` - 26 edges
-6. `run_guard_pipeline()` - 25 edges
-7. `TradeProposal` - 23 edges
-8. `run()` - 22 edges
-9. `run_execute()` - 22 edges
-10. `AlpacaBroker` - 21 edges
+5. `reconcile_ghost_positions()` - 28 edges
+6. `main()` - 28 edges
+7. `diagnose()` - 27 edges
+8. `review()` - 26 edges
+9. `run_guard_pipeline()` - 25 edges
+10. `run()` - 24 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `run()` --calls--> `main()`  [INFERRED]
-  /home/trader/QuantAI/v2/shared-data/scripts/autonomous_execution.py → discord-bot/bot.py
+  v2/shared-data/scripts/autonomous_execution.py → discord-bot/bot.py
 - `main()` --calls--> `get_positions()`  [INFERRED]
-  /home/trader/QuantAI/v2/shared-data/scripts/close_intc_wings.py → discord-bot/alpaca_client.py
+  v2/shared-data/scripts/close_intc_wings.py → discord-bot/alpaca_client.py
 - `sync()` --calls--> `on_ready()`  [INFERRED]
   v2/shared-data/scripts/sheets_sync.py → discord-bot/bot.py
-- `parse_args()` --calls--> `main()`  [INFERRED]
-  v2/shared-data/scripts/add_error.py → /home/trader/QuantAI/v2/shared-data/scripts/auto_heal.py
-- `parse_args()` --calls--> `main()`  [INFERRED]
-  v2/shared-data/scripts/add_error.py → /home/trader/QuantAI/v2/shared-data/scripts/weekly_synthesis.py
+- `place_mleg_order()` --calls--> `get_positions()`  [INFERRED]
+  v2/shared-data/scripts/autonomous_execution.py → discord-bot/alpaca_client.py
+- `run()` --calls--> `run_claude_code()`  [INFERRED]
+  v2/shared-data/scripts/autonomous_execution.py → scripts/cto_listener.py
 
 ## Hyperedges (group relationships)
 - **Three-Agent Self-Learning System (Alpha/Beta/Gamma)** — agent_alpha_identity_who_i_am, agent_beta_identity_who_i_am, agent_gamma_identity_who_i_am [INFERRED 0.90]
@@ -219,992 +284,1376 @@
 
 ## Communities
 
-### Community 0 - "Alpaca Broker Layer"
-Cohesion: 0.03
-Nodes (103): AlpacaBroker, BrokerBase, _build_occ(), close_position(), connect(), disconnect(), fetch_option_chain(), get_account() (+95 more)
+### Community 0 - "Community 0"
+Cohesion: 0.02
+Nodes (151): _build_context(), _call_haiku(), _concurrent_positions(), diagnose(), _load_agent_identity(), main(), Call Haiku with a tight timeout. Returns text or None on failure., Call Haiku with a tight timeout. Returns text or None on failure. (+143 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.04
-Nodes (101): cancel_all_orders(), cancel_order(), close_all_positions(), close_position(), _generate_hash(), get_account(), get_data_client(), get_latest_quote() (+93 more)
+Cohesion: 0.02
+Nodes (127): get_broker(), Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr), close_wing(), log(), main(), next_manual_id(), Find next M### id not already in the journal., write_journal_entry() (+119 more)
 
-### Community 2 - "Guard Engine + Tests"
+### Community 2 - "Community 2"
+Cohesion: 0.02
+Nodes (154): _close_position(), _estimate_condor_current_cost(), guard_check(), load_params(), log_trade(), make_embed(), monitor_positions(), post_discord() (+146 more)
+
+### Community 3 - "Community 3"
+Cohesion: 0.02
+Nodes (97): AlpacaBroker, BrokerBase, _build_occ(), _build_occ_from_contract(), IBKRBroker, _IBKRNoiseFilter, _install_ib_log_filter(), _is_in_restart_window() (+89 more)
+
+### Community 4 - "Community 4"
 Cohesion: 0.04
 Nodes (49): BaseModel, check_bull_put(), check_cooldown(), check_covered_call(), check_daily_loss(), check_earnings_blackout(), check_halted(), check_iron_condor() (+41 more)
 
-### Community 3 - "Auto-Heal Subsystem"
+### Community 5 - "Community 5"
+Cohesion: 0.04
+Nodes (54): build_prompt(), main(), post_discord(), process_task(), cto_listener.py — Dockerized CTO Task Runner ===================================, Read the queue file. Returns the task dict if status=pending,     else None. Mat, Update the queue file's status field., Build the Claude Code prompt, matching the bash script's format. (+46 more)
+
+### Community 6 - "Community 6"
+Cohesion: 0.04
+Nodes (41): assert_review_schema(), Hand-written assertion that a review dict matches the expected schema., find_trade(), Atomic single-entry update for trades.jsonl.  Mirrors position_monitor.rewrite_j, Merge `fields` into the entry whose id == trade_id. Atomic rewrite.      Returns, Return the entry matching trade_id, or None if absent., update_trade_entry(), fail() (+33 more)
+
+### Community 7 - "Community 7"
+Cohesion: 0.04
+Nodes (64): build_occ_symbol(), check_guards(), check_no_overlapping_positions(), count_open_agent_trades(), execute_bear_call_spread(), execute_bull_put_spread(), execute_diagonal_spread(), execute_generic_spread() (+56 more)
+
+### Community 8 - "Community 8"
+Cohesion: 0.04
+Nodes (76): backtest_agent1_params(), backtest_agent2_params(), get_trade_pairs(), load_journal(), backtester.py — Param Change Validator ========================================, Re-simulate a historical Agent 1 trade with different params.     Returns what t, Backtest Agent 1 param change against last N days of journal data.     Returns v, Backtest Agent 2 param change. Uses 60 days (longer because CC trades are weekly (+68 more)
+
+### Community 9 - "Community 9"
 Cohesion: 0.05
-Nodes (80): append_digest(), apply_diff(), backup_path(), call_llm(), _channel(), cmd_reset(), cmd_rollback(), cmd_status() (+72 more)
+Nodes (73): ChannelRouter, cmd_analyze(), cmd_brief(), cmd_emergency_stop(), cmd_guard_check(), cmd_resume(), cmd_rules(), cmd_status() (+65 more)
 
-### Community 4 - "Beta Strategy Modules"
-Cohesion: 0.06
-Nodes (65): build_exit_rules(), can_enter(), _direction(), position_size(), Broken Wing Butterfly — XSP. Asymmetric profit if market stays in range.  Regime, select_strikes(), build_exit_rules(), can_enter() (+57 more)
+### Community 10 - "Community 10"
+Cohesion: 0.04
+Nodes (41): Return Monday 00:00 ET of the current week (or the week containing `now`)., this_week_monday(), TestThisWeekMonday, _make_diagnosis_file(), _make_trade(), Integration tests: weekly_synthesis aggregates trade data + posts to Discord., Sonnet failure after retry → fallback text, still writes report., TestSynthesizeWithData (+33 more)
 
-### Community 5 - "Earnings Calendar + Journal"
-Cohesion: 0.06
-Nodes (65): load_journal(), Load last N days of trades from an agent's journal., days_since_earnings(), days_to_earnings(), _fetch_window(), Finnhub earnings-calendar helper for Agent Gamma.  Indices (XSP/SPX/NDX/RUT) and, Trading days until the next earnings announcement, or None if unknown., Trading days since the last earnings announcement, or None if unknown. (+57 more)
+### Community 11 - "Community 11"
+Cohesion: 0.04
+Nodes (77): chat_with_claude(), ChatAgent, cmd_decide(), cmd_remember(), handle_cto_scan(), handle_cto_task(), handle_lessons(), handle_remember() (+69 more)
 
-### Community 6 - "Alpha Identity & Strategy"
+### Community 12 - "Community 12"
+Cohesion: 0.05
+Nodes (47): _direction(), Broken Wing Butterfly — XSP. Asymmetric profit if market stays in range.  Regime, select_strikes(), Calendar Spread — SPX. Sell 14 DTE ATM, buy 45-60 DTE ATM at same strike.  Regim, select_strikes(), Call Ratio Backspread 1x2 — XSP. Sell 1 ATM call, buy 2 OTM calls 5-8% above.  R, select_strikes(), dte() (+39 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.04
+Nodes (38): aggregate_status(), check_clawroute_18790(), check_collector_staleness(), check_cron_freshness(), check_dashboard_html_size(), check_disk(), check_graphify(), check_ibkr_port() (+30 more)
+
+### Community 14 - "Community 14"
+Cohesion: 0.04
+Nodes (66): main(), parse_args(), cancel_all_orders(), cancel_order(), close_all_positions(), close_position(), _generate_hash(), get_account() (+58 more)
+
+### Community 15 - "Community 15"
 Cohesion: 0.04
 Nodes (70): Agent Alpha Core Principles, Diagonal Spreads (Primary Strategy), Agent Alpha — What I Do NOT Do, Why Agents Did Not Trade, discord.py, py_vollib, FastAPI (guard-engine dep), alpaca-py (+62 more)
 
-### Community 7 - "Earnings Calendar + Journal"
-Cohesion: 0.06
-Nodes (60): _close_position(), _estimate_condor_current_cost(), guard_check(), load_params(), log_trade(), make_embed(), monitor_positions(), post_discord() (+52 more)
+### Community 16 - "Community 16"
+Cohesion: 0.05
+Nodes (37): cooldown_ok(), get_ibkr_probe_state(), is_market_hours(), main(), post_discord(), probe_ibkr_port(), Decide whether to print the pipeline-beat status line this cron tick.     During, Persist the last-print timestamp + status. Failure is non-fatal. (+29 more)
 
-### Community 8 - "Guard Engine + Tests"
-Cohesion: 0.06
-Nodes (60): build_health_embeds(), build_startup_embed(), check_agent_journals(), check_alpaca_connection(), check_cache_freshness(), check_config_sanity(), check_data_quality(), check_discord_webhooks() (+52 more)
+### Community 17 - "Community 17"
+Cohesion: 0.05
+Nodes (34): _journal_write(), _load_strategy(), main(), _next_beta_id(), _post_discord(), _simulate_slippage(), _write_dashboard_state(), age_of() (+26 more)
 
-### Community 9 - "Discord Chat Agent"
+### Community 18 - "Community 18"
 Cohesion: 0.06
-Nodes (59): chat_with_claude(), ChatAgent, cmd_decide(), cmd_remember(), handle_cto_task(), handle_lessons(), handle_remember(), handle_stats() (+51 more)
+Nodes (31): Structured logging helper for QuantAI Python scripts.  Adds a SQLiteHandler to t, Add a SQLiteHandler to the root logger. Idempotent: calling twice does nothing., Logging handler that inserts WARNING+ records into pyapp_inbox table.      The c, Create the inbox table if the DB exists but the table doesn't.         Does NOT, setup(), SQLiteHandler, For each known-noise pattern: any unresolved event at warning/error/critical, reclassify_catalog_noise() (+23 more)
 
-### Community 10 - "Pre-Trade Context Builder"
+### Community 19 - "Community 19"
 Cohesion: 0.06
-Nodes (49): build_context(), build_context_embed(), _build_summary(), _cache_path(), _get_agent1_params(), _get_agent2_params(), main(), context_builder.py — Pre-Trade Context Score (0–100) =========================== (+41 more)
+Nodes (31): _group_capability_items(), _group_parameter_items(), _latest_weekly_report(), _load_capability_requests(), _load_parameter_suggestions(), _load_tracker(), main(), Generate a deterministic ID so resolutions persist across collector runs. (+23 more)
 
-### Community 11 - "Alpha Identity & Strategy"
+### Community 20 - "Community 20"
+Cohesion: 0.08
+Nodes (24): Search open/recent trades for one matching client_order_id (orderRef)., Return list of result dicts for open/submitted orders.          If *client_order, _FakeBrokerBase, _make_broker(), _make_trade_mock(), pm(), Unit tests: Phase 5 partial-fill safeguard.  Three areas under test:   1. IBKRBr, Tests for the 'order_submitted=True then exception' recovery path.      We test (+16 more)
+
+### Community 21 - "Community 21"
+Cohesion: 0.06
+Nodes (19): catalog(), _entry_ids(), _load_catalog_doc(), _load_entries(), Unit tests: error-catalog.json and referenced runbook files.  Validates the cata, Guard against high-severity labels on known-noise patterns.      These are patte, Pattern must match the exact string logged by _broker_ibkr.py., Load the full envelope dict. (+11 more)
+
+### Community 22 - "Community 22"
 Cohesion: 0.05
 Nodes (48): Alpaca API Gotchas (mleg qty, no position_intent), Cron Schedule, Journal Agent Alpha/Beta Trade Tracking, Journal Agent Trade Closing Protocol, Journal Agent Trade Logging Protocol, Journal Agent Operating Manual, Journal Agent Core Belief (journal as most valuable asset), Journal Agent Soul (trading diary identity) (+40 more)
 
-### Community 12 - "Alpaca Broker Layer"
-Cohesion: 0.11
-Nodes (43): build_closing_legs(), build_occ(), check_beta_exit(), check_exit_threshold(), check_gamma_exit(), compute_trade_pnl(), _current_beta_regime(), fetch_alpaca_positions() (+35 more)
+### Community 23 - "Community 23"
+Cohesion: 0.07
+Nodes (15): is_command_safe(), is_path_allowed(), Returns (allowed, reason)., Position-aware shell command validation. Returns (safe, reason).      Order matt, Run ALL safety checks. Even if LLM tagged fix_class=safe_auto, this gate     sti, Reject commands referencing non-existent paths or systemd units.     Catches LLM, _validate_command_targets(), validate_proposal() (+7 more)
 
-### Community 13 - "Community 13"
+### Community 24 - "Community 24"
+Cohesion: 0.08
+Nodes (43): build_context(), build_context_embed(), _build_summary(), _cache_path(), _get_agent1_params(), _get_agent2_params(), main(), context_builder.py — Pre-Trade Context Score (0–100) =========================== (+35 more)
+
+### Community 25 - "Community 25"
 Cohesion: 0.08
 Nodes (40): analyze_bull_put_spread(), analyze_covered_call(), analyze_iron_condor(), analyze_option(), classify_moneyness(), compute_greeks(), compute_iv(), dte_to_years() (+32 more)
 
-### Community 14 - "Guard Engine + Tests"
-Cohesion: 0.13
-Nodes (38): build_occ_symbol(), check_guards(), count_open_agent_trades(), execute_bear_call_spread(), execute_bull_put_spread(), execute_diagonal_spread(), execute_generic_spread(), execute_iron_condor() (+30 more)
-
-### Community 15 - "Earnings Calendar + Journal"
+### Community 26 - "Community 26"
 Cohesion: 0.05
 Nodes (42): Agent Alpha Skills Loaded, Beta Event Strangles, Beta 12-Regime Classification System, Agent Beta Skills Loaded, Connors RSI Pullback Strategy, Agent Gamma Skills Loaded, Stuck OPEN trades A008/A009/A010 finding, Beta Plan v2 Phases (10 phases) (+34 more)
 
-### Community 16 - "Risk Engine + Risk Checks"
-Cohesion: 0.11
-Nodes (29): _journal_write(), _load_strategy(), main(), _next_beta_id(), _post_discord(), _simulate_slippage(), _write_dashboard_state(), age_of() (+21 more)
-
-### Community 17 - "Weekly Synthesis (Sonnet)"
-Cohesion: 0.12
-Nodes (30): post_to_channel(), Single Discord posting surface for v2 cron scripts. Bot-token only.  Use post_to, cooldown_ok(), is_market_hours(), main(), post_discord(), Decide whether to print the pipeline-beat status line this cron tick.     During, Persist the last-print timestamp + status. Failure is non-fatal. (+22 more)
-
-### Community 18 - "Self-Diagnosis + Trade Review (Haiku)"
-Cohesion: 0.11
-Nodes (28): main(), parse_args(), _build_context(), _call_haiku(), _concurrent_positions(), diagnose(), _load_agent_identity(), main() (+20 more)
-
-### Community 19 - "Self-Improve + Self-Evolution"
-Cohesion: 0.1
-Nodes (32): backtest_agent1_params(), backtest_agent2_params(), get_trade_pairs(), backtester.py — Param Change Validator ========================================, Re-simulate a historical Agent 1 trade with different params.     Returns what t, Backtest Agent 1 param change against last N days of journal data.     Returns v, Backtest Agent 2 param change. Uses 60 days (longer because CC trades are weekly, Main entry point called by self_improve.py before creating any PR.      agent: " (+24 more)
-
-### Community 20 - "Community 20"
-Cohesion: 0.09
-Nodes (28): analyze_overall_correlation(), analyze_per_signal_correlation(), build_correlation_embed(), _build_summary(), load_context_scores(), load_trade_outcomes(), load_weights(), match_scores_to_outcomes() (+20 more)
-
-### Community 21 - "Community 21"
-Cohesion: 0.14
-Nodes (24): compute_adx_14(), compute_bb_width_percentile(), compute_ema_slope(), compute_iv_rank_252d(), compute_spx_chain_metrics(), SPX-derived intelligence helpers for Agent Beta.  market_intelligence.py imports, ATM straddle, implied move %, ATM bid-ask spread, 25-delta put/call skew.     Fa, ADX(14) per spec § 3B. Pandas Series in. Float out, or None on failure. (+16 more)
-
-### Community 22 - "Community 22"
-Cohesion: 0.2
-Nodes (26): action_restart_service(), action_retry(), action_skip(), classify_lines(), handle_known(), handle_unknown(), line_matches_entry(), load_catalog() (+18 more)
-
-### Community 23 - "Community 23"
-Cohesion: 0.13
-Nodes (20): handle_cto_scan(), On-demand CTO tech intelligence scan., analyze_findings(), build_cto_scan_embeds(), main(), _parse_arxiv_entries(), cto_agent.py — CTO Tech Intelligence Agent =====================================, Fetch recent papers from arXiv in quantitative finance categories.     arXiv API (+12 more)
-
-### Community 24 - "Heartbeat Monitor"
-Cohesion: 0.24
-Nodes (18): count_journal_entries_today(), count_open_agent_trades(), in_opening_volatility_window(), intel_is_fresh(), is_market_open(), load_intel(), load_state(), log() (+10 more)
-
-### Community 25 - "Earnings Calendar + Journal"
-Cohesion: 0.24
-Nodes (16): discover_tickers(), get_avg_volume(), get_earnings(), get_iv_rank(), get_price(), get_technicals(), Pull liquid, optionable tickers from multiple sources., Poor man's covered call/put — diagonal spread.     Sell near-term option, buy fu (+8 more)
-
-### Community 26 - "Earnings Calendar + Journal"
-Cohesion: 0.23
-Nodes (17): _cache_path(), fetch_fred_series(), get_economic_calendar(), get_fred_macro(), get_macro_context(), get_news_sentiment(), _get_watchlist_earnings_calendar(), main() (+9 more)
-
 ### Community 27 - "Community 27"
-Cohesion: 0.16
-Nodes (17): build_prompt(), main(), post_discord(), process_task(), cto_listener.py — Dockerized CTO Task Runner ===================================, Read the queue file. Returns the task dict if status=pending,     else None. Mat, Update the queue file's status field., Build the Claude Code prompt, matching the bash script's format. (+9 more)
+Cohesion: 0.08
+Nodes (31): analyze_overall_correlation(), analyze_per_signal_correlation(), build_correlation_embed(), _build_summary(), load_context_scores(), load_trade_outcomes(), load_weights(), match_scores_to_outcomes() (+23 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.27
-Nodes (15): line_signature(), load_catalog(), log(), looks_like_error(), main(), match_catalog(), now_et(), post_discord() (+7 more)
+Cohesion: 0.06
+Nodes (11): Regression tests: ensure the manual trading workflow stays REMOVED.  The manual, Defensive guard preserved as REQUIRES_SHARES (renamed from MANUAL_ONLY)., self_evolution.py and fetch_sofi.py must be retired (renamed), not present as li, eod_summary.py must show only Alpha + Beta + Gamma. No Amit, no SOFI, no manual_, No Manual Trades tab; agent filter widened to all agent_* prefixes., No collar scan function; no 'collars' mode branch., TestAutonomousExecutionGuard, TestEodSummaryClean (+3 more)
 
-### Community 29 - "Alpha Identity & Strategy"
+### Community 29 - "Community 29"
+Cohesion: 0.09
+Nodes (17): assert_learning_state_schema(), assert_open_item_schema(), journal_path(), _make_trade(), populated_journal(), Shared fixtures and assertion helpers for the self-learning test suite., Write two sample trades to the journal and return the path., Create a sandboxed QUANTAI_RUNTIME_ROOT and wire all _paths constants.      Yiel (+9 more)
+
+### Community 30 - "Community 30"
+Cohesion: 0.12
+Nodes (18): post_to_channel(), Single Discord posting surface for v2 cron scripts. Bot-token only.  Use post_to, line_signature(), load_catalog(), log(), main(), match_catalog(), now_et() (+10 more)
+
+### Community 31 - "Community 31"
+Cohesion: 0.16
+Nodes (25): action_restart_service(), action_retry(), classify_lines(), handle_known(), handle_unknown(), line_matches_entry(), load_catalog(), load_dedup() (+17 more)
+
+### Community 32 - "Community 32"
+Cohesion: 0.12
+Nodes (24): compute_adx_14(), compute_bb_width_percentile(), compute_ema_slope(), compute_iv_rank_252d(), compute_spx_chain_metrics(), SPX-derived intelligence helpers for Agent Beta.  market_intelligence.py imports, ATM straddle, implied move %, ATM bid-ask spread, 25-delta put/call skew.     Fa, ADX(14) per spec § 3B. Pandas Series in. Float out, or None on failure. (+16 more)
+
+### Community 33 - "Community 33"
+Cohesion: 0.18
+Nodes (10): place_close_order(), Place a close order through the active broker. 1 leg → plain order;     2-4 legs, Submitted = order working, hasn't filled yet.         2026-05-04 contract: retur, Filled = real success → caller can mark CLOSED., The bug that caused A018: Cancelled status returned by broker but     place_clos, TestPlaceCloseOrderStatusHandling, A020 reproduction: close order returned status=Submitted (combo not yet     fill, Submitted should be a 'working' state, NOT cause a resubmission loop. (+2 more)
+
+### Community 34 - "Community 34"
+Cohesion: 0.12
+Nodes (6): _get_crontab(), Unit tests: identity file structural validation (Gap 11) + cron entries (Gap 12), Return the root crontab as a string, or None if unavailable.      The pipeline c, Verify each expected cron entry is present in the root crontab., test_cron_entry_exists(), TestIdentityFiles
+
+### Community 35 - "Community 35"
 Cohesion: 0.14
 Nodes (17): ADR-001: Adopt Graphify for Knowledge Graphs, ADR-004: Migrate Alpaca to IBKR, Agent Alpha — Who I Am, Agent Beta — Who I Am, Agent Gamma — Who I Am, Infra Agent Operating Manual, Beta Plan v1 Context (SUPERSEDED), Beta v1 INSTRUMENT_MAP (SPY/VXX proxies) (+9 more)
 
-### Community 30 - "Community 30"
-Cohesion: 0.23
-Nodes (14): build_cto_embeds(), collect_agent_stats(), collect_cache_health(), collect_eod_scores(), collect_system_metrics(), generate_cto_report(), main(), cto_report.py — Weekly CTO Report ==================================== Runs ever (+6 more)
+### Community 36 - "Community 36"
+Cohesion: 0.25
+Nodes (14): discover_tickers(), get_avg_volume(), get_earnings(), get_iv_rank(), get_price(), get_technicals(), Pull liquid, optionable tickers from multiple sources., Poor man's covered call/put — diagonal spread.     Sell near-term option, buy fu (+6 more)
 
-### Community 31 - "Community 31"
-Cohesion: 0.23
-Nodes (13): _build_flow_summary(), _cache_path(), detect_dark_pool_activity(), detect_unusual_options_activity(), flow_detector.py — Unusual Options Activity Detector (Free) ====================, Dark pool proxy: abnormal equity volume vs 20-day average.      Real dark pool d, Complete flow scan for a symbol.     Combines Vol/OI unusual activity + dark poo, Scan all watchlist symbols for dark pool activity.     Called by Agent 2 every M (+5 more)
+### Community 37 - "Community 37"
+Cohesion: 0.24
+Nodes (3): _parse_json_response(), TestParseJsonResponse, TestParseJsonResponse
 
-### Community 32 - "Community 32"
+### Community 38 - "Community 38"
 Cohesion: 0.36
 Nodes (10): bold_header(), color_rows_by_status(), ensure_sheets(), get_sheet_id_by_name(), load_trades(), Green for CLOSED wins, red for CLOSED losses, yellow for OPEN., setup(), sync() (+2 more)
 
-### Community 33 - "Community 33"
-Cohesion: 0.25
-Nodes (6): Structured logging helper for QuantAI Python scripts.  Adds a SQLiteHandler to t, Add a SQLiteHandler to the root logger. Idempotent: calling twice does nothing., Logging handler that inserts WARNING+ records into pyapp_inbox table.      The c, Create the inbox table if the DB exists but the table doesn't.         Does NOT, setup(), SQLiteHandler
-
-### Community 34 - "Community 34"
-Cohesion: 0.38
+### Community 39 - "Community 39"
+Cohesion: 0.33
 Nodes (8): build_event_moves(), _classify(), _fetch_finnhub_events(), main(), Walk back `lookback_days`, classify events, fetch SPX moves, keep last `window`, Query Finnhub economic calendar for [start, end]. US-only events., Absolute % SPX move on `target` vs prior trading day. None if missing., _spx_abs_move()
 
-### Community 35 - "Community 35"
+### Community 40 - "Community 40"
+Cohesion: 0.29
+Nodes (1): Unit tests for _paths.py — env-var override and constant structure.
+
+### Community 41 - "Community 41"
+Cohesion: 0.29
+Nodes (2): Smoke test: run system_monitor.py against the live VPS.  Verifies the report fil, TestLiveHealthReport
+
+### Community 42 - "Community 42"
 Cohesion: 0.29
 Nodes (7): Architecture Overview (KARNA, QuantAI Pipeline, LiteLLM, Dashboard), KARNA + QuantAI Project Overview, Rationale: Never Modify openclaw.service (Type=simple), README Architecture Diagram, Docker Deploy and Test, VPS Infrastructure (Hetzner CX31), sync_workspaces.sh
 
-### Community 36 - "Community 36"
-Cohesion: 0.53
+### Community 43 - "Community 43"
+Cohesion: 0.5
 Nodes (4): build_case(), Pure-Python Bull/Bear case templates for debate_chamber.py. Eliminates 2 Haiku L, Return a 4-5 bullet markdown case FOR (bull) or AGAINST (bear) the trade.      D, _vix_key()
 
-### Community 37 - "Community 37"
-Cohesion: 0.6
-Nodes (3): fail(), ok(), warn()
-
-### Community 38 - "Community 38"
-Cohesion: 0.7
-Nodes (3): check(), check_keys(), section()
-
-### Community 39 - "Community 39"
+### Community 44 - "Community 44"
 Cohesion: 0.4
 Nodes (5): ADR-002: ClawRoute as Single LLM Ingress, Auto-Heal Layer, Legacy error_detector.py Notice, Auto-Heal Runbook Purpose, Centralized Logger Architecture
 
-### Community 40 - "Community 40"
+### Community 45 - "Community 45"
+Cohesion: 0.67
+Nodes (2): check(), check_keys()
+
+### Community 46 - "Community 46"
 Cohesion: 0.5
 Nodes (4): Design Principles (LLMs for judgment, cost-conscious, data sovereignty), Rationale: Design Principles Trade-offs, API Keys Configuration, Data Sources (yfinance, Finnhub, Alpha Vantage, Alpaca)
 
-### Community 41 - "Self-Improve + Self-Evolution"
-Cohesion: 0.67
-Nodes (2): _compute_observations(), set_nested()
-
-### Community 42 - "Community 42"
+### Community 47 - "Community 47"
 Cohesion: 0.67
 Nodes (3): Discord Server and Bot Setup, Four Agents (Orchestrator, Research, Infra, Journal), Discord Channels (#chat, #research, #infra, #journal)
 
-### Community 43 - "Community 43"
-Cohesion: 0.67
-Nodes (3): SOFI 5 Trigger Actions, SOFI Collar (200 paper shares), SOFI Collar Strategy
-
-### Community 44 - "Community 44"
+### Community 48 - "Community 48"
 Cohesion: 0.67
 Nodes (3): Orchestrator Soul: What Winning Looks Like, Success Metrics (win rate targets, live capital), Pre-Live Checklist
 
-### Community 45 - "Community 45"
+### Community 49 - "Community 49"
 Cohesion: 0.67
-Nodes (3): check_sector_correlation function, Sector Mapping Table, Sector Correlation Hard/Soft Rules
+Nodes (3): SOFI 5 Trigger Actions, SOFI Collar (200 paper shares), SOFI Collar Strategy
 
-### Community 46 - "Community 46"
-Cohesion: 0.67
-Nodes (3): Phase 4: orchestrator vs v2 double-trading audit, Phase 5: trader-guards usage audit, Known Issues (git divergence, legacy containers)
-
-### Community 47 - "Community 47"
+### Community 50 - "Community 50"
 Cohesion: 0.67
 Nodes (3): Alpaca API Gotchas, Bug1: mleg qty missing, Bug2: position_intent rejected
 
-### Community 49 - "Community 49"
-Cohesion: 1.0
-Nodes (2): Script Inventory, system_test.py (43-check health test)
-
-### Community 50 - "Community 50"
-Cohesion: 1.0
-Nodes (2): Key File Paths, Security Rules (never expose .env, credentials)
-
 ### Community 51 - "Community 51"
-Cohesion: 1.0
-Nodes (2): Research Agent Operating Manual, Research Agent Core Beliefs (edge via research)
+Cohesion: 0.67
+Nodes (3): check_sector_correlation function, Sector Mapping Table, Sector Correlation Hard/Soft Rules
 
 ### Community 52 - "Community 52"
-Cohesion: 1.0
-Nodes (2): Infra Health Check Procedure, Scripts Inventory
+Cohesion: 0.67
+Nodes (3): Phase 4: orchestrator vs v2 double-trading audit, Phase 5: trader-guards usage audit, Known Issues (git divergence, legacy containers)
 
 ### Community 53 - "Community 53"
 Cohesion: 1.0
-Nodes (2): Agent Beta Core Principles, Agent Beta — What I Do NOT Do
+Nodes (1): Central path constants for all self-learning scripts.  All scripts that referenc
 
 ### Community 54 - "Community 54"
 Cohesion: 1.0
-Nodes (2): Agent Gamma Core Principles, Agent Gamma — What I Do NOT Do
+Nodes (2): Script Inventory, system_test.py (43-check health test)
 
 ### Community 55 - "Community 55"
 Cohesion: 1.0
-Nodes (2): Credit Spreads (Secondary), IV Skew (Put vs Call)
+Nodes (2): Key File Paths, Security Rules (never expose .env, credentials)
 
 ### Community 56 - "Community 56"
 Cohesion: 1.0
-Nodes (2): Cron Schedule (UTC), Auto-Heal Schedule (4x/day)
+Nodes (2): Research Agent Operating Manual, Research Agent Core Beliefs (edge via research)
 
 ### Community 57 - "Community 57"
 Cohesion: 1.0
-Nodes (2): Severity-to-Discord Behavior, Logger Sources Ingested (systemd/docker/textlog/syslog/pyapp)
+Nodes (2): Cron Schedule (UTC), Auto-Heal Schedule (4x/day)
+
+### Community 58 - "Community 58"
+Cohesion: 1.0
+Nodes (2): Infra Health Check Procedure, Scripts Inventory
+
+### Community 59 - "Community 59"
+Cohesion: 1.0
+Nodes (2): Agent Beta Core Principles, Agent Beta — What I Do NOT Do
+
+### Community 60 - "Community 60"
+Cohesion: 1.0
+Nodes (2): Agent Gamma Core Principles, Agent Gamma — What I Do NOT Do
 
 ### Community 61 - "Community 61"
 Cohesion: 1.0
-Nodes (1): Log a decision. Categories: rule_change, strategy, architecture, bug_fix, config
+Nodes (2): Credit Spreads (Secondary), IV Skew (Put vs Call)
 
 ### Community 62 - "Community 62"
 Cohesion: 1.0
-Nodes (1): If everything placed cleanly, delete the pending file. If anything     failed, r
-
-### Community 63 - "Community 63"
-Cohesion: 1.0
-Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
+Nodes (2): Severity-to-Discord Behavior, Logger Sources Ingested (systemd/docker/textlog/syslog/pyapp)
 
 ### Community 64 - "Community 64"
 Cohesion: 1.0
-Nodes (1): Bear call spread: SELL lower call + BUY higher call.
-
-### Community 65 - "Community 65"
-Cohesion: 1.0
-Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
-
-### Community 66 - "Community 66"
-Cohesion: 1.0
-Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
-
-### Community 67 - "Community 67"
-Cohesion: 1.0
-Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
-
-### Community 68 - "Community 68"
-Cohesion: 1.0
-Nodes (1): Route to correct executor based on strategy. Returns fill or None.
-
-### Community 69 - "Heartbeat Monitor"
-Cohesion: 1.0
-Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
-
-### Community 70 - "Community 70"
-Cohesion: 1.0
-Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
+Nodes (1): autonomous_execution.py does `os.makedirs("/root/quantai-v2/...")`         at im
 
 ### Community 71 - "Community 71"
 Cohesion: 1.0
-Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
+Nodes (1): Log a decision. Categories: rule_change, strategy, architecture, bug_fix, config
 
 ### Community 72 - "Community 72"
 Cohesion: 1.0
-Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
+Nodes (1): Return the root crontab as a string, or None if unavailable.      The pipeline c
 
 ### Community 73 - "Community 73"
 Cohesion: 1.0
-Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
+Nodes (1): Verify each expected cron entry is present in the root crontab.
 
 ### Community 74 - "Community 74"
 Cohesion: 1.0
-Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
+Nodes (1): Alert message must tell operator what to check.
 
 ### Community 75 - "Community 75"
 Cohesion: 1.0
-Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
+Nodes (1): Fail-open: corrupt cooldown file → allow alert.
 
 ### Community 76 - "Community 76"
 Cohesion: 1.0
-Nodes (1): Bear call spread: SELL lower call + BUY higher call.
+Nodes (1): Post a message to Discord via bot token. Falls back to webhook if set.
 
 ### Community 77 - "Community 77"
 Cohesion: 1.0
-Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
+Nodes (1): Post a trade execution alert to #alerts channel.
 
 ### Community 78 - "Community 78"
 Cohesion: 1.0
-Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
+Nodes (1): OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)
 
 ### Community 79 - "Community 79"
 Cohesion: 1.0
-Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
+Nodes (1): Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.
 
 ### Community 80 - "Community 80"
 Cohesion: 1.0
-Nodes (1): Route to correct executor based on strategy. Returns fill or None.
+Nodes (1): Query the active broker for available strikes on a given expiry.     Returns sor
 
 ### Community 81 - "Community 81"
 Cohesion: 1.0
-Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
+Nodes (1): Find the strike closest to target from available list.
 
 ### Community 82 - "Community 82"
 Cohesion: 1.0
-Nodes (1): Place a close order through the active broker. 1 leg → plain order;     2-4 legs
+Nodes (1): Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik
 
 ### Community 83 - "Community 83"
 Cohesion: 1.0
-Nodes (1): Days to the soonest-expiring leg.
+Nodes (1): Place a multi-leg options order as a single mleg order.     This avoids the 'unc
 
 ### Community 84 - "Community 84"
 Cohesion: 1.0
-Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
+Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
 
 ### Community 85 - "Community 85"
 Cohesion: 1.0
-Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
 
 ### Community 86 - "Community 86"
 Cohesion: 1.0
-Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
 
 ### Community 87 - "Community 87"
 Cohesion: 1.0
-Nodes (1): Returns (should_close, exit_reason).      For Beta trades (exit_rules present):
+Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
 
 ### Community 88 - "Community 88"
 Cohesion: 1.0
-Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
+Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
 
 ### Community 89 - "Community 89"
 Cohesion: 1.0
-Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
 ### Community 90 - "Community 90"
 Cohesion: 1.0
-Nodes (1): Build the leg dict in the broker.place_mleg_order shape.
+Nodes (1): Place a close order through the active broker. 1 leg → plain order;     2-4 legs
 
 ### Community 91 - "Community 91"
 Cohesion: 1.0
-Nodes (1): Post a message to Discord via bot token. Falls back to webhook if set.
+Nodes (1): Days to the soonest-expiring leg.
 
 ### Community 92 - "Community 92"
 Cohesion: 1.0
-Nodes (1): Post a trade execution alert to #alerts channel.
+Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
 
 ### Community 93 - "Community 93"
 Cohesion: 1.0
-Nodes (1): OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)
+Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
 
 ### Community 94 - "Community 94"
 Cohesion: 1.0
-Nodes (1): Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.
+Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
 
 ### Community 95 - "Community 95"
 Cohesion: 1.0
-Nodes (1): Query the active broker for available strikes on a given expiry.     Returns sor
+Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
 
 ### Community 96 - "Community 96"
 Cohesion: 1.0
-Nodes (1): Find the strike closest to target from available list.
+Nodes (1): Return the latest cached daily indicators for `symbol` from     gamma_indicator_
 
 ### Community 97 - "Community 97"
 Cohesion: 1.0
-Nodes (1): Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik
+Nodes (1): Agent Gamma exit checks (Connors RSI pullback).      Triggers (in order):
 
 ### Community 98 - "Community 98"
 Cohesion: 1.0
-Nodes (1): Place a multi-leg options order as a single mleg order.     This avoids the 'unc
+Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
 
 ### Community 99 - "Community 99"
 Cohesion: 1.0
-Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
+Nodes (1): Return True if we have not alerted for *symbol* within the cooldown window.
 
 ### Community 100 - "Community 100"
 Cohesion: 1.0
-Nodes (1): Bear call spread: SELL lower call + BUY higher call.
+Nodes (1): Compare broker option positions against journal open entries.      Fires a 🔴 Dis
 
 ### Community 101 - "Community 101"
 Cohesion: 1.0
-Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
+Nodes (1): Stocks under $30 suitable for Amit's manual collar strategy.
 
 ### Community 102 - "Community 102"
 Cohesion: 1.0
-Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
+Nodes (1): Pattern must match the exact string logged by _broker_ibkr.py.
 
 ### Community 103 - "Community 103"
 Cohesion: 1.0
-Nodes (1): Route to correct executor based on strategy. Returns fill or None.
+Nodes (1): Runbook must include the fix command so it's actionable from Discord.
 
-### Community 104 - "Heartbeat Monitor"
+### Community 104 - "Community 104"
 Cohesion: 1.0
-Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
+Nodes (1): Auto-action must be 'none' — gateway restart requires human confirmation.
 
 ### Community 105 - "Community 105"
 Cohesion: 1.0
-Nodes (1): Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15
+Nodes (1): Runbook should reference the IBC config fix so it's self-contained.
 
 ### Community 106 - "Community 106"
 Cohesion: 1.0
-Nodes (1): Equity options trade 09:30–16:00 ET on weekdays.
+Nodes (1): Runbook must include a way to verify the fix worked.
 
 ### Community 107 - "Community 107"
 Cohesion: 1.0
-Nodes (1): Merge updates into matching journal entries, rewrite atomically.     updates: {t
+Nodes (1): If everything placed cleanly, delete the pending file. If anything     failed, r
 
 ### Community 108 - "Community 108"
 Cohesion: 1.0
-Nodes (1): Fetch open positions through the active broker.      Returns {occ_symbol: positi
+Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
 
 ### Community 109 - "Community 109"
 Cohesion: 1.0
-Nodes (1): Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
 
 ### Community 110 - "Community 110"
 Cohesion: 1.0
-Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
 
 ### Community 111 - "Community 111"
 Cohesion: 1.0
-Nodes (1): Place a close order through the active broker. 1 leg → plain order;     2-4 legs
+Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
 
 ### Community 112 - "Community 112"
 Cohesion: 1.0
-Nodes (1): Check all four exit rules in priority order.     Returns (should_close: bool, ex
+Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
 
 ### Community 113 - "Community 113"
 Cohesion: 1.0
-Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
 ### Community 114 - "Community 114"
 Cohesion: 1.0
-Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
+Nodes (1): Read persistent probe failure state (survives process restarts).
 
 ### Community 115 - "Community 115"
 Cohesion: 1.0
-Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
+Nodes (1): Persist probe state; return updated state dict.
 
 ### Community 116 - "Community 116"
 Cohesion: 1.0
-Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
+Nodes (1): NYSE equity options hours: 09:30 → 16:00 ET, Mon-Fri.
 
 ### Community 117 - "Community 117"
 Cohesion: 1.0
-Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
+Nodes (1): Decide whether to print the pipeline-beat status line this cron tick.     During
 
 ### Community 118 - "Community 118"
 Cohesion: 1.0
-Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
+Nodes (1): Persist the last-print timestamp + status. Failure is non-fatal.
 
 ### Community 119 - "Community 119"
 Cohesion: 1.0
-Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
+Nodes (1): Return age in seconds of an ISO8601 timestamp. 0 if missing/unparseable.
 
 ### Community 120 - "Community 120"
 Cohesion: 1.0
-Nodes (1): Returns (should_close, exit_reason).      For Beta trades (exit_rules present):
+Nodes (1): Map RSI(10) reading to a 1-10 conviction score.      Connors threshold is 30. De
 
-### Community 121 - "Alpaca Broker Layer"
+### Community 121 - "Community 121"
 Cohesion: 1.0
-Nodes (1): Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)
+Nodes (1): Map Beta strike-selection comfort to a 1-10 conviction score.      Heuristic: ho
 
 ### Community 122 - "Community 122"
 Cohesion: 1.0
-Nodes (1): Beta-specific exit rules sourced from trade['exit_rules']. Returns     (should_c
+Nodes (1): Map debate-chamber judge score (0-100) to a 1-10 conviction score.
 
 ### Community 123 - "Community 123"
 Cohesion: 1.0
-Nodes (1): Post a message to Discord via bot token. Falls back to webhook if set.
+Nodes (1): If everything placed cleanly, delete the pending file. If anything     failed, r
 
 ### Community 124 - "Community 124"
 Cohesion: 1.0
-Nodes (1): Post a trade execution alert to #alerts channel.
+Nodes (1): Merge `fields` into the entry whose id == trade_id. Atomic rewrite.      Returns
 
 ### Community 125 - "Community 125"
 Cohesion: 1.0
-Nodes (1): OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)
+Nodes (1): Return the entry matching trade_id, or None if absent.
 
 ### Community 126 - "Community 126"
 Cohesion: 1.0
-Nodes (1): Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.
+Nodes (1): Get current price — tries fast_info first (no 404s), falls back to info.
 
 ### Community 127 - "Community 127"
 Cohesion: 1.0
-Nodes (1): Query Alpaca options contracts for available strikes on a given expiry.     Retu
+Nodes (1): Get average volume without triggering fundamentals 404s.
 
 ### Community 128 - "Community 128"
 Cohesion: 1.0
-Nodes (1): Find the strike closest to target from available list.
+Nodes (1): Pull liquid, optionable tickers from multiple sources.
 
 ### Community 129 - "Community 129"
 Cohesion: 1.0
-Nodes (1): Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik
+Nodes (1): Poor man's covered call/put — diagonal spread.     Sell near-term option, buy fu
 
 ### Community 130 - "Community 130"
 Cohesion: 1.0
-Nodes (1): Place a multi-leg options order as a single mleg order.     This avoids the 'unc
+Nodes (1): Iron condors — range-bound, collect from both sides.
 
 ### Community 131 - "Community 131"
 Cohesion: 1.0
-Nodes (1): Bear call spread: SELL lower call + BUY higher call.
+Nodes (1): Stocks under $30 suitable for Amit's manual collar strategy.
 
 ### Community 132 - "Community 132"
 Cohesion: 1.0
-Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
+Nodes (1): If everything placed cleanly, delete the pending file. If anything     failed, r
 
 ### Community 133 - "Community 133"
 Cohesion: 1.0
-Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
+Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
 
 ### Community 134 - "Community 134"
 Cohesion: 1.0
-Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
 
 ### Community 135 - "Community 135"
 Cohesion: 1.0
-Nodes (1): Route to correct executor based on strategy. Returns fill or None.
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
 
 ### Community 136 - "Community 136"
 Cohesion: 1.0
-Nodes (1): Return lines from `path` whose timestamp (if parseable) is >= cutoff.     If a l
+Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
 
 ### Community 137 - "Community 137"
 Cohesion: 1.0
-Nodes (1): Stable signature from the stable parts of an error line.
+Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
 
 ### Community 138 - "Community 138"
 Cohesion: 1.0
-Nodes (1): Short id derived from signature — stable across runs.
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
 ### Community 139 - "Community 139"
 Cohesion: 1.0
-Nodes (1): Case-insensitive substring check of each catalog pattern against the     raw sig
+Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
 
 ### Community 140 - "Community 140"
 Cohesion: 1.0
-Nodes (1): One-line trade summary.
+Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
 
 ### Community 141 - "Community 141"
 Cohesion: 1.0
-Nodes (1): Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15
+Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
 
 ### Community 142 - "Community 142"
 Cohesion: 1.0
-Nodes (1): Merge updates into matching journal entries, rewrite atomically.     updates: {t
+Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
 
 ### Community 143 - "Community 143"
 Cohesion: 1.0
-Nodes (1): GET /v2/positions → {occ_symbol: position_dict} or None on error.     None means
+Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
 
 ### Community 144 - "Community 144"
 Cohesion: 1.0
-Nodes (1): Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg
+Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
 
 ### Community 145 - "Community 145"
 Cohesion: 1.0
-Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
+Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
 
 ### Community 146 - "Community 146"
 Cohesion: 1.0
-Nodes (1): Place market mleg close order. Returns order dict on success, None on failure.
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
 
 ### Community 147 - "Community 147"
 Cohesion: 1.0
-Nodes (1): Check all four exit rules in priority order.     Returns (should_close: bool, ex
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
 
 ### Community 148 - "Community 148"
 Cohesion: 1.0
-Nodes (1): QuantAI System Overview
+Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
 
 ### Community 149 - "Community 149"
 Cohesion: 1.0
-Nodes (1): Roadmap Current State (Paper Trading Live)
+Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
 
 ### Community 150 - "Community 150"
 Cohesion: 1.0
-Nodes (1): Setup Guide Overview
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
 ### Community 151 - "Community 151"
 Cohesion: 1.0
-Nodes (1): Hetzner VPS Setup
+Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
 
 ### Community 152 - "Community 152"
 Cohesion: 1.0
-Nodes (1): Git Rules (local main is source of truth)
+Nodes (1): Place a close order through the active broker. 1 leg → plain order;     2-4 legs
 
 ### Community 153 - "Community 153"
 Cohesion: 1.0
-Nodes (1): Prevent Accidental Damage Rules
+Nodes (1): Days to the soonest-expiring leg.
 
-### Community 154 - "Journal Agent Operating Manual"
+### Community 154 - "Community 154"
 Cohesion: 1.0
-Nodes (1): Journal Agent Stats Commands
+Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
 
-### Community 155 - "Journal Agent Operating Manual"
+### Community 155 - "Community 155"
 Cohesion: 1.0
-Nodes (1): Journal Agent Weekly Digest Format
+Nodes (1): Read current Beta regime from dashboard state. Cached per minute.
 
 ### Community 156 - "Community 156"
 Cohesion: 1.0
-Nodes (1): Research Agent Soul (intelligence engine)
+Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
 
 ### Community 157 - "Community 157"
 Cohesion: 1.0
-Nodes (1): Cron Pipeline
+Nodes (1): Returns (should_close, exit_reason).      For Beta trades (exit_rules present):
 
 ### Community 158 - "Community 158"
 Cohesion: 1.0
-Nodes (1): aiohttp (orchestrator dep)
+Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
 
 ### Community 159 - "Community 159"
 Cohesion: 1.0
-Nodes (1): apscheduler
+Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
 
 ### Community 160 - "Community 160"
 Cohesion: 1.0
-Nodes (1): uvicorn
+Nodes (1): Build the leg dict in the broker.place_mleg_order shape.
 
 ### Community 161 - "Community 161"
 Cohesion: 1.0
-Nodes (1): pydantic
+Nodes (1): Post a trade execution alert to #alerts channel.
 
 ### Community 162 - "Community 162"
 Cohesion: 1.0
-Nodes (1): Environment Variables
+Nodes (1): OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)
+
+### Community 163 - "Community 163"
+Cohesion: 1.0
+Nodes (1): Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.
+
+### Community 164 - "Community 164"
+Cohesion: 1.0
+Nodes (1): Query the active broker for available strikes on a given expiry.     Returns sor
+
+### Community 165 - "Community 165"
+Cohesion: 1.0
+Nodes (1): Find the strike closest to target from available list.
 
 ### Community 166 - "Community 166"
 Cohesion: 1.0
-Nodes (1): Git Rules (local main is source of truth)
+Nodes (1): Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik
 
 ### Community 167 - "Community 167"
 Cohesion: 1.0
-Nodes (1): Design Principles
+Nodes (1): Place a multi-leg options order as a single mleg order.     This avoids the 'unc
 
 ### Community 168 - "Community 168"
 Cohesion: 1.0
-Nodes (1): Iron Condors (Tertiary)
+Nodes (1): Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin
 
 ### Community 169 - "Community 169"
 Cohesion: 1.0
-Nodes (1): Beta Directional Debit Spreads
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
 
 ### Community 170 - "Community 170"
 Cohesion: 1.0
-Nodes (1): Beta Iron Condors
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
 
 ### Community 171 - "Community 171"
 Cohesion: 1.0
-Nodes (1): Beta VIX Mean Reversion Spreads
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
 
 ### Community 172 - "Community 172"
 Cohesion: 1.0
-Nodes (1): Beta Long Straddles (SQUEEZE)
+Nodes (1): Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes
 
 ### Community 173 - "Community 173"
 Cohesion: 1.0
-Nodes (1): Gamma Instrument Universe (27 instruments)
+Nodes (1): Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15
 
 ### Community 174 - "Community 174"
 Cohesion: 1.0
-Nodes (1): Gamma Two-Phase Daily Cycle
+Nodes (1): Equity options trade 09:30–16:00 ET on weekdays.
 
 ### Community 175 - "Community 175"
 Cohesion: 1.0
-Nodes (1): Regime Classification Errors
+Nodes (1): Merge updates into matching journal entries, rewrite atomically.     updates: {t
 
 ### Community 176 - "Community 176"
 Cohesion: 1.0
-Nodes (1): Pull Full Ticker Universe Principle
+Nodes (1): Fetch open positions through the active broker.      Returns {occ_symbol: positi
 
 ### Community 177 - "Community 177"
 Cohesion: 1.0
-Nodes (1): Strike Snapping Process
+Nodes (1): Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg
 
 ### Community 178 - "Community 178"
 Cohesion: 1.0
-Nodes (1): Slippage Estimation
+Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
 
 ### Community 179 - "Community 179"
 Cohesion: 1.0
-Nodes (1): IV Practical Filters Table
+Nodes (1): Place a close order through the active broker. 1 leg → plain order;     2-4 legs
 
 ### Community 180 - "Community 180"
 Cohesion: 1.0
-Nodes (1): Beta Plan v1 Phases (13 phases)
+Nodes (1): Check all four exit rules in priority order.     Returns (should_close: bool, ex
 
 ### Community 181 - "Community 181"
 Cohesion: 1.0
-Nodes (1): Beta Plan v2 Reuse vs New Table
+Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
 
 ### Community 182 - "Community 182"
 Cohesion: 1.0
-Nodes (1): Auto-Heal Operator Commands
+Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
 
 ### Community 183 - "Community 183"
+Cohesion: 1.0
+Nodes (1): Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r
+
+### Community 184 - "Community 184"
+Cohesion: 1.0
+Nodes (1): Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr
+
+### Community 185 - "Community 185"
+Cohesion: 1.0
+Nodes (1): Load cached market_intelligence.macro. Refreshes once per minute.
+
+### Community 186 - "Community 186"
+Cohesion: 1.0
+Nodes (1): Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur
+
+### Community 187 - "Community 187"
+Cohesion: 1.0
+Nodes (1): Sum live signed deltas across legs. Returns None if any leg can't be quoted.
+
+### Community 188 - "Community 188"
+Cohesion: 1.0
+Nodes (1): Returns (should_close, exit_reason).      For Beta trades (exit_rules present):
+
+### Community 189 - "Community 189"
+Cohesion: 1.0
+Nodes (1): Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)
+
+### Community 190 - "Community 190"
+Cohesion: 1.0
+Nodes (1): Beta-specific exit rules sourced from trade['exit_rules']. Returns     (should_c
+
+### Community 191 - "Community 191"
+Cohesion: 1.0
+Nodes (1): Post a message to Discord via bot token. Falls back to webhook if set.
+
+### Community 192 - "Community 192"
+Cohesion: 1.0
+Nodes (1): Post a trade execution alert to #alerts channel.
+
+### Community 193 - "Community 193"
+Cohesion: 1.0
+Nodes (1): OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)
+
+### Community 194 - "Community 194"
+Cohesion: 1.0
+Nodes (1): Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.
+
+### Community 195 - "Community 195"
+Cohesion: 1.0
+Nodes (1): Query Alpaca options contracts for available strikes on a given expiry.     Retu
+
+### Community 196 - "Community 196"
+Cohesion: 1.0
+Nodes (1): Find the strike closest to target from available list.
+
+### Community 197 - "Community 197"
+Cohesion: 1.0
+Nodes (1): Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik
+
+### Community 198 - "Community 198"
+Cohesion: 1.0
+Nodes (1): Place a multi-leg options order as a single mleg order.     This avoids the 'unc
+
+### Community 199 - "Community 199"
+Cohesion: 1.0
+Nodes (1): Bear call spread: SELL lower call + BUY higher call.
+
+### Community 200 - "Community 200"
+Cohesion: 1.0
+Nodes (1): Iron condor: bull put spread + bear call spread as single 4-leg mleg order.
+
+### Community 201 - "Community 201"
+Cohesion: 1.0
+Nodes (1): Fallback for any other spread — detect put/call from legs and build mleg.
+
+### Community 202 - "Community 202"
+Cohesion: 1.0
+Nodes (1): Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n
+
+### Community 203 - "Community 203"
+Cohesion: 1.0
+Nodes (1): Route to correct executor based on strategy. Returns fill or None.
+
+### Community 204 - "Community 204"
+Cohesion: 1.0
+Nodes (1): Return lines from `path` whose timestamp (if parseable) is >= cutoff.     If a l
+
+### Community 205 - "Community 205"
+Cohesion: 1.0
+Nodes (1): Stable signature from the stable parts of an error line.
+
+### Community 206 - "Community 206"
+Cohesion: 1.0
+Nodes (1): Short id derived from signature — stable across runs.
+
+### Community 207 - "Community 207"
+Cohesion: 1.0
+Nodes (1): Case-insensitive substring check of each catalog pattern against the     raw sig
+
+### Community 208 - "Community 208"
+Cohesion: 1.0
+Nodes (1): One-line trade summary.
+
+### Community 209 - "Community 209"
+Cohesion: 1.0
+Nodes (1): Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15
+
+### Community 210 - "Community 210"
+Cohesion: 1.0
+Nodes (1): Merge updates into matching journal entries, rewrite atomically.     updates: {t
+
+### Community 211 - "Community 211"
+Cohesion: 1.0
+Nodes (1): GET /v2/positions → {occ_symbol: position_dict} or None on error.     None means
+
+### Community 212 - "Community 212"
+Cohesion: 1.0
+Nodes (1): Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg
+
+### Community 213 - "Community 213"
+Cohesion: 1.0
+Nodes (1): Build reversed legs for a closing mleg order.     Skips legs with no active Alpa
+
+### Community 214 - "Community 214"
+Cohesion: 1.0
+Nodes (1): Place market mleg close order. Returns order dict on success, None on failure.
+
+### Community 215 - "Community 215"
+Cohesion: 1.0
+Nodes (1): Check all four exit rules in priority order.     Returns (should_close: bool, ex
+
+### Community 216 - "Community 216"
+Cohesion: 1.0
+Nodes (1): QuantAI System Overview
+
+### Community 217 - "Community 217"
+Cohesion: 1.0
+Nodes (1): Roadmap Current State (Paper Trading Live)
+
+### Community 218 - "Community 218"
+Cohesion: 1.0
+Nodes (1): Setup Guide Overview
+
+### Community 219 - "Community 219"
+Cohesion: 1.0
+Nodes (1): Hetzner VPS Setup
+
+### Community 220 - "Community 220"
+Cohesion: 1.0
+Nodes (1): Git Rules (local main is source of truth)
+
+### Community 221 - "Community 221"
+Cohesion: 1.0
+Nodes (1): Prevent Accidental Damage Rules
+
+### Community 222 - "Community 222"
+Cohesion: 1.0
+Nodes (1): Journal Agent Stats Commands
+
+### Community 223 - "Community 223"
+Cohesion: 1.0
+Nodes (1): Journal Agent Weekly Digest Format
+
+### Community 224 - "Community 224"
+Cohesion: 1.0
+Nodes (1): Research Agent Soul (intelligence engine)
+
+### Community 225 - "Community 225"
+Cohesion: 1.0
+Nodes (1): Cron Pipeline
+
+### Community 226 - "Community 226"
+Cohesion: 1.0
+Nodes (1): aiohttp (orchestrator dep)
+
+### Community 227 - "Community 227"
+Cohesion: 1.0
+Nodes (1): apscheduler
+
+### Community 228 - "Community 228"
+Cohesion: 1.0
+Nodes (1): uvicorn
+
+### Community 229 - "Community 229"
+Cohesion: 1.0
+Nodes (1): pydantic
+
+### Community 230 - "Community 230"
+Cohesion: 1.0
+Nodes (1): Environment Variables
+
+### Community 231 - "Community 231"
+Cohesion: 1.0
+Nodes (1): Git Rules (local main is source of truth)
+
+### Community 232 - "Community 232"
+Cohesion: 1.0
+Nodes (1): Design Principles
+
+### Community 233 - "Community 233"
+Cohesion: 1.0
+Nodes (1): Iron Condors (Tertiary)
+
+### Community 234 - "Community 234"
+Cohesion: 1.0
+Nodes (1): Beta Directional Debit Spreads
+
+### Community 235 - "Community 235"
+Cohesion: 1.0
+Nodes (1): Beta Iron Condors
+
+### Community 236 - "Community 236"
+Cohesion: 1.0
+Nodes (1): Beta VIX Mean Reversion Spreads
+
+### Community 237 - "Community 237"
+Cohesion: 1.0
+Nodes (1): Beta Long Straddles (SQUEEZE)
+
+### Community 238 - "Community 238"
+Cohesion: 1.0
+Nodes (1): Gamma Instrument Universe (27 instruments)
+
+### Community 239 - "Community 239"
+Cohesion: 1.0
+Nodes (1): Gamma Two-Phase Daily Cycle
+
+### Community 240 - "Community 240"
+Cohesion: 1.0
+Nodes (1): Regime Classification Errors
+
+### Community 241 - "Community 241"
+Cohesion: 1.0
+Nodes (1): Pull Full Ticker Universe Principle
+
+### Community 242 - "Community 242"
+Cohesion: 1.0
+Nodes (1): Strike Snapping Process
+
+### Community 243 - "Community 243"
+Cohesion: 1.0
+Nodes (1): Slippage Estimation
+
+### Community 244 - "Community 244"
+Cohesion: 1.0
+Nodes (1): IV Practical Filters Table
+
+### Community 245 - "Community 245"
+Cohesion: 1.0
+Nodes (1): Beta Plan v1 Phases (13 phases)
+
+### Community 246 - "Community 246"
+Cohesion: 1.0
+Nodes (1): Beta Plan v2 Reuse vs New Table
+
+### Community 247 - "Community 247"
+Cohesion: 1.0
+Nodes (1): Auto-Heal Operator Commands
+
+### Community 248 - "Community 248"
 Cohesion: 1.0
 Nodes (1): Close Order Failed Symptom
 
 ## Knowledge Gaps
-- **615 isolated node(s):** `Find next M### id not already in the journal.`, `Green for CLOSED wins, red for CLOSED losses, yellow for OPEN.`, `Return age in seconds of an ISO8601 timestamp. 0 if missing/unparseable.`, `Map RSI(10) reading to a 1-10 conviction score.      Connors threshold is 30. De`, `Map Beta strike-selection comfort to a 1-10 conviction score.      Heuristic: ho` (+610 more)
+- **933 isolated node(s):** `Shared fixtures and assertion helpers for the self-learning test suite.`, `Create a sandboxed QUANTAI_RUNTIME_ROOT and wire all _paths constants.      Yiel`, `Return the trade journal path inside the sandbox.`, `Write two sample trades to the journal and return the path.`, `Hand-written assertion that a diagnosis dict matches the expected schema.` (+928 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Self-Improve + Self-Evolution`** (4 nodes): `self_evolution.py`, `_compute_observations()`, `set_nested()`, `self_evolution.py`
+- **Thin community `Community 40`** (7 nodes): `Unit tests for _paths.py — env-var override and constant structure.`, `test_dashboard_state_override()`, `test_defaults_point_under_root()`, `test_env_override_redirects_all_paths()`, `test_journal_ends_with_jsonl()`, `test_learning_tracker_ends_with_json()`, `test_paths.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (2 nodes): `Script Inventory`, `system_test.py (43-check health test)`
+- **Thin community `Community 41`** (7 nodes): `Smoke test: run system_monitor.py against the live VPS.  Verifies the report fil`, `TestLiveHealthReport`, `.test_all_13_checks_present()`, `.test_each_check_has_status()`, `.test_envelope_shape()`, `.test_report_exists()`, `test_sentinel_live_health_report.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (2 nodes): `Key File Paths`, `Security Rules (never expose .env, credentials)`
+- **Thin community `Community 45`** (4 nodes): `check()`, `check_keys()`, `section()`, `test_broker.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (2 nodes): `Research Agent Operating Manual`, `Research Agent Core Beliefs (edge via research)`
+- **Thin community `Community 53`** (2 nodes): `Central path constants for all self-learning scripts.  All scripts that referenc`, `_paths.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (2 nodes): `Infra Health Check Procedure`, `Scripts Inventory`
+- **Thin community `Community 54`** (2 nodes): `Script Inventory`, `system_test.py (43-check health test)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (2 nodes): `Agent Beta Core Principles`, `Agent Beta — What I Do NOT Do`
+- **Thin community `Community 55`** (2 nodes): `Key File Paths`, `Security Rules (never expose .env, credentials)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (2 nodes): `Agent Gamma Core Principles`, `Agent Gamma — What I Do NOT Do`
+- **Thin community `Community 56`** (2 nodes): `Research Agent Operating Manual`, `Research Agent Core Beliefs (edge via research)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (2 nodes): `Credit Spreads (Secondary)`, `IV Skew (Put vs Call)`
+- **Thin community `Community 57`** (2 nodes): `Cron Schedule (UTC)`, `Auto-Heal Schedule (4x/day)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (2 nodes): `Cron Schedule (UTC)`, `Auto-Heal Schedule (4x/day)`
+- **Thin community `Community 58`** (2 nodes): `Infra Health Check Procedure`, `Scripts Inventory`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (2 nodes): `Severity-to-Discord Behavior`, `Logger Sources Ingested (systemd/docker/textlog/syslog/pyapp)`
+- **Thin community `Community 59`** (2 nodes): `Agent Beta Core Principles`, `Agent Beta — What I Do NOT Do`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (1 nodes): `Log a decision. Categories: rule_change, strategy, architecture, bug_fix, config`
+- **Thin community `Community 60`** (2 nodes): `Agent Gamma Core Principles`, `Agent Gamma — What I Do NOT Do`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 62`** (1 nodes): `If everything placed cleanly, delete the pending file. If anything     failed, r`
+- **Thin community `Community 61`** (2 nodes): `Credit Spreads (Secondary)`, `IV Skew (Put vs Call)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 63`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
+- **Thin community `Community 62`** (2 nodes): `Severity-to-Discord Behavior`, `Logger Sources Ingested (systemd/docker/textlog/syslog/pyapp)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 64`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
+- **Thin community `Community 64`** (1 nodes): `autonomous_execution.py does `os.makedirs("/root/quantai-v2/...")`         at im`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 65`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
+- **Thin community `Community 71`** (1 nodes): `Log a decision. Categories: rule_change, strategy, architecture, bug_fix, config`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 66`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
+- **Thin community `Community 72`** (1 nodes): `Return the root crontab as a string, or None if unavailable.      The pipeline c`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 67`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
+- **Thin community `Community 73`** (1 nodes): `Verify each expected cron entry is present in the root crontab.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 68`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
+- **Thin community `Community 74`** (1 nodes): `Alert message must tell operator what to check.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Heartbeat Monitor`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
+- **Thin community `Community 75`** (1 nodes): `Fail-open: corrupt cooldown file → allow alert.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 70`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
+- **Thin community `Community 76`** (1 nodes): `Post a message to Discord via bot token. Falls back to webhook if set.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 71`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
+- **Thin community `Community 77`** (1 nodes): `Post a trade execution alert to #alerts channel.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 72`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
+- **Thin community `Community 78`** (1 nodes): `OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 73`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
+- **Thin community `Community 79`** (1 nodes): `Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 74`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
+- **Thin community `Community 80`** (1 nodes): `Query the active broker for available strikes on a given expiry.     Returns sor`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 75`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
+- **Thin community `Community 81`** (1 nodes): `Find the strike closest to target from available list.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
+- **Thin community `Community 82`** (1 nodes): `Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 77`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
+- **Thin community `Community 83`** (1 nodes): `Place a multi-leg options order as a single mleg order.     This avoids the 'unc`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
+- **Thin community `Community 84`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 79`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
+- **Thin community `Community 85`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 80`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
+- **Thin community `Community 86`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
+- **Thin community `Community 87`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (1 nodes): `Place a close order through the active broker. 1 leg → plain order;     2-4 legs`
+- **Thin community `Community 88`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (1 nodes): `Days to the soonest-expiring leg.`
+- **Thin community `Community 89`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
+- **Thin community `Community 90`** (1 nodes): `Place a close order through the active broker. 1 leg → plain order;     2-4 legs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
+- **Thin community `Community 91`** (1 nodes): `Days to the soonest-expiring leg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
+- **Thin community `Community 92`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (1 nodes): `Returns (should_close, exit_reason).      For Beta trades (exit_rules present):`
+- **Thin community `Community 93`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 88`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
+- **Thin community `Community 94`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
+- **Thin community `Community 95`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 90`** (1 nodes): `Build the leg dict in the broker.place_mleg_order shape.`
+- **Thin community `Community 96`** (1 nodes): `Return the latest cached daily indicators for `symbol` from     gamma_indicator_`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (1 nodes): `Post a message to Discord via bot token. Falls back to webhook if set.`
+- **Thin community `Community 97`** (1 nodes): `Agent Gamma exit checks (Connors RSI pullback).      Triggers (in order):`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (1 nodes): `Post a trade execution alert to #alerts channel.`
+- **Thin community `Community 98`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (1 nodes): `OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)`
+- **Thin community `Community 99`** (1 nodes): `Return True if we have not alerted for *symbol* within the cooldown window.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (1 nodes): `Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.`
+- **Thin community `Community 100`** (1 nodes): `Compare broker option positions against journal open entries.      Fires a 🔴 Dis`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 95`** (1 nodes): `Query the active broker for available strikes on a given expiry.     Returns sor`
+- **Thin community `Community 101`** (1 nodes): `Stocks under $30 suitable for Amit's manual collar strategy.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (1 nodes): `Find the strike closest to target from available list.`
+- **Thin community `Community 102`** (1 nodes): `Pattern must match the exact string logged by _broker_ibkr.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (1 nodes): `Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik`
+- **Thin community `Community 103`** (1 nodes): `Runbook must include the fix command so it's actionable from Discord.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `Place a multi-leg options order as a single mleg order.     This avoids the 'unc`
+- **Thin community `Community 104`** (1 nodes): `Auto-action must be 'none' — gateway restart requires human confirmation.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
+- **Thin community `Community 105`** (1 nodes): `Runbook should reference the IBC config fix so it's self-contained.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
+- **Thin community `Community 106`** (1 nodes): `Runbook must include a way to verify the fix worked.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
+- **Thin community `Community 107`** (1 nodes): `If everything placed cleanly, delete the pending file. If anything     failed, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
+- **Thin community `Community 108`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
+- **Thin community `Community 109`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Heartbeat Monitor`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
+- **Thin community `Community 110`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 105`** (1 nodes): `Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15`
+- **Thin community `Community 111`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `Equity options trade 09:30–16:00 ET on weekdays.`
+- **Thin community `Community 112`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `Merge updates into matching journal entries, rewrite atomically.     updates: {t`
+- **Thin community `Community 113`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 108`** (1 nodes): `Fetch open positions through the active broker.      Returns {occ_symbol: positi`
+- **Thin community `Community 114`** (1 nodes): `Read persistent probe failure state (survives process restarts).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 109`** (1 nodes): `Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg`
+- **Thin community `Community 115`** (1 nodes): `Persist probe state; return updated state dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 110`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
+- **Thin community `Community 116`** (1 nodes): `NYSE equity options hours: 09:30 → 16:00 ET, Mon-Fri.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 111`** (1 nodes): `Place a close order through the active broker. 1 leg → plain order;     2-4 legs`
+- **Thin community `Community 117`** (1 nodes): `Decide whether to print the pipeline-beat status line this cron tick.     During`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 112`** (1 nodes): `Check all four exit rules in priority order.     Returns (should_close: bool, ex`
+- **Thin community `Community 118`** (1 nodes): `Persist the last-print timestamp + status. Failure is non-fatal.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 113`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
+- **Thin community `Community 119`** (1 nodes): `Return age in seconds of an ISO8601 timestamp. 0 if missing/unparseable.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
+- **Thin community `Community 120`** (1 nodes): `Map RSI(10) reading to a 1-10 conviction score.      Connors threshold is 30. De`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
+- **Thin community `Community 121`** (1 nodes): `Map Beta strike-selection comfort to a 1-10 conviction score.      Heuristic: ho`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
+- **Thin community `Community 122`** (1 nodes): `Map debate-chamber judge score (0-100) to a 1-10 conviction score.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
+- **Thin community `Community 123`** (1 nodes): `If everything placed cleanly, delete the pending file. If anything     failed, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 118`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
+- **Thin community `Community 124`** (1 nodes): `Merge `fields` into the entry whose id == trade_id. Atomic rewrite.      Returns`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 119`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
+- **Thin community `Community 125`** (1 nodes): `Return the entry matching trade_id, or None if absent.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 120`** (1 nodes): `Returns (should_close, exit_reason).      For Beta trades (exit_rules present):`
+- **Thin community `Community 126`** (1 nodes): `Get current price — tries fast_info first (no 404s), falls back to info.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Alpaca Broker Layer`** (1 nodes): `Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)`
+- **Thin community `Community 127`** (1 nodes): `Get average volume without triggering fundamentals 404s.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 122`** (1 nodes): `Beta-specific exit rules sourced from trade['exit_rules']. Returns     (should_c`
+- **Thin community `Community 128`** (1 nodes): `Pull liquid, optionable tickers from multiple sources.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (1 nodes): `Post a message to Discord via bot token. Falls back to webhook if set.`
+- **Thin community `Community 129`** (1 nodes): `Poor man's covered call/put — diagonal spread.     Sell near-term option, buy fu`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (1 nodes): `Post a trade execution alert to #alerts channel.`
+- **Thin community `Community 130`** (1 nodes): `Iron condors — range-bound, collect from both sides.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 125`** (1 nodes): `OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)`
+- **Thin community `Community 131`** (1 nodes): `Stocks under $30 suitable for Amit's manual collar strategy.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 126`** (1 nodes): `Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.`
+- **Thin community `Community 132`** (1 nodes): `If everything placed cleanly, delete the pending file. If anything     failed, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 127`** (1 nodes): `Query Alpaca options contracts for available strikes on a given expiry.     Retu`
+- **Thin community `Community 133`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 128`** (1 nodes): `Find the strike closest to target from available list.`
+- **Thin community `Community 134`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 129`** (1 nodes): `Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik`
+- **Thin community `Community 135`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 130`** (1 nodes): `Place a multi-leg options order as a single mleg order.     This avoids the 'unc`
+- **Thin community `Community 136`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 131`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
+- **Thin community `Community 137`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 132`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
+- **Thin community `Community 138`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 133`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
+- **Thin community `Community 139`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 134`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
+- **Thin community `Community 140`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 135`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
+- **Thin community `Community 141`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 136`** (1 nodes): `Return lines from `path` whose timestamp (if parseable) is >= cutoff.     If a l`
+- **Thin community `Community 142`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 137`** (1 nodes): `Stable signature from the stable parts of an error line.`
+- **Thin community `Community 143`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 138`** (1 nodes): `Short id derived from signature — stable across runs.`
+- **Thin community `Community 144`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 139`** (1 nodes): `Case-insensitive substring check of each catalog pattern against the     raw sig`
+- **Thin community `Community 145`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 140`** (1 nodes): `One-line trade summary.`
+- **Thin community `Community 146`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 141`** (1 nodes): `Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15`
+- **Thin community `Community 147`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 142`** (1 nodes): `Merge updates into matching journal entries, rewrite atomically.     updates: {t`
+- **Thin community `Community 148`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 143`** (1 nodes): `GET /v2/positions → {occ_symbol: position_dict} or None on error.     None means`
+- **Thin community `Community 149`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 144`** (1 nodes): `Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg`
+- **Thin community `Community 150`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 145`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
+- **Thin community `Community 151`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 146`** (1 nodes): `Place market mleg close order. Returns order dict on success, None on failure.`
+- **Thin community `Community 152`** (1 nodes): `Place a close order through the active broker. 1 leg → plain order;     2-4 legs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 147`** (1 nodes): `Check all four exit rules in priority order.     Returns (should_close: bool, ex`
+- **Thin community `Community 153`** (1 nodes): `Days to the soonest-expiring leg.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 148`** (1 nodes): `QuantAI System Overview`
+- **Thin community `Community 154`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 149`** (1 nodes): `Roadmap Current State (Paper Trading Live)`
+- **Thin community `Community 155`** (1 nodes): `Read current Beta regime from dashboard state. Cached per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 150`** (1 nodes): `Setup Guide Overview`
+- **Thin community `Community 156`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 151`** (1 nodes): `Hetzner VPS Setup`
+- **Thin community `Community 157`** (1 nodes): `Returns (should_close, exit_reason).      For Beta trades (exit_rules present):`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 152`** (1 nodes): `Git Rules (local main is source of truth)`
+- **Thin community `Community 158`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 153`** (1 nodes): `Prevent Accidental Damage Rules`
+- **Thin community `Community 159`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Journal Agent Operating Manual`** (1 nodes): `Journal Agent Stats Commands`
+- **Thin community `Community 160`** (1 nodes): `Build the leg dict in the broker.place_mleg_order shape.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Journal Agent Operating Manual`** (1 nodes): `Journal Agent Weekly Digest Format`
+- **Thin community `Community 161`** (1 nodes): `Post a trade execution alert to #alerts channel.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 156`** (1 nodes): `Research Agent Soul (intelligence engine)`
+- **Thin community `Community 162`** (1 nodes): `OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 157`** (1 nodes): `Cron Pipeline`
+- **Thin community `Community 163`** (1 nodes): `Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 158`** (1 nodes): `aiohttp (orchestrator dep)`
+- **Thin community `Community 164`** (1 nodes): `Query the active broker for available strikes on a given expiry.     Returns sor`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 159`** (1 nodes): `apscheduler`
+- **Thin community `Community 165`** (1 nodes): `Find the strike closest to target from available list.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 160`** (1 nodes): `uvicorn`
+- **Thin community `Community 166`** (1 nodes): `Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 161`** (1 nodes): `pydantic`
+- **Thin community `Community 167`** (1 nodes): `Place a multi-leg options order as a single mleg order.     This avoids the 'unc`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 162`** (1 nodes): `Environment Variables`
+- **Thin community `Community 168`** (1 nodes): `Bull put spread: SELL higher put + BUY lower put.     Both legs submitted as sin`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 166`** (1 nodes): `Git Rules (local main is source of truth)`
+- **Thin community `Community 169`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 167`** (1 nodes): `Design Principles`
+- **Thin community `Community 170`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 168`** (1 nodes): `Iron Condors (Tertiary)`
+- **Thin community `Community 171`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 169`** (1 nodes): `Beta Directional Debit Spreads`
+- **Thin community `Community 172`** (1 nodes): `Write UTC timestamp to pipeline beat file so heartbeat_monitor can check livenes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 170`** (1 nodes): `Beta Iron Condors`
+- **Thin community `Community 173`** (1 nodes): `Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 171`** (1 nodes): `Beta VIX Mean Reversion Spreads`
+- **Thin community `Community 174`** (1 nodes): `Equity options trade 09:30–16:00 ET on weekdays.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 172`** (1 nodes): `Beta Long Straddles (SQUEEZE)`
+- **Thin community `Community 175`** (1 nodes): `Merge updates into matching journal entries, rewrite atomically.     updates: {t`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 173`** (1 nodes): `Gamma Instrument Universe (27 instruments)`
+- **Thin community `Community 176`** (1 nodes): `Fetch open positions through the active broker.      Returns {occ_symbol: positi`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 174`** (1 nodes): `Gamma Two-Phase Daily Cycle`
+- **Thin community `Community 177`** (1 nodes): `Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 175`** (1 nodes): `Regime Classification Errors`
+- **Thin community `Community 178`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 176`** (1 nodes): `Pull Full Ticker Universe Principle`
+- **Thin community `Community 179`** (1 nodes): `Place a close order through the active broker. 1 leg → plain order;     2-4 legs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 177`** (1 nodes): `Strike Snapping Process`
+- **Thin community `Community 180`** (1 nodes): `Check all four exit rules in priority order.     Returns (should_close: bool, ex`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 178`** (1 nodes): `Slippage Estimation`
+- **Thin community `Community 181`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 179`** (1 nodes): `IV Practical Filters Table`
+- **Thin community `Community 182`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 180`** (1 nodes): `Beta Plan v1 Phases (13 phases)`
+- **Thin community `Community 183`** (1 nodes): `Beta-specific exit rules from trade['exit_rules'].      Returns (should_close, r`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 181`** (1 nodes): `Beta Plan v2 Reuse vs New Table`
+- **Thin community `Community 184`** (1 nodes): `Returns (should_close, exit_reason, close_fraction, partial_flag).      close_fr`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 182`** (1 nodes): `Auto-Heal Operator Commands`
+- **Thin community `Community 185`** (1 nodes): `Load cached market_intelligence.macro. Refreshes once per minute.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 183`** (1 nodes): `Close Order Failed Symptom`
+- **Thin community `Community 186`** (1 nodes): `Today's SPX open vs yesterday's close, %. Cached per day. Returns None on failur`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 187`** (1 nodes): `Sum live signed deltas across legs. Returns None if any leg can't be quoted.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 188`** (1 nodes): `Returns (should_close, exit_reason).      For Beta trades (exit_rules present):`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 189`** (1 nodes): `Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 190`** (1 nodes): `Beta-specific exit rules sourced from trade['exit_rules']. Returns     (should_c`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 191`** (1 nodes): `Post a message to Discord via bot token. Falls back to webhook if set.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 192`** (1 nodes): `Post a trade execution alert to #alerts channel.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 193`** (1 nodes): `OCC format: SYMBOL + YYMMDD + C/P + 8-digit strike (strike*1000, zero-padded)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 194`** (1 nodes): `Convert '7DTE', '0DTE' etc to YYYY-MM-DD. Never returns today.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 195`** (1 nodes): `Query Alpaca options contracts for available strikes on a given expiry.     Retu`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 196`** (1 nodes): `Find the strike closest to target from available list.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 197`** (1 nodes): `Find two real strikes for a spread from Alpaca's chain.     Returns (short_strik`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 198`** (1 nodes): `Place a multi-leg options order as a single mleg order.     This avoids the 'unc`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 199`** (1 nodes): `Bear call spread: SELL lower call + BUY higher call.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 200`** (1 nodes): `Iron condor: bull put spread + bear call spread as single 4-leg mleg order.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 201`** (1 nodes): `Fallback for any other spread — detect put/call from legs and build mleg.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 202`** (1 nodes): `Diagonal spread (poor man's covered call/put).     BUY far-dated option + SELL n`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 203`** (1 nodes): `Route to correct executor based on strategy. Returns fill or None.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 204`** (1 nodes): `Return lines from `path` whose timestamp (if parseable) is >= cutoff.     If a l`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 205`** (1 nodes): `Stable signature from the stable parts of an error line.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 206`** (1 nodes): `Short id derived from signature — stable across runs.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 207`** (1 nodes): `Case-insensitive substring check of each catalog pattern against the     raw sig`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 208`** (1 nodes): `One-line trade summary.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 209`** (1 nodes): `Build OCC option symbol from journal leg fields.     e.g. XOM 2026-06-18 call 15`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 210`** (1 nodes): `Merge updates into matching journal entries, rewrite atomically.     updates: {t`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 211`** (1 nodes): `GET /v2/positions → {occ_symbol: position_dict} or None on error.     None means`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 212`** (1 nodes): `Sum unrealized_pl across all legs present in Alpaca.     Returns (total_pnl, leg`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 213`** (1 nodes): `Build reversed legs for a closing mleg order.     Skips legs with no active Alpa`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 214`** (1 nodes): `Place market mleg close order. Returns order dict on success, None on failure.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 215`** (1 nodes): `Check all four exit rules in priority order.     Returns (should_close: bool, ex`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 216`** (1 nodes): `QuantAI System Overview`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 217`** (1 nodes): `Roadmap Current State (Paper Trading Live)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 218`** (1 nodes): `Setup Guide Overview`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 219`** (1 nodes): `Hetzner VPS Setup`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 220`** (1 nodes): `Git Rules (local main is source of truth)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 221`** (1 nodes): `Prevent Accidental Damage Rules`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 222`** (1 nodes): `Journal Agent Stats Commands`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 223`** (1 nodes): `Journal Agent Weekly Digest Format`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 224`** (1 nodes): `Research Agent Soul (intelligence engine)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 225`** (1 nodes): `Cron Pipeline`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 226`** (1 nodes): `aiohttp (orchestrator dep)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 227`** (1 nodes): `apscheduler`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 228`** (1 nodes): `uvicorn`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 229`** (1 nodes): `pydantic`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 230`** (1 nodes): `Environment Variables`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 231`** (1 nodes): `Git Rules (local main is source of truth)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 232`** (1 nodes): `Design Principles`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 233`** (1 nodes): `Iron Condors (Tertiary)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 234`** (1 nodes): `Beta Directional Debit Spreads`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 235`** (1 nodes): `Beta Iron Condors`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 236`** (1 nodes): `Beta VIX Mean Reversion Spreads`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 237`** (1 nodes): `Beta Long Straddles (SQUEEZE)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 238`** (1 nodes): `Gamma Instrument Universe (27 instruments)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 239`** (1 nodes): `Gamma Two-Phase Daily Cycle`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 240`** (1 nodes): `Regime Classification Errors`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 241`** (1 nodes): `Pull Full Ticker Universe Principle`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 242`** (1 nodes): `Strike Snapping Process`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 243`** (1 nodes): `Slippage Estimation`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 244`** (1 nodes): `IV Practical Filters Table`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 245`** (1 nodes): `Beta Plan v1 Phases (13 phases)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 246`** (1 nodes): `Beta Plan v2 Reuse vs New Table`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 247`** (1 nodes): `Auto-Heal Operator Commands`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 248`** (1 nodes): `Close Order Failed Symptom`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `post()` connect `Earnings Calendar + Journal` to `Alpaca Broker Layer`, `Community 1`, `Auto-Heal Subsystem`, `Earnings Calendar + Journal`, `Guard Engine + Tests`, `Discord Chat Agent`, `Alpaca Broker Layer`, `Guard Engine + Tests`, `Risk Engine + Risk Checks`, `Weekly Synthesis (Sonnet)`, `Self-Improve + Self-Evolution`, `Community 23`, `Community 27`, `Community 30`?**
-  _High betweenness centrality (0.284) - this node is a cross-community bridge._
-- **Why does `Client` connect `Auto-Heal Subsystem` to `Weekly Synthesis (Sonnet)`, `Self-Diagnosis + Trade Review (Haiku)`?**
-  _High betweenness centrality (0.092) - this node is a cross-community bridge._
-- **Why does `chat()` connect `Auto-Heal Subsystem` to `Earnings Calendar + Journal`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
-- **Are the 58 inferred relationships involving `BrokerBase` (e.g. with `IBKRBroker` and `_IBKRNoiseFilter`) actually correct?**
-  _`BrokerBase` has 58 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 46 inferred relationships involving `Client` (e.g. with `_call_haiku()` and `Run post-trade review. Never raises.`) actually correct?**
-  _`Client` has 46 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `IBKRBroker` connect `Community 3` to `Community 1`, `Community 18`, `Community 12`, `Community 20`?**
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Why does `main()` connect `Community 17` to `Community 32`, `Community 1`, `Community 3`, `Community 8`, `Community 12`, `Community 14`, `Community 18`, `Community 20`, `Community 31`?**
+  _High betweenness centrality (0.044) - this node is a cross-community bridge._
+- **Why does `get_broker()` connect `Community 1` to `Community 33`, `Community 3`, `Community 7`, `Community 8`, `Community 14`, `Community 17`?**
+  _High betweenness centrality (0.038) - this node is a cross-community bridge._
+- **Are the 85 inferred relationships involving `Client` (e.g. with `TestClawRouteReachable` and `TestLiveDiagnose`) actually correct?**
+  _`Client` has 85 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 71 inferred relationships involving `BrokerBase` (e.g. with `IBKRBroker` and `_IBKRNoiseFilter`) actually correct?**
+  _`BrokerBase` has 71 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 17 inferred relationships involving `IBKRBroker` (e.g. with `_OptionSpec` and `BrokerBase`) actually correct?**
   _`IBKRBroker` has 17 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 29 inferred relationships involving `post()` (e.g. with `post_discord()` and `place_mleg_order()`) actually correct?**
-  _`post()` has 29 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 30 inferred relationships involving `post()` (e.g. with `post_discord()` and `post_to_channel()`) actually correct?**
+  _`post()` has 30 INFERRED edges - model-reasoned connections that need verification._
