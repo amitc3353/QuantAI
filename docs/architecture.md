@@ -4,7 +4,13 @@
 **Scope**: every meaningful piece of QuantAI as it actually runs today — agents, broker adapter, monitoring, Sentinel, dashboard, KARNA, journals, ADRs.
 **Pattern**: each section is structured **ELI10 → How it actually works → Why → Good / Bad / Could be better**. The intent is that a 10-year-old can follow the intuition and an interviewer can grill you for 60 minutes from the same text.
 
-A small "Current state snapshot" lives in §20 — that section is dated and is expected to go stale; everything else is meant to age slowly.
+### Companion documents
+
+- **[ARCHITECTURE_SUMMARY.md](./ARCHITECTURE_SUMMARY.md)** — the ~1500-word public-facing intro. Read this first if you only have 10 minutes. It links back into the deep sections below.
+- **[STATE.md](./STATE.md)** — the dated "current state snapshot" (halt status, open positions, trade counts). Lives separately because it ages fast.
+- The interview cheat sheet (formerly §21) is kept as a private operator note outside this repo.
+
+The rest of this doc is the deep dive. Skim §1 for the thesis, §2 for the wiring diagram, then jump via the TOC.
 
 ---
 
@@ -33,13 +39,15 @@ A small "Current state snapshot" lives in §20 — that section is dated and is 
 - [§17 — What's good](#17--whats-good)
 - [§18 — What's bad / weak / risky](#18--whats-bad--weak--risky)
 - [§19 — What could be better](#19--what-could-be-better)
-- [§20 — Current state snapshot (2026-05-06)](#20--current-state-snapshot-2026-05-06)
-- [§21 — Interview cheat sheet — 30 questions](#21--interview-cheat-sheet--30-questions)
+- §20 — Current state snapshot → moved to **[STATE.md](./STATE.md)**
+- §21 — Interview cheat sheet → kept private (not in this repo)
 - [§22 — Glossary](#22--glossary)
 
 ---
 
 ## §1 — 30-second pitch
+
+> **Thesis.** QuantAI is an autonomous, multi-agent options-trading system on a $1M IBKR paper account. It uses LLMs **only where judgment is needed** and enforces **all safety rules in code, not in prompts**. Four agents (Alpha LLM-debated, Beta deterministic regime, Gamma single-setup, Sentinel ops) run as cron-driven Python scripts on a single VPS, sharing one journal and one broker adapter. The whole thing costs ~$4–5/month in LLM spend.
 
 ### ELI10
 
@@ -2452,216 +2460,6 @@ If multiple monitors all fire in the same minute, Discord throttles. A small in-
 #### Lazy-load Recharts/Mermaid in dashboard
 
 Cut first-paint time by ~60%. Today: full bundle loads on every visit.
-
----
-
-## §20 — Current state snapshot (2026-05-06)
-
-This section is dated. It is expected to go stale. Replace it (don't append to it) on each major doc revision.
-
-### Trading state
-
-**HALTED** since 2026-05-05 ~16:45 ET. The cron lines for `run_pipeline.py`, `pre_trade_check.py`, `eod_summary.py`, `beta_agent.py`, `gamma_agent.py --scan`, `gamma_agent.py --execute`, `position_monitor.py`, and `event_moves_seeder.py` all have the `# HALTED 2026-05-05 INTC-mismatch-investigation:` prefix.
-
-### Open positions
-
-| ID | Symbol | Strategy | Status | Notes |
-|---|---|---|---|---|
-| A018 | INTC | Iron condor | Broker has 4 legs; journal CLOSED (incorrectly) | Holding to May 15 expiry |
-| A020 | INTC | Iron condor | Broker has 4 legs at qty 4 in REVERSE direction; journal OPEN with mismatched qty | Holding to May 15 expiry |
-| A021 | XOP | Iron condor | Broker empty; journal status corrected to `PHANTOM_NEVER_FILLED` 2026-05-06 | Resolved |
-| A022 | INTC | Iron condor | Broker empty; journal status corrected to `PHANTOM_NEVER_FILLED` 2026-05-06 | Resolved |
-
-A018 + A020 will reconcile automatically at May 15 option expiration. The journal can be manually corrected after the broker positions resolve.
-
-### Why the halt
-
-Multiple bugs in the trading path created journal-vs-broker mismatches:
-
-- **Bug A** (A018) — close-path treated `Cancelled` status as success. Fixed 2026-05-04.
-- **Bug B** (A020) — close-path retried on `Submitted` instead of polling. Fixed 2026-05-05.
-- **Bug C** (A021/A022) — entry-path treated `Cancelled` as success. Fixed 2026-05-05 (added `_BROKER_TERMINAL_FAILURE_STATUSES` check).
-
-The fixes are in place. The leftover broker state from before the fixes is what's holding the halt.
-
-### Infrastructure state
-
-- IB Gateway: `active`
-- ClawRoute: `active`
-- LiteLLM: still running (Docker, legacy)
-- OpenClaw: `active`
-- Sentinel: running on schedule
-- Dashboard: live at `https://quantai.tail1465ff.ts.net/`
-- Heartbeat monitor: running every 2 min, alerts pipeline-silent-stale (expected, halt-related)
-
-### Trade counts to date
-
-Live since 2026-04-27 (IBKR migration date):
-
-- Alpha (A###): ~22 entries (most fully closed; A018 + A020 in unwind state)
-- Beta (B###): a small number live; weekly rate increasing as event-moves seeder fills
-- Gamma (G###): **0 trades**. The Connors RSI(10) < 30 + above-200-SMA filter has produced zero qualifying setups in 7 trading days × 27 instruments. By design.
-
-### Recovery plan
-
-Pre-defined sequence in `quantai-self-learning-system-jaunty-cocke.md` (a plan file in `~/.claude/plans/`):
-
-1. Wait for May 15 expiration → broker positions auto-flatten
-2. Manual journal corrections for A018 / A020 (mark CLOSED with realized P&L)
-3. Run `reconcile_audit.py` until exit code 0
-4. Re-enable position_monitor cron only; observe 10 min
-5. Re-enable Beta + Gamma --scan; let Beta complete one clean trade
-6. Re-enable Gamma --execute and full Alpha pipeline
-
-### Known good as of this writing
-
-- Phase 5b partial-fill safeguard
-- All four agents' identity files
-- Dashboard renders all 4 agents (post 2026-05-06 audit fix)
-- Architecture diagram includes Sentinel + ClawRoute (post audit fix)
-- Bull/Bear PY templates in debate chamber
-
-This snapshot will be wrong by next week. That's the design.
-
----
-
-## §21 — Interview cheat sheet — 30 questions
-
-Each answered in 2–4 sentences. The questions are grouped by topic so you can study a section at a time.
-
-### About the system overall
-
-**1. What is QuantAI?**
-
-A 24/7 autonomous options-trading system on a $1M IBKR paper account. Three trading agents (Alpha LLM-debated ETF spreads, Beta deterministic SPX/XSP/VIX regime, Gamma single-setup mean-reversion) plus one ops agent (Sentinel). Single VPS, cron-driven, shared journal, single broker adapter. Runs on Linux with Python.
-
-**2. Why three agents instead of one?**
-
-Independent failure, independent risk budgets, different edges. Alpha needs LLM judgment on complex narratives. Beta needs deterministic regime classification. Gamma needs disciplined patience for one specific setup. Putting them in one process would couple their fates and conflate their risk profiles.
-
-**3. Why a single VPS?**
-
-Operational simplicity. No Kubernetes, no message bus, no orchestrator. Cron is the metronome. Each script runs to completion and exits. State on disk. The trade-off is no HA — addressed in §19 as a high-priority improvement.
-
-**4. What's the "if you remember nothing else" rule?**
-
-Hard caps in code, not in prompts. Path allowlists, NEVER lists, daily-budget gates, partial-fill safeguards — all enforced in Python before any LLM gets to act. The LLMs add narrative judgment within the rails. The rails are the safety surface.
-
-### About the agents
-
-**5. Walk me through Alpha's decision flow.**
-
-Cron fires every 15 min. Market hours + daily-budget check. Then market_intelligence (yfinance) → scan_options (78 tickers × 4 strategies, max-loss filter) → debate_chamber (Sonnet Proposal + PY Bull/Bear templates + Sonnet Judge, threshold 60) → autonomous_execution (broker.place_mleg_order). Journal entry written as A###. Heartbeat regardless.
-
-**6. Why deterministic Beta when LLMs are "smarter"?**
-
-Reproducibility, audit-ability, zero variance per cycle. Regime classification is a numeric problem (RSI, ADX, IV rank, price-vs-SMA). LLMs add no value there but add cost and randomness. Beta is faster, cheaper, and explainable line-by-line.
-
-**7. Why XSP not SPY?**
-
-Section 1256 tax treatment (60/40 long/short regardless of holding period). European exercise (no early-assignment risk). Cash settlement (no share delivery surprises). XSP is 1/10 the SPX notional, which fits the 1% sizing cap naturally. ETF SPY has none of these advantages.
-
-**8. What does Gamma do?**
-
-One setup: Connors RSI(10) < 30 AND price > 200-day SMA AND not in earnings blackout AND liquid → buy a 14–21 DTE bull call debit spread. Two-phase: 4:30 PM scan, 9:33 AM execute (with revalidation). 27-instrument universe. Backtest 88.89% WR on the equivalent 1996–2019 set.
-
-**9. Why has Gamma not traded yet?**
-
-The filters are stringent. RSI(10) < 30 AND above 200-SMA AND no earnings AND liquid AND past sector cap. Across 7 trading days × 27 instruments, no setup qualified. Plus the cron is currently halted for the INTC investigation. Both factors compound. Gamma is correctly waiting; the strategy is low-frequency by design.
-
-**10. What does Sentinel do?**
-
-Infrastructure operations, not trading. Reads logs/errors/health, classifies findings as safe_auto / propose_wait / never_touch. Auto-applies safe fixes (e.g., restart a non-trading collector). Queues riskier fixes to Discord ✅. Path-allowlisted away from trading code, journal, .env, ibgateway, openclaw.
-
-### About risk and safety
-
-**11. What stops a runaway loss?**
-
-Five gates. (1) 2% per-trade max loss. (2) 5% daily loss halts new entries. (3) 5-loss circuit breaker (Beta). (4) 3:30 PM hard close on Alpha 0/1-DTE legs. (5) VIX ≥ 35 → HALT regime, no entries. Plus 14d/7d earnings blackouts (Alpha/Gamma).
-
-**12. How do you protect against partial fills?**
-
-Phase 5b safeguard in `_broker_ibkr.py`: an `order_submitted` flag plus a `finally:` clause that flushes async callbacks. Post-exception, `_find_open_order_by_ref(client_order_id)` searches openTrades + trades for a matching ref. Caller reconciles via `get_open_orders()`. Plus `verify_legs_flat()` confirms broker-side zero-quantity before the journal accepts CLOSED.
-
-**13. What happens if an order returns Cancelled status?**
-
-It used to be treated as success (Bug A018, Bug A021/A022). Fixed 2026-05-05: `place_mleg_order` checks status against `_BROKER_TERMINAL_FAILURE_STATUSES` (cancelled, rejected, inactive, etc.) and returns `None`. Caller writes the journal accurately (no phantom OPEN entries).
-
-**14. What's a ghost position?**
-
-Broker has a position the journal doesn't know about, OR the journal claims a position the broker doesn't have. Three flavors detected by `reconcile_ghost_positions()`: true ghost (broker-only), journal lie (journal CLOSED but broker has legs), entry phantom (journal OPEN but broker empty). All three trigger Discord alerts with 60-min cooldown.
-
-**15. Why is Sentinel restricted from the trading path?**
-
-Trading code can be subtle. A "creative" Sentinel proposal could break things in non-obvious ways. So `NEVER_MODIFY_PATHS` in code blocks Sentinel from touching `autonomous_execution.py`, `beta_agent.py`, `gamma_agent.py`, `position_monitor.py`, `_broker_ibkr.py`, or `broker.py`. Even if the LLM tags a fix `safe_auto`, the Python gate refuses.
-
-### About the LLMs
-
-**16. Why ClawRoute over direct Anthropic?**
-
-Single ingress, tier routing, one cost surface. Without ClawRoute, 15 LLM call sites had no shared cost control. With it, every call is logged with model, tokens, and cost attribution. Tier routing means trivial calls go to Gemini Flash-Lite (95% cheaper) while complex calls go to Sonnet. Plus an escape valve for emergencies.
-
-**17. How much does the system cost in LLM spend?**
-
-About $4–5 a month total. Per-trade Haiku reviews + weekly Sonnet synthesis + Sonnet apply slots for Sentinel. The debate chamber is ~$0.002–0.003/cycle. Cost discipline is structural (tier routing) not per-script.
-
-**18. Why no prompt caching?**
-
-We just haven't implemented it yet. Anthropic's prompt-cache TTL is 5 minutes; the debate chamber's system prompt (~800 tokens) would benefit. Estimated 80% savings on repeat-prompt calls. It's on the §19 medium-priority list.
-
-**19. What does the debate chamber actually buy us?**
-
-Two things. (1) Synthesis of news + earnings + macro + regime into a trade thesis — pure rules can't do that. (2) Audit trail — every trade has a written record of why it was approved. Both Bull/Bear cases used to be Haiku calls; we replaced them with Python templates to save 80 calls/day. Only Proposal and Judge remain as LLM calls.
-
-**20. Could the LLMs misbehave?**
-
-Yes, and the system is designed for that. Constitutional rules are in the prompt, but they're also in code. Earnings blackout? Checked in the prompt AND in scan_options.py AND in autonomous_execution.py. VIX ≥ 35? In the prompt AND in the regime detector AND in the risk engine. Belt, suspenders, second belt.
-
-### About the infrastructure
-
-**21. Why JSONL not a database?**
-
-Atomic append, grep-friendly, git-diff-friendly, no schema migration, no DB to operate. Single-writer rule per stage means no contention. For a single-operator system with 5–10 trades/day, JSONL is the right call. Scaling concern is hypothetical at this volume.
-
-**22. What's the most clever piece of code?**
-
-Three contenders. (a) The journal-grow daily-budget check — if `autonomous_execution` crashes mid-cycle, the budget is still accurate because it's read from the journal. (b) `_IBKRNoiseFilter` — drops 3000+ benign daily errors so real signals surface. (c) Phase 5b partial-fill safeguard — `order_submitted` flag plus post-exception recovery.
-
-**23. What's the riskiest part?**
-
-Single-VPS SPOF, manual workspace sync, GitHub remote drift, `Type=simple` foot-gun. Plus the absence of price re-validation in Alpha and Beta. Plus dashboard structural drift (the time between "agent shipped" and "dashboard knows about it"). All flagged in §18.
-
-**24. Why Tailscale instead of a real VPN?**
-
-Mesh identity. Every device has a stable IP, and authorization is by device, not by password. The dashboard has no app-level login because Tailscale IS the auth. For a single-operator system this is appropriate; would not be for multi-tenant.
-
-**25. What does the cron schedule look like in one paragraph?**
-
-In UTC: dashboard collectors every minute; heartbeat monitor every 2 min; system + error monitors every 5 min; trading agents every 15 min during 13–20 UTC weekday; Sentinel every 15 min routed by ET clock; weekly synthesis Friday 20:45 UTC; Sunday event-moves seeder; daily karna-backup at 2 UTC. After Nov 1 DST transition, market-hours crons need updating to 14–21 UTC.
-
-### About the journal and the trade-id system
-
-**26. Walk me through a trade lifecycle.**
-
-Cron fires Alpha. market_intelligence runs. scan_options finds candidates. debate_chamber approves one. autonomous_execution submits via broker.place_mleg_order. Journal A123 entry written. position_monitor runs every 2 min, fetches broker positions, applies exit rules. Trigger fires. Journal A123 updated to CLOSED. agent_self_diagnosis (Haiku) appends `capability_diagnosis`. trade_reviewer (Haiku) appends `post_trade` and writes a review markdown file. Friday: weekly_synthesis (Sonnet) reads everything and posts a summary.
-
-**27. What's the prefix system?**
-
-A### = Alpha (sequential). B### = Beta (sequential). G### = Gamma (max-based; gap-bug-proof). Prefix is a 1-char tag that lets every reader filter by source without parsing the `agent` field. Adding a new agent is "pick a new prefix and start writing."
-
-**28. What's `PHANTOM_NEVER_FILLED`?**
-
-A status added 2026-05-05 after the A021/A022 incident. It means the entry order was rejected by the broker but the journal accidentally marked it OPEN. Manual reconciliation rewrites these to PHANTOM_NEVER_FILLED with pnl=0. Not OPEN (nothing on broker), not CLOSED (no exit). The dashboard's open-trades collector filters by status==OPEN, so phantoms drop off.
-
-### About the future
-
-**29. What's the next big thing on the roadmap?**
-
-Three. (a) Re-enable trading after the May 15 INTC reconciliation. (b) Price re-validation in Alpha and Beta — currently only Gamma re-validates. (c) HA/DR plan with a secondary VPS. The full §19 list is longer; these are the highest-leverage.
-
-**30. If you could only fix one thing, what would it be?**
-
-Price re-validation in Alpha and Beta before order submission. Today, between the debate-time decision and the execution-time order, prices can move arbitrarily. We submit at whatever the broker's chain query gives. A 30-second lag in a volatile market can swing the trade economics significantly. It's a known gap, and the smallest possible fix that closes the largest possible class of "the trade looks different from what we approved" surprises.
 
 ---
 
