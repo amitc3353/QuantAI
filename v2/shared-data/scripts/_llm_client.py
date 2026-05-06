@@ -2,7 +2,7 @@
 
 Drop-in replacements for two patterns:
 
-  1. Anthropic SDK style (debate_chamber, self_evolution, services/cto_*):
+  1. Anthropic SDK style (debate_chamber, sentinel_agent, services/cto_*):
 
          from _llm_client import Client
          client = Client()

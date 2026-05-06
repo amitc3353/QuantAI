@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-05-03T17:21:39.415418+00:00",
+  "last_updated": "2026-05-04",
   "description": "QuantAI error catalog. Each entry classifies a known error pattern, links to a runbook, and optionally specifies an auto-fix action. Patterns are case-insensitive substrings unless the entry sets is_regex=true. Categories: recurring (seen 3+ times), novel (seen once), transient (self-heals). Auto-actions: retry, restart_service, skip, none.",
   "errors": [
     {
@@ -803,6 +803,34 @@
       "description": "Pipeline heartbeat is stale but market is closed \u2014 expected during overnight/weekend gap. Heartbeat monitor already handles the ok-overnight demotion.",
       "runbook": "",
       "source": "manual"
+    },
+    {
+      "id": "ibkr-no-security-definition",
+      "pattern": "No security definition has been found for the request",
+      "is_regex": false,
+      "category": "broker_data",
+      "severity": "info",
+      "auto_action": "skip",
+      "description": "Agent attempted to qualify an option contract that doesn't exist on IBKR (delisted, wrong expiry, wrong strike, etc.). Agent skips that candidate and continues \u2014 no action required. Fires on routine scanner mismatches.",
+      "runbook": "",
+      "first_seen": "2026-05-04",
+      "last_seen": "2026-05-04",
+      "occurrence_count": 0,
+      "source": "manual:sentinel-day-one-2026-05-04"
+    },
+    {
+      "id": "ibkr-failed-to-qualify-leg",
+      "pattern": "IBKRBroker: failed to qualify leg",
+      "is_regex": false,
+      "category": "broker_data",
+      "severity": "info",
+      "auto_action": "skip",
+      "description": "Leg qualification failed during contract resolution (typically pairs with 'No security definition' when the underlying option doesn't exist). Agent skips this leg and the candidate trade \u2014 routine, not blocking.",
+      "runbook": "",
+      "first_seen": "2026-05-04",
+      "last_seen": "2026-05-04",
+      "occurrence_count": 0,
+      "source": "manual:sentinel-day-one-2026-05-04"
     }
   ]
 }

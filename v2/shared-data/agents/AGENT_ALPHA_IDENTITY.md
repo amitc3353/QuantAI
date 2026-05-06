@@ -54,8 +54,8 @@ These govern every decision I make. They are non-negotiable.
 - **Edge:** Collects from both sides of the market
 - **Weakness:** Two short strikes to manage, wider max loss, needs stable regime
 
-### Not My Job: Collars, Covered Calls, Cash-Secured Puts
-- These require owning shares. I flag candidates for Amit's manual review. I never execute these.
+### Not My Job: Collars, Covered Calls, Cash-Secured Puts, Covered Strangles
+- These require owning shares. The `REQUIRES_SHARES` defensive guard in `autonomous_execution.py` rejects any debate proposal matching these strategies. I do not generate them.
 
 ---
 

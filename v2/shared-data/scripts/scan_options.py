@@ -546,50 +546,6 @@ def scan_iron_condors(tickers, vix):
     opportunities.sort(key=lambda x: x["score"], reverse=True)
     return opportunities
 
-# ── Collar candidates ─────────────────────────────────────────────────
-def scan_collar_candidates(tickers):
-    """Stocks under $30 suitable for Amit's manual collar strategy."""
-    candidates = []
-    print("Scanning for collar candidates...")
-
-    for sym in tickers:
-        try:
-            t = yf.Ticker(sym)
-            price = get_price(t, sym)
-            if not price or price > 30 or price < 5:
-                continue
-            if get_avg_volume(t) < 1_000_000:
-                continue
-
-            exps = t.options
-            if not exps:
-                continue
-
-            iv_rank = get_iv_rank(t)
-            if iv_rank is None or iv_rank < 40:
-                continue
-
-            earnings = get_earnings(t)
-            if earnings.get("within_14d"):
-                continue
-
-            tech = get_technicals(t, price)
-            score = round((iv_rank or 50) * 0.6 + (tech.get("rsi14", 50)) * 0.2, 1)
-
-            candidates.append({
-                "symbol": sym, "price": round(price, 2),
-                "iv_rank": iv_rank, "rsi": tech.get("rsi14", 50),
-                "score": score,
-                "note": "Collar candidate — requires owning shares (Amit manual only)"
-            })
-            time.sleep(0.15)
-
-        except:
-            continue
-
-    candidates.sort(key=lambda x: x["score"], reverse=True)
-    return candidates[:5]
-
 # ── Main ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "all"
@@ -643,18 +599,6 @@ if __name__ == "__main__":
         with open(out, "w") as f:
             json.dump(results["condors"], f, indent=2)
         print(f"[scanner] Iron condors: {len(condors)} found → {out}")
-
-    if mode in ("all", "collars"):
-        collars = scan_collar_candidates(tickers)
-        results["collars"] = {
-            "ts": datetime.now().isoformat(),
-            "scan_type": "collar_candidates",
-            "top_candidates": collars,
-        }
-        out = f"{CACHE}/collar_candidates.json"
-        with open(out, "w") as f:
-            json.dump(results["collars"], f, indent=2)
-        print(f"[scanner] Collar candidates: {len(collars)} found → {out}")
 
     # Summary for debate chamber to consume
     if mode in ("all", "both"):

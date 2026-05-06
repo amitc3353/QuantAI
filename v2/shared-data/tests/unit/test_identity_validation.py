@@ -108,9 +108,13 @@ EXPECTED_CRON_PATTERNS = [
     r"\*/15\s+13-20\s+\*\s+\*\s+1-5.*beta_agent",
     # Position monitor
     r"\*/2\s+13-20\s+\*\s+\*\s+1-5.*position_monitor",
-    # Auto-heal apply slots
-    r"30\s+12\s+\*\s+\*\s+1-5.*auto_heal",
-    r"45\s+20\s+\*\s+\*\s+1-5.*auto_heal",
+    # Sentinel agent (replaced auto_heal 2026-05-03). Cron is wrapper-driven —
+    # fires every 15 min in bracket windows; sentinel_agent.py --auto reads ET
+    # clock and dispatches to apply/observe/None.
+    r"\*/15\s+12-21\s+\*\s+\*\s+1-5.*sentinel_agent\.py\s+--auto",
+    r"\*/15\s+13-16\s+\*\s+\*\s+0,6.*sentinel_agent\.py\s+--auto",
+    # system_monitor: deterministic 13-check health report, every 2 min, all days
+    r"\*/2\s+\*\s+\*\s+\*\s+\*\s+python3\s+/home/trader/QuantAI/v2/shared-data/scripts/system_monitor\.py",
 ]
 
 

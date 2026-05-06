@@ -17,6 +17,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import logging
 import os
@@ -38,10 +39,49 @@ from _decision_helpers import this_week_monday
 ET = ZoneInfo("America/New_York")
 REPO_AGENTS_DIR = Path("/home/trader/QuantAI/v2/shared-data/agents")
 LLM_TIMEOUT = 90  # seconds — synthesis is bigger than per-trade calls
+LOCK_FILE = Path("/tmp/weekly_synthesis.lock")
 
 DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
 
 AGENTS = ["agent_alpha", "agent_beta", "agent_gamma"]
+
+
+class RunLock:
+    """Filesystem run-lock so concurrent invocations don't double-post to Discord.
+    Pattern matches sentinel_agent.RunLock — non-blocking acquire; if another
+    invocation holds the lock, exit silently with code 0 (cron + manual race
+    is harmless on the no-op exit, the holder will produce the report).
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.fd = None
+
+    def __enter__(self):
+        try:
+            self.fd = open(self.path, "w")
+        except PermissionError:
+            try:
+                self.path.unlink()
+            except Exception as e:
+                print(f"[weekly_synthesis] cannot acquire lock {self.path}: {e}", file=sys.stderr)
+                sys.exit(1)
+            self.fd = open(self.path, "w")
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("[weekly_synthesis] another run holds the lock; exiting", flush=True)
+            sys.exit(0)
+        self.fd.write(f"{os.getpid()}\n")
+        self.fd.flush()
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_UN)
+            self.fd.close()
+        except Exception:
+            pass
 
 # Auto-load .env so the cron environment has DISCORD_BOT_TOKEN, etc.
 import pathlib as _pl
@@ -384,7 +424,11 @@ def main() -> int:
     else:
         week_start = _last_monday(datetime.now(timezone.utc))
 
-    return synthesize(week_start, dry_run=args.dry_run)
+    # Acquire run-lock (skip for dry-run so devs can iterate freely)
+    if args.dry_run:
+        return synthesize(week_start, dry_run=True)
+    with RunLock(LOCK_FILE):
+        return synthesize(week_start, dry_run=False)
 
 
 if __name__ == "__main__":

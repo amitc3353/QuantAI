@@ -20,8 +20,8 @@ Already running:
 
 Scripts: /home/trader/QuantAI/v2/shared-data/scripts/ (Beta package at beta/)
 Data: /root/quantai-v2/shared-data/
-Agent trades: source=agent_alpha or agent_beta, IDs like A001, B001
-Manual trades: source=manual, IDs like P001, P002
+Agent trades: source=agent_alpha (A###), agent_beta (B###), agent_gamma (G###)
+(Historical entries with empty source or source=manual exist before 2026-05-03 — preserved but not separately reported.)
 
 When Amit asks if Alpha and Beta exist — YES, they are live.
 When Amit asks about their trades — read the journal and pipeline log.
@@ -59,13 +59,13 @@ Step 3 — Agent trades:
         print('No trades yet')
     else:
         trades = [json.loads(l) for l in open(path) if l.strip()]
-        alpha  = [t for t in trades if t.get('source') == 'agent_alpha']
-        beta   = [t for t in trades if t.get('source') == 'agent_beta']
-        manual = [t for t in trades if t.get('source') == 'manual']
+        alpha = [t for t in trades if t.get('source') == 'agent_alpha']
+        beta  = [t for t in trades if t.get('source') == 'agent_beta']
+        gamma = [t for t in trades if t.get('source') == 'agent_gamma']
         open_t = [t for t in trades if t.get('status') == 'OPEN']
         print(f'Agent Alpha: {len(alpha)} trades ({len([t for t in alpha if t[\"status\"]==\"OPEN\"])} open)')
         print(f'Agent Beta:  {len(beta)} trades ({len([t for t in beta if t[\"status\"]==\"OPEN\"])} open)')
-        print(f'Amit manual: {len(manual)} trades ({len([t for t in manual if t[\"status\"]==\"OPEN\"])} open)')
+        print(f'Agent Gamma: {len(gamma)} trades ({len([t for t in gamma if t[\"status\"]==\"OPEN\"])} open)')
         print(f'Total open:  {len(open_t)}')
     "
 
@@ -89,7 +89,7 @@ Report format:
     System Health - [time]
     Gateway: running/down | Cron: active/missing
     Disk: XX% | Memory: XX%
-    Alpha: X trades (X open) | Beta: X trades (X open) | Manual: X trades
+    Alpha: X trades (X open) | Beta: X trades (X open) | Gamma: X trades (X open)
     Intel: Xmin old | Regime: X | VIX: X
 
 ---
@@ -119,17 +119,18 @@ Test manually:
     run_pipeline.py          master cron entry point
     market_intelligence.py   intelligence packet
     debate_chamber.py        Bull/Bear/Judge debate
-    autonomous_execution.py  Alpaca order placement (agent_alpha / agent_beta)
+    autonomous_execution.py  IBKR mleg order placement (agent_alpha / agent_beta / agent_gamma)
     scan_options.py          options scanner 100+ tickers
-    self_evolution.py        EOD evolution
     sheets_sync.py           Google Sheets sync
-    eod_summary.py           daily Alpha/Beta/Amit summary at 4:05 PM
+    eod_summary.py           daily Alpha/Beta/Gamma summary at 4:05 PM
     pattern_engine.py        statistical patterns (needs 20+ closed trades)
-    system_test.py           43-check health test
+    system_monitor.py        deterministic 13-check health report (Sentinel's eyes)
+    sentinel_agent.py        autonomous operations agent
+    system_test.py           44-check health test
 
 Run full system test:
     python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
-Expected: 43/43 passed
+Expected: 44/44 passed
 
 ---
 
@@ -142,7 +143,7 @@ After any AGENTS.md or SOUL.md update in git repo:
 
 ## WHAT REQUIRES AMIT APPROVAL
 - Install new packages
-- Change strategy params (sofi_collar.json)
+- Change agent identity files (AGENT_*_IDENTITY.md)
 - Modify guard rules or .env
 
 ## WHAT YOU CAN DO WITHOUT APPROVAL

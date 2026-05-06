@@ -1,7 +1,7 @@
 # QuantAI — How to Use Your System
-**Updated: April 1, 2026**
+**Updated: 2026-05-03**
 
-Everything runs in Discord. Two trading streams run in parallel — autonomous agent trades and your manual trades. Both log to Google Sheets automatically.
+Everything runs in Discord. Three trading agents (Alpha, Beta, Gamma) execute autonomously and log to Google Sheets. Sentinel watches the system and self-heals routine issues. You approve risky fixes from your phone via Discord reactions.
 
 ---
 
@@ -9,38 +9,36 @@ Everything runs in Discord. Two trading streams run in parallel — autonomous a
 
 | Channel | What it's for |
 |---|---|
-| **#chat** | Everything — talk to Orchestrator, get analysis, score the day |
-| **#research** | SOFI briefs, credit spread reports, collar scans (auto-posted) |
+| **#chat** | Talk to Orchestrator — analysis, agent status, score the day |
+| **#research** | Credit-spread reports, regime briefs, scan output (auto-posted) |
 | **#infra** | System health, errors, script runs |
-| **#journal** | Log your manual trades, check stats |
+| **#journal** | Read trade activity, ask for stats |
+| **#system-health** | Sentinel daily summaries + critical alerts |
+| **#karna-approvals** | Sentinel ✅/❌ approval cards |
 
 ---
 
-## The Two Trading Streams
+## The Three Trading Agents (fully autonomous)
 
-### Stream 1 — Agent Alpha and Beta (fully autonomous)
+You do nothing. They run on cron during market hours.
 
-You do nothing. They run every 15 minutes during market hours via cron.
-
-**Agent Alpha** — the opportunist. Trades any defined-risk premium strategy on any liquid ticker (>5M avg volume, >200 OI). Picks the right structure for conditions:
+**Agent Alpha** — the opportunist. Trades any defined-risk premium strategy on liquid tickers (>5M avg volume, >200 OI). Picks the structure for conditions:
 - Oversold + above EMA200 → bull put spread
 - Overbought + below EMA200 → bear call spread
-- Range-bound + VIX 15-28 → iron condor
+- Range-bound + VIX 15–28 → iron condor
 - High IV + strong thesis → jade lizard
 - Low IV → calendar spread
 - Directional view → diagonal spread
 
-**Agent Beta** — the range trader. Specializes in iron condors and butterflies on any liquid ticker when range-bound conditions are confirmed (VIX 13-28, RSI 35-65, ADX < 25).
+**Agent Beta** — the regime trader. 12-regime classifier drives which strategy module fires (event strangle, ratio spreads, BWB, VIX calls, etc.) on SPX / XSP / VIX index options.
 
-When they trade you get a Discord notification in #chat and trades appear in Google Sheet "Agent Trades" tab automatically. Trade IDs start with `A` (A001, A002...).
+**Agent Gamma** — the mean-reverter. RSI(10) Connors-method entries on equity options, scanned overnight at 4:30 PM ET, executed at 9:33 AM ET.
 
-They will NOT trade when: VIX ≥ 35, regime=halt, 2 trades already placed today, after 3 PM ET, earnings within 14 days on target ticker.
+When an agent trades, you get a Discord notification in #chat and rows appear in the Google Sheet "Agent Trades" tab. Trade IDs: `A###` (Alpha), `B###` (Beta), `G###` (Gamma).
 
-At 3:30 PM they automatically close any open same-day positions.
+Agents will NOT trade when: VIX ≥ 35 (`VIX_HALT`), regime=halt, daily trade limit hit, after 3 PM ET, earnings within 14 days. At 3:30 PM they automatically close any same-day positions.
 
-### Stream 2 — Your Manual Trades (SOFI + learning)
-
-You decide, you execute on Webull, you log in #journal. Trade IDs start with `P` (P001, P002...).
+Agents NEVER attempt strategies that require owning shares (covered calls, collars, cash-secured puts, covered strangles) — these are blocked by the `REQUIRES_SHARES` defensive guard in `autonomous_execution.py`.
 
 ---
 
@@ -48,42 +46,27 @@ You decide, you execute on Webull, you log in #journal. Trade IDs start with `P`
 
 ```
 any trades?              → full scan + debate + 2 proposals
-SOFI update              → price, collar status, trigger level action
-how are my positions?    → all open trades (agent + manual)
+how are my positions?    → all open trades across agents
 how is Alpha doing?      → Agent Alpha stats and open positions
 how is Beta doing?       → Agent Beta stats and open positions
+how is Gamma doing?      → Agent Gamma stats and open positions
 market conditions?       → current regime, VIX, risk flags
-score today 78/100       → triggers self-evolution analysis
+score today 78/100       → triggers post-trade analysis
 score today 80/100 --consolidate  → Fridays — weekly pattern analysis
-what did the agents trade today?  → today's Alpha + Beta activity
+what did the agents trade today?  → today's Alpha + Beta + Gamma activity
 ```
 
-Anything else — just ask naturally. "Should I roll my SOFI call?", "Why did Beta not trade today?", "Explain the jade lizard strategy."
-
----
-
-## What You Say in #journal
-
-```
-log: sold 2x SOFI $16C Apr 18 for $1.10    → logs immediately, no questions
-log: MSTR $115/$110 put spread Apr 10 $0.78 x1
-close: P001 expired worthless
-close: P001 bought back at $0.40
-stats                                        → win rate, P&L, open count
-open positions                               → all open trades
-```
-
-Journal agent fetches the underlying price automatically. Never asks questions.
+Anything else — just ask naturally. "Why did Beta not trade today?", "Explain the jade lizard strategy.", "Show me Gamma's RSI watchlist."
 
 ---
 
 ## What You Say in #infra
 
 ```
-health check             → full system status (15 checks)
+health check             → full system status (43+ checks)
 show pipeline log        → last 30 lines of cron execution log
 why didn't alpha trade?  → reads pipeline log, explains
-show today's agent trades → reads journal for today
+sentinel status          → pending fixes, quarantine list, next slot
 ```
 
 ---
@@ -91,9 +74,9 @@ show today's agent trades → reads journal for today
 ## What You Say in #research
 
 ```
-SOFI brief               → full SOFI analysis with exact contract to sell
-collar candidates        → weekly scan for new collar opportunities
-how is Alpha performing? → reads journal and reports win rate
+how is Alpha performing? → reads journal, win rate
+spread scan              → trigger run of scan_options.py "all"
+regime now               → Beta's current regime classification
 ```
 
 ---
@@ -104,49 +87,47 @@ Bookmark: **https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx
 
 | Tab | Contents |
 |---|---|
-| Summary | Win rate + P&L per stream, open count, last updated |
-| Agent Trades | Alpha and Beta only — your benchmark for autonomous performance |
-| Manual Trades | Your SOFI collar and learning trades |
-| All Trades | Everything, color-coded: 🟡 open · 🟢 win · 🔴 loss |
+| Summary | Win rate + P&L, open count, last updated |
+| Agent Trades | Alpha + Beta + Gamma trades — your benchmark for autonomous performance |
+| All Trades | Every entry, color-coded: 🟡 open · 🟢 win · 🔴 loss |
 
 ---
 
 ## EOD Summary (auto-posted at 4:05 PM ET)
 
 Every market day at 4:05 PM, this posts to #chat automatically:
-```
-📊 QuantAI Daily Summary — Apr 2, 2026
 
-🤖 Agent Alpha (Bull put spreads & directional)
+```
+📊 QuantAI Daily Summary — May 3, 2026
+
+🤖 Agent Alpha (Bull put spreads & directional strategies)
   Traded today: 1
   A001 MSTR BULL PUT SPREAD | Credit: $0.78 | OPEN
   All-time: 3 closed | Win rate: 67% | P&L: +$145
 
-🤖 Agent Beta (Iron condors & range-bound)
+🤖 Agent Beta (Iron condors & range-bound strategies)
   No trades today — VIX 23.9 not range-bound enough
   All-time: 1 closed | Win rate: 100% | P&L: +$62
 
-👤 Amit (SOFI collar + manual trades)
-  Open: P001 SOFI SELL CALL $16 Apr 18 | $220 premium
+🤖 Agent Gamma (RSI(10) mean-reversion on equity options)
+  No trades today — RSI watchlist empty after overnight scan
   All-time: 0 closed | Win rate: N/A
 
-Total open: 2 | Combined P&L: +$207
-Score today in #chat: `score today 78/100`
+Total open: 1 | Combined P&L: +$207
 ```
 
 ---
 
-## SOFI Collar — 5 Rules, No Improvising
+## Sentinel — your operations co-pilot
 
-| SOFI Price | Action |
-|---|---|
-| $15.70 | MONITOR — nothing yet |
-| $16.00 | ROLL call to $18, 2 weeks out |
-| Called away | Accept profit, rebuy on dip, restart |
-| $12.50 | MONITOR — assess conviction |
-| $12.00 | EXERCISE put OR roll to $10 OR exit |
+Sentinel runs on its own schedule (8:30 AM, hourly observe through market, 4:15 PM apply, 9 PM observe weekdays + 10 AM Sat/Sun). It:
 
-Ask "SOFI update" and Orchestrator tells you which level you're near and exactly what to do.
+- Reads `system-health-report.json` (deterministic 13-check) plus `errors.db` plus the catalog
+- Auto-applies safe fixes (catalog reclassification, stale lock cleanup, non-trading collector restarts)
+- Posts ✅/❌ approval cards for risky fixes (code edits, ibgateway restart with positions open, etc.) to `#karna-approvals`
+- Never touches trading-path scripts. Never touches credentials.
+
+Tap ✅ on a card from your phone → it runs at the next apply slot. Tap ❌ → dismissed. Cards expire after 48h.
 
 ---
 
@@ -155,65 +136,49 @@ Ask "SOFI update" and Orchestrator tells you which level you're near and exactly
 Run anytime to verify everything is working:
 
 ```bash
-python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
+sudo python3 /home/trader/QuantAI/v2/shared-data/scripts/system_test.py
 ```
 
-Tests 15 categories, shows pass/fail per check, gives fix instructions for failures. Takes ~2 minutes. Run weekly or after any deployment.
+Expected result: **44/44 passed**.
 
-Expected result: **43/43 passed**
+Or check live state without running anything:
 
-If something fails, the test tells you exactly how to fix it. Common fixes:
-- Missing dependency → `pip3 install [pkg] --break-system-packages`
-- Missing file → copy from repo to correct location
-- Cron missing → `crontab -e` and add the two pipeline lines
-- API key missing → check `/home/trader/QuantAI/.env`
+```bash
+sudo cat /var/dashboard/state/system-health-report.json | jq '.status, .data.checks'
+```
+
+13 checks: ibkr_port, litellm_4000, clawroute_18790, cron_freshness, disk, memory, self_learning_sla, weekly_synthesis, collector_staleness, journal_schema, test_results, graphify, open_positions.
 
 ---
 
-## Daily Routine (5 min total)
+## Daily Routine (3 min total)
 
-**Morning:**
-1. Open Google Sheet Summary tab
-2. "#chat: SOFI update" — which trigger level are we near?
-3. Watch for agent trade notification around 9:45-10 AM
+**Morning:** open Google Sheet Summary tab, glance at #chat for any Sentinel pre-market card.
 
-**During market:**
-4. Agents run themselves — watch #chat for notifications
-5. If you manual trade → execute on Webull → log in #journal
+**During market:** agents run themselves. #chat shows their entries. #karna-approvals shows any fix proposals from Sentinel.
 
-**End of day:**
-6. EOD summary auto-posts at 4:05 PM — review it
-7. "#chat: score today 78/100" — triggers evolution if needed
-
-**Friday:**
-8. "#chat: score today 80/100 --consolidate"
-9. "#journal: stats" — week breakdown
-10. Compare Agent Trades tab vs Manual Trades
+**End of day:** review the EOD auto-post in #chat. Tap ✅ on any Sentinel cards you trust. Friday — `score today 80/100 --consolidate` triggers weekly synthesis (Sentinel will also post a daily digest in #system-health if anything was applied).
 
 ---
 
 ## What You Never Need to Do
 
-- Approve agent trades — they execute autonomously
+- Approve agent trades — they execute autonomously within their guardrails
 - SSH for normal operations — ask Infra in #infra
 - Manually run scripts — Orchestrator runs them on request
-- Remember exact contracts — ask Orchestrator for specifics
+- Trade manually — agents cover all defined-risk strategies on the planned tickers
 
 ---
 
 ## If Agents Seem to Have Wrong Information
 
-If an agent says something that's clearly outdated (like "Alpha doesn't exist"), their workspace file is stale. Fix it with one command on the VPS:
+If an agent says something that's clearly outdated, their workspace file is stale. Fix it with one command on the VPS:
 
 ```bash
 bash /home/trader/QuantAI/scripts/sync_workspaces.sh
 ```
 
-This syncs all AGENTS.md and SOUL.md files from the git repo to where OpenClaw reads them. Agents pick up the changes on the very next message. No restart needed.
-
----
-
-## Updated: April 2, 2026
+This syncs all `AGENTS.md` and `SOUL.md` files from the git repo to where OpenClaw reads them. Agents pick up the changes on the very next message. No restart needed.
 
 ---
 
@@ -221,12 +186,13 @@ This syncs all AGENTS.md and SOUL.md files from the git repo to where OpenClaw r
 
 | Parameter | Value |
 |---|---|
-| Paper account | $100,040 |
+| IBKR paper account | $1,000,000 (DUP851506) |
+| Position-sizing cap (Alpha) | $50,000 (`AGENT_ACCOUNT_CAP`) |
 | Max loss per trade | 2% |
-| Stop loss | 2x credit |
+| Stop loss | 2× credit |
 | Profit target | 50% of max profit |
-| Max agent positions | 3 simultaneously |
+| Max simultaneous positions per agent | 3 |
 | Entry cutoff | 3:00 PM ET |
 | Hard close | 3:30 PM ET |
 | VIX halt | 35 |
-| Agent win rate targets | Alpha ≥ 60%, Beta ≥ 65% |
+| Agent win rate targets | Alpha ≥ 60%, Beta ≥ 65%, Gamma TBD |

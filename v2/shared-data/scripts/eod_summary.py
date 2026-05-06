@@ -2,7 +2,7 @@
 """
 QuantAI EOD Trade Summary
 Posts a daily trade summary to Discord at market close.
-Shows Agent Alpha, Agent Beta, and Amit's manual trades for the day.
+Shows Agent Alpha, Agent Beta, and Agent Gamma trades for the day.
 
 Called by run_pipeline.py in eod mode, or directly:
   python3 eod_summary.py
@@ -77,19 +77,19 @@ def build_summary():
     all_trades = [json.loads(l) for l in open(JOURNAL) if l.strip()]
 
     # Today's trades
-    alpha_today  = [t for t in all_trades if t.get("source") == "agent_alpha"  and today in t.get("timestamp","")]
-    beta_today   = [t for t in all_trades if t.get("source") == "agent_beta"   and today in t.get("timestamp","")]
-    manual_today = [t for t in all_trades if t.get("source") == "manual"       and today in t.get("timestamp","")]
+    alpha_today = [t for t in all_trades if t.get("source") == "agent_alpha" and today in t.get("timestamp","")]
+    beta_today  = [t for t in all_trades if t.get("source") == "agent_beta"  and today in t.get("timestamp","")]
+    gamma_today = [t for t in all_trades if t.get("source") == "agent_gamma" and today in t.get("timestamp","")]
 
     # All-time open positions
-    alpha_open   = [t for t in all_trades if t.get("source") == "agent_alpha"  and t.get("status") == "OPEN"]
-    beta_open    = [t for t in all_trades if t.get("source") == "agent_beta"   and t.get("status") == "OPEN"]
-    manual_open  = [t for t in all_trades if t.get("source") == "manual"       and t.get("status") == "OPEN"]
+    alpha_open  = [t for t in all_trades if t.get("source") == "agent_alpha" and t.get("status") == "OPEN"]
+    beta_open   = [t for t in all_trades if t.get("source") == "agent_beta"  and t.get("status") == "OPEN"]
+    gamma_open  = [t for t in all_trades if t.get("source") == "agent_gamma" and t.get("status") == "OPEN"]
 
     # All-time stats
-    alpha_closed = [t for t in all_trades if t.get("source") == "agent_alpha"  and t.get("status") == "CLOSED"]
-    beta_closed  = [t for t in all_trades if t.get("source") == "agent_beta"   and t.get("status") == "CLOSED"]
-    manual_closed= [t for t in all_trades if t.get("source") == "manual"       and t.get("status") == "CLOSED"]
+    alpha_closed = [t for t in all_trades if t.get("source") == "agent_alpha" and t.get("status") == "CLOSED"]
+    beta_closed  = [t for t in all_trades if t.get("source") == "agent_beta"  and t.get("status") == "CLOSED"]
+    gamma_closed = [t for t in all_trades if t.get("source") == "agent_gamma" and t.get("status") == "CLOSED"]
 
     def win_rate(closed):
         if not closed: return "N/A"
@@ -132,24 +132,24 @@ def build_summary():
     lines.append(f"  All-time: {len(beta_closed)} closed | Win rate: {win_rate(beta_closed)} | P&L: ${total_pnl(beta_closed):+.0f}")
     lines.append("")
 
-    # ── Manual (Amit) ────────────────────────────────────────────────
-    lines.append("👤 **Amit** *(SOFI collar + manual trades)*")
-    if manual_today:
-        lines.append(f"  Logged today: {len(manual_today)}")
-        for t in manual_today:
+    # ── Agent Gamma ──────────────────────────────────────────────────
+    lines.append("🤖 **Agent Gamma** *(RSI(10) mean-reversion on equity options)*")
+    if gamma_today:
+        lines.append(f"  Traded today: {len(gamma_today)}")
+        for t in gamma_today:
             lines.append(format_trade(t))
     else:
-        lines.append("  No manual trades today")
-    if manual_open:
-        lines.append(f"  Open positions: {len(manual_open)}")
-        for t in manual_open:
+        lines.append("  No trades today")
+    if gamma_open:
+        lines.append(f"  Open positions: {len(gamma_open)}")
+        for t in gamma_open:
             lines.append(format_trade(t))
-    lines.append(f"  All-time: {len(manual_closed)} closed | Win rate: {win_rate(manual_closed)} | P&L: ${total_pnl(manual_closed):+.0f}")
+    lines.append(f"  All-time: {len(gamma_closed)} closed | Win rate: {win_rate(gamma_closed)} | P&L: ${total_pnl(gamma_closed):+.0f}")
     lines.append("")
 
     # ── Combined ─────────────────────────────────────────────────────
-    all_closed = alpha_closed + beta_closed + manual_closed
-    all_open   = alpha_open + beta_open + manual_open
+    all_closed = alpha_closed + beta_closed + gamma_closed
+    all_open   = alpha_open + beta_open + gamma_open
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     lines.append(f"**Total open:** {len(all_open)} | **Total closed:** {len(all_closed)}")
     if all_closed:

@@ -3,14 +3,14 @@
 QuantAI Google Sheets Journal Sync
 
 Sheet structure:
-  - All Trades     : every trade (agent + manual), filterable
-  - Agent Trades   : only debate chamber / orchestrator proposals
-  - Manual Trades  : only trades Amit executed himself
+  - All Trades     : every trade in the journal, filterable
+  - Agent Trades   : trades from agent_alpha / agent_beta / agent_gamma
   - Summary        : live P&L dashboard with formulas
 
-Trade source field:
-  - "agent"  : proposed by debate chamber / orchestrator scan
-  - "manual" : Amit entered himself in #journal
+Trade source field (one of):
+  - "agent_alpha"   : Alpha pipeline (debate chamber + autonomous_execution)
+  - "agent_beta"    : Beta regime-driven strategy modules
+  - "agent_gamma"   : Gamma RSI(10) mean-reversion
 
 Usage:
   python3 sheets_sync.py           # sync all trades
@@ -176,7 +176,7 @@ def trade_to_row(t):
     return [
         t.get("id", ""),
         date_str,
-        t.get("source", "manual"),       # "agent" or "manual"
+        t.get("source", "unknown"),      # agent_alpha / agent_beta / agent_gamma
         t.get("mode", "paper"),
         t.get("symbol", ""),
         t.get("action", ""),
@@ -214,10 +214,10 @@ def load_trades():
 # ── Setup ─────────────────────────────────────────────────────────────
 
 def setup():
-    ensure_sheets(["All Trades", "Agent Trades", "Manual Trades", "Summary"])
+    ensure_sheets(["All Trades", "Agent Trades", "Summary"])
 
     # Write headers to trade tabs
-    for tab in ["All Trades", "Agent Trades", "Manual Trades"]:
+    for tab in ["All Trades", "Agent Trades"]:
         write_tab(tab, [HEADERS])
         bold_header(tab)
 
@@ -239,11 +239,6 @@ def setup():
         ["Agent trades",     "=COUNTA('Agent Trades'!A2:A2000)", ""],
         ["Agent win rate",   "=IFERROR(COUNTIF('Agent Trades'!Q2:Q2000,\">0\")/COUNTIF('Agent Trades'!N2:N2000,\"CLOSED\"),\"N/A\")", ""],
         ["Agent P&L $",      "=SUM('Agent Trades'!Q2:Q2000)", ""],
-        ["", "", ""],
-        ["━━━ MANUAL TRADES ━━━", "", ""],
-        ["Manual trades",    "=COUNTA('Manual Trades'!A2:A2000)", ""],
-        ["Manual win rate",  "=IFERROR(COUNTIF('Manual Trades'!Q2:Q2000,\">0\")/COUNTIF('Manual Trades'!N2:N2000,\"CLOSED\"),\"N/A\")", ""],
-        ["Manual P&L $",     "=SUM('Manual Trades'!Q2:Q2000)", ""],
         ["", "", ""],
         ["━━━ OPEN POSITIONS ━━━", "", ""],
         ["Symbol", "Strike / Expiry", "Premium"],
@@ -275,21 +270,23 @@ def sync():
         print("[sheets_sync] No trades to sync")
         return
 
-    agent_trades  = [t for t in trades if t.get("source") == "agent"]
-    manual_trades = [t for t in trades if t.get("source") != "agent"]  # default = manual
+    # Match any of the three trading agents (agent_alpha / agent_beta / agent_gamma)
+    # — historical data from before 2026-05-01 may use bare "agent"; widen the filter
+    # so legacy + current rows both land in the Agent Trades tab.
+    agent_trades = [
+        t for t in trades
+        if (t.get("source") or "").startswith("agent")
+    ]
 
-    all_rows    = [HEADERS] + [trade_to_row(t) for t in trades]
-    agent_rows  = [HEADERS] + [trade_to_row(t) for t in agent_trades]
-    manual_rows = [HEADERS] + [trade_to_row(t) for t in manual_trades]
+    all_rows   = [HEADERS] + [trade_to_row(t) for t in trades]
+    agent_rows = [HEADERS] + [trade_to_row(t) for t in agent_trades]
 
-    write_tab("All Trades",    all_rows)
-    write_tab("Agent Trades",  agent_rows)
-    write_tab("Manual Trades", manual_rows)
+    write_tab("All Trades",   all_rows)
+    write_tab("Agent Trades", agent_rows)
 
     # Color coding
-    color_rows_by_status("All Trades",    len(trades))
-    color_rows_by_status("Agent Trades",  len(agent_trades))
-    color_rows_by_status("Manual Trades", len(manual_trades))
+    color_rows_by_status("All Trades",   len(trades))
+    color_rows_by_status("Agent Trades", len(agent_trades))
 
     # Update timestamp in Summary
     svc.values().update(
@@ -300,7 +297,7 @@ def sync():
     ).execute()
 
     print(f"[sheets_sync] ✅ Synced {len(trades)} trades total")
-    print(f"[sheets_sync]    Agent: {len(agent_trades)} | Manual: {len(manual_trades)}")
+    print(f"[sheets_sync]    Agent: {len(agent_trades)}")
     print(f"[sheets_sync]    Open: https://docs.google.com/spreadsheets/d/{SHEET_ID}")
 
 

@@ -79,8 +79,10 @@ except ImportError:
 print("\n📁 Files & Paths")
 scripts = [
     "market_intelligence.py", "debate_chamber.py", "autonomous_execution.py",
-    "run_pipeline.py", "scan_options.py", "self_evolution.py",
-    "sheets_sync.py", "pattern_engine.py", "eod_summary.py", "fetch_sofi.py"
+    "run_pipeline.py", "scan_options.py",
+    "sheets_sync.py", "pattern_engine.py", "eod_summary.py",
+    "beta_agent.py", "gamma_agent.py",
+    "system_monitor.py", "sentinel_agent.py",
 ]
 for s in scripts:
     path = f"{SCRIPTS}/{s}"
@@ -96,8 +98,6 @@ workspaces = [
 for w in workspaces:
     check(f"workspace {w.split('/')[-2]}/{w.split('/')[-1]}", os.path.exists(w))
 
-check("sofi_collar.json exists",
-      os.path.exists("/root/quantai-v2/shared-data/strategies/sofi_collar.json"))
 check("google_service_account.json exists",
       os.path.exists("/root/quantai-v2/shared-data/google_service_account.json"))
 check("Journal directory exists",
@@ -188,12 +188,12 @@ print("\n📒 Journal")
 journal_path = "/root/quantai-v2/shared-data/journal/paper/trades.jsonl"
 if os.path.exists(journal_path):
     trades = [json.loads(l) for l in open(journal_path) if l.strip()]
-    alpha  = [t for t in trades if t.get("source") == "agent_alpha"]
-    beta   = [t for t in trades if t.get("source") == "agent_beta"]
-    manual = [t for t in trades if t.get("source") == "manual"]
+    alpha = [t for t in trades if t.get("source") == "agent_alpha"]
+    beta  = [t for t in trades if t.get("source") == "agent_beta"]
+    gamma = [t for t in trades if t.get("source") == "agent_gamma"]
     open_t = [t for t in trades if t.get("status") == "OPEN"]
     check("Journal readable", True,
-          f"Total: {len(trades)} | Alpha: {len(alpha)} | Beta: {len(beta)} | Manual: {len(manual)} | Open: {len(open_t)}")
+          f"Total: {len(trades)} | Alpha: {len(alpha)} | Beta: {len(beta)} | Gamma: {len(gamma)} | Open: {len(open_t)}")
 else:
     check("Journal exists", False, "No trades logged yet — this is fine if day 1")
 

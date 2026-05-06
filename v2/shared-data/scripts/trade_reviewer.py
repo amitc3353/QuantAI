@@ -127,7 +127,7 @@ def _call_haiku(system: str, user: str) -> str | None:
         client = Client()
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+            max_tokens=2000,  # bumped 2026-05-03: 800 was truncating reviews mid-JSON
             system=system,
             messages=[{"role": "user", "content": user}],
             timeout=LLM_TIMEOUT,

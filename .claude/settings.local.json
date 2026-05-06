@@ -87,7 +87,8 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/home/trader/QuantAI/v2/shared-data/scripts/_logger.py'\\).read\\(\\)\\)\")",
       "Bash(python3 -c 'import ast; ast.parse\\(open\\('\\\\''/home/trader/QuantAI/v2/shared-data/scripts/__TRACKED_VAR__'\\\\''\\).read\\(\\)\\)')",
       "Bash(sudo -E python3 -c ' *)",
-      "Bash(sudo mv *)"
+      "Bash(sudo mv *)",
+      "Bash(sudo journalctl *)"
     ]
   }
 }
