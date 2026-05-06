@@ -40,3 +40,12 @@ v2/shared-data/scripts/auto_heal_data/fix_history/
 # Runtime lock + scheduling state (ephemeral, machine-local).
 .claude/scheduled_tasks.lock
 /tmp/quantai-heartbeats/
+
+# Credentials — NEVER commit. The repo had a Google Cloud service-account
+# JSON leaked at commit 19e8eea (2026-03-31); the key was rotated on
+# 2026-05-06 and the file was scrubbed from history via git filter-repo
+# in the same operator action. These patterns are belt-and-suspenders
+# against any future reintroduction (and against new key types).
+google_service_account*.json
+*service_account*.json
+*credentials*.json
