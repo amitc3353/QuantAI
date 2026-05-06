@@ -99,6 +99,36 @@ def _save_close_attempts(data):
         log(f"  WARN: failed to persist close-attempt counters: {e}")
 
 
+# Skip list — trade IDs the operator has placed on manual hold. position_monitor
+# leaves these alone: no exit-rule processing, no ghost alerts. The config has
+# an `expires_after` ISO timestamp; once past, the skip is ignored automatically.
+SKIP_LIST_PATH = "/root/quantai-v2/shared-data/cache/position_monitor_skip_trades.json"
+
+
+def _load_skip_list():
+    """Return a set of trade_ids to skip this cycle. Empty if file missing,
+    unreadable, malformed, or expired."""
+    try:
+        with open(SKIP_LIST_PATH) as f:
+            data = json.load(f)
+    except (FileNotFoundError, PermissionError, OSError, ValueError):
+        return set()
+    exp = data.get("expires_after")
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp_dt:
+                log(f"  position_monitor skip list expired (was {exp}) — ignoring")
+                return set()
+        except Exception:
+            pass  # fall through to honor the list if the timestamp is malformed
+    skip = set(data.get("skip_trade_ids") or [])
+    if skip:
+        log(f"  position_monitor skip list active: {sorted(skip)} "
+            f"(reason: {data.get('skip_reason', '?')[:80]})")
+    return skip
+
+
 def is_market_open(now=None):
     """Equity options trade 09:30–16:00 ET on weekdays."""
     n = now or datetime.now(ET)
@@ -922,6 +952,12 @@ def reconcile_ghost_positions(broker_positions: dict, open_trades: list,
                 if sym and sym not in closed_occ_to_tid:
                     closed_occ_to_tid[sym] = tid
 
+    # Honor the operator skip list — broker positions whose legs reference a
+    # skip-listed trade are KNOWN to be in a journal-vs-broker mismatch (e.g.
+    # A018 held to expiry post-Option-C). Suppress those alerts so Discord
+    # doesn't repeat-fire every 2 minutes for the duration of the hold.
+    skip_ids = _load_skip_list()
+
     ghosts: set = set()
     journal_lies: set = set()  # set of (occ_symbol, claimed_closed_tid) tuples
     for sym, pos in broker_positions.items():
@@ -933,6 +969,8 @@ def reconcile_ghost_positions(broker_positions: dict, open_trades: list,
         # Not in any open entry. Is it in a CLOSED entry?
         claimed_tid = closed_occ_to_tid.get(sym)
         if claimed_tid:
+            if claimed_tid in skip_ids:
+                continue  # operator-managed; alert suppressed
             journal_lies.add((sym, claimed_tid))
         else:
             ghosts.add(sym)
@@ -1165,6 +1203,18 @@ def main():
                    if t.get("status") == "OPEN"
                    and t.get("source", "").startswith("agent")]
 
+    # Skip list — trade IDs the operator has placed on manual hold. We KEEP
+    # them in open_trades for P&L compute, dashboard, and ghost reconciliation
+    # (so we still see them and don't ghost-alert them) — but we exclude them
+    # from the exit-rule / close-action loop further below.
+    skip_ids = _load_skip_list()
+    if skip_ids:
+        for t in open_trades:
+            tid = t.get("trade_id") or t.get("id")
+            if tid in skip_ids:
+                log(f"  SKIP {tid} ({t.get('symbol','?')}) — on manual hold; "
+                    f"no exit-rule processing or close attempts this cycle")
+
     if not open_trades:
         write_dashboard([], {})
         log("No open agent positions — idle")
@@ -1225,6 +1275,10 @@ def main():
 
     broker = get_broker()
     for t in open_trades:
+        # Honor the operator skip list — these trades are managed manually
+        # (see _load_skip_list() docstring). Don't run exit checks or close.
+        if (t.get("trade_id") or t.get("id")) in skip_ids:
+            continue
         pnl = pnl_map[t["id"]]
         should_close, reason, close_fraction, partial_flag = check_exit_threshold(
             t, pnl, now, broker=broker
