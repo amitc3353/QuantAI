@@ -199,10 +199,12 @@ Claude-driven triage layer that sits **on top of** the rule-based monitors (`err
 
 ## Git Rules
 
-- **Local `main` on this VPS is the source of truth.** `origin/main` on GitHub is stale and not maintained.
-- Do not `git pull`, `git fetch && merge`, `git rebase`, or `git push` (force or otherwise) against `origin/main`. The two histories diverged 42 local vs 40 remote (common ancestor `c91c801`); ~12 commit pairs are patch-equivalent and ~75 files differ — automatic reconciliation is unsafe.
-- All new work commits to local `main` (or feature branches merged into local `main`). Treat the GitHub remote as a frozen archive.
-- Feature branches, never force-push main.
+- **`origin/main` on GitHub is the canonical public branch** (published 2026-05-06; prior divergence resolved). Local `main` and `origin/main` stay in sync via normal fast-forward pushes.
+- All new work commits to local `main` (or a feature branch merged into `main`), then pushed via `git push origin main`.
+- Pre-push hook gates every push: the full test suite (unit + integration) must pass before the push proceeds.
+- Pre-rewrite archive tags exist at `archive/origin-main-pre-publish-2026-05-06` and `archive/local-main-pre-publish-2026-05-06`. Do not delete; they're the rollback path if the 2026-05-06 publish ever needs to be reverted.
+- No force-pushes to `main` unless an explicit history rewrite is needed (e.g. scrubbing a committed secret). Any force-push requires tagging the overwritten tip first as an archive ref.
+- Feature branches are fine; never force-push `main` for normal development.
 - `bash /home/trader/QuantAI/scripts/sync_workspaces.sh` after workspace changes.
 
 ## Design Principles

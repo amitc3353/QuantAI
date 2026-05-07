@@ -242,7 +242,7 @@ class TradingCog(commands.Cog):
         # Step 1: Guard check
         guard_proposal = {
             "symbol": symbol,
-            "position_pct": 2.0,  # TODO: calculate from actual portfolio
+            "position_pct": 2.0,  # stub — see BACKLOG.md
             "max_loss_pct": 1.0,
             "dte": 999,  # equity, not options
         }

@@ -214,7 +214,6 @@ async def cmd_brief(interaction: discord.Interaction, symbols: str):
     )
     await interaction.followup.send(embed=embed)
 
-    # TODO: Phase 2 — trigger Research Agent via orchestrator
     log.info(f"Brief requested for: {symbol_list}")
 
 
@@ -235,7 +234,6 @@ async def cmd_analyze(interaction: discord.Interaction, symbol: str, strategy: s
     )
     await interaction.followup.send(embed=embed)
 
-    # TODO: Phase 2 — trigger Analysis Agent
     log.info(f"Analysis requested: {symbol} / {strategy}")
 
 
@@ -289,7 +287,6 @@ async def cmd_guard_check(
 
 @bot.tree.command(name="emergency_stop", description="HALT all new trades immediately")
 async def cmd_emergency_stop(interaction: discord.Interaction):
-    # TODO: Write halt flag to shared state / call orchestrator
     embed = make_embed(
         "🚨 EMERGENCY STOP",
         "All new trades HALTED. Existing positions unchanged.\n"
@@ -393,7 +390,6 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     if emoji == "✅":
         log.info(f"Trade APPROVED by {payload.user_id} on message {payload.message_id}")
-        # TODO: Forward to execution agent
         await channel.send(
             embed=make_embed("✅ Trade Approved", "Forwarding to Execution Agent...", color=discord.Color.green())
         )
