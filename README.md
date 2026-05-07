@@ -1,84 +1,182 @@
-# ⚡ Claude Auto-Trader
+# QuantAI
 
-A Claude-powered autonomous trading system for options & equities.  
-Discord-native · Guard-enforced · Paper-first · Self-improving
+Autonomous multi-agent options-trading system. Four narrow Python agents
+operate a $1 M IBKR paper account during US market hours, enforce every
+safety rule in code (not prompts), and run on a single VPS for ~$4–5/month
+in LLM spend.
 
-## Architecture
+> **Use LLMs only where judgment is needed. Enforce all safety rules in
+> code, not in prompts.**
+
+Most of what makes QuantAI interesting follows from taking that sentence
+seriously.
+
+---
+
+## Documentation map
+
+| doc | what it covers |
+|-----|----------------|
+| [`docs/ARCHITECTURE_SUMMARY.md`](docs/ARCHITECTURE_SUMMARY.md) | 10-minute public-facing tour — **start here** |
+| [`docs/architecture.md`](docs/architecture.md) | Full 2 500-line deep reference (§0–§22) |
+| [`docs/STATE.md`](docs/STATE.md) | Live operational snapshot (positions, halts, bugs) |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | Deferred work and known debt |
+
+---
+
+## System topology
 
 ```
-┌─────────────────────────────────────────────┐
-│  Discord Hub (you + all agents)             │
-├─────────────────────────────────────────────┤
-│  Orchestrator (cron + event bus)            │
-├──────────┬──────────┬──────────┬────────────┤
-│ Research │ Analysis │  Guard   │ Execution  │
-│ (Sonnet) │ (Sonnet) │ (determ) │  (Haiku)   │
-├──────────┴──────────┴──────────┴────────────┤
-│  Data: AlphaVantage · OpenBB · py_vollib    │
-├─────────────────────────────────────────────┤
-│  Alpaca (paper → live)                      │
-└─────────────────────────────────────────────┘
+                    ┌──────────────────────────────────────────┐
+                    │  Operator (Amit)                          │
+                    │  • phone Discord ✅ approvals             │
+                    │  • Cowork SSHFS sessions for code edits   │
+                    └──────────┬────────────────────────┬───────┘
+                               │                        │
+                  Discord bot  │                        │ SSHFS
+                               ▼                        ▼
+   ┌─────────────────────────────────────────────────────────────────┐
+   │                      VPS  (<redacted>)                           │
+   │                      Tailscale <redacted>                        │
+   │                                                                  │
+   │  ┌───────────────────────────────────────────────────────────┐  │
+   │  │  KARNA / OpenClaw  (24/7 Claude Sonnet 4.6)                │  │
+   │  └─────┬─────────────────────────────────┬───────────────────┘  │
+   │        │ tools                        │ Discord bot              │
+   │        ▼                              ▼                          │
+   │  ┌─────────┐    cron (UTC)   ┌─────────────────────────┐        │
+   │  │ ClawRoute│◄────────────── │ 4 agents + monitoring   │        │
+   │  │ :18790   │   LLM ingress  │                         │        │
+   │  │ tier rt  │                │ Alpha · Beta · Gamma    │        │
+   │  └────┬────┘                 │ Sentinel                │        │
+   │       │                      │ heartbeat / position /  │        │
+   │       │                      │ system / error monitors │        │
+   │       │                      └─────────┬───────────────┘        │
+   │       │                                │                         │
+   │       ▼                                ▼                         │
+   │  ┌─────────┐                ┌────────────────────┐               │
+   │  │Anthropic│                │ broker.py adapter   │               │
+   │  │  API    │                │ BROKER_TYPE env var │               │
+   │  └─────────┘                └─────┬─────────┬────┘               │
+   │                                    │         │                   │
+   │                            primary │         │ fallback          │
+   │                                    ▼         ▼                   │
+   │                           ┌──────────┐  ┌──────────┐             │
+   │                           │  IBKR    │  │ Alpaca   │             │
+   │                           │ Gateway  │  │ Paper    │             │
+   │                           │ :4002    │  │ REST     │             │
+   │                           └────┬─────┘  └────┬─────┘             │
+   │                                └──────┬──────┘                   │
+   │                                       ▼                          │
+   │                          ┌──────────────────────────┐            │
+   │                          │ trades.jsonl              │            │
+   │                          │ (append-only journal)     │            │
+   │                          │  A### / B### / G###       │            │
+   │                          └─────┬──────────────┬─────┘            │
+   │                                │              │                  │
+   │                                ▼              ▼                  │
+   │                       ┌────────────┐   ┌──────────────┐          │
+   │                       │ collectors │   │ self-learning │          │
+   │                       │ (cron 1-15m)│   │ loop          │          │
+   │                       └─────┬──────┘   └─────┬────────┘          │
+   │                             ▼                ▼                   │
+   │                      ┌─────────────────────────────┐             │
+   │                      │ Dashboard (React SPA)       │             │
+   │                      │ python3 -m http.server 8080 │             │
+   │                      └────────────┬────────────────┘             │
+   └───────────────────────────────────┼──────────────────────────────┘
+                                       │
+                                       ▼ Tailscale serve
+                          https://quantai.tail1465ff.ts.net/
 ```
 
-## Quick Start
+---
+
+## The four agents
+
+| agent | trades | decision method | LLM calls/cycle | trade-ID prefix |
+|-------|--------|-----------------|-----------------|-----------------|
+| **Alpha** | ETF/equity spreads (78-ticker universe) | Sonnet debate chamber (Bull/Bear/Judge) | 2–3 | `A###` |
+| **Beta** | SPX / XSP / VIX index options | 12-regime deterministic classifier → 8 strategies | 0 | `B###` |
+| **Gamma** | Bull call debit spreads (Connors RSI mean-reversion) | Deterministic scan + re-validate | 0 | `G###` |
+| **Sentinel** | Does not trade | LLM triage of logs/errors → auto-fix or Discord card | 1–2 | — |
+
+All four agents write to a single append-only JSONL journal. One broker
+adapter (`broker.py`) with `BROKER_TYPE` env var handles order routing.
+A position monitor closes positions and reconciles journal vs. broker
+state.
+
+Index options (Beta) provide Section 1256 tax treatment (60/40
+long/short), European exercise, and cash settlement — structural
+advantages that equity-ETF options don't offer.
+
+---
+
+## Safety: 12 hard rules in code
+
+Every safety rule is enforced in Python, not in prompts.
+
+Highlights — the full list is in
+[`docs/architecture.md` §16](docs/architecture.md):
+
+- Per-trade max loss capped at 2 % of effective sizing
+- Daily entry budget counted from journal writes (crash-safe)
+- `place_mleg_order` returns `None` on failure, never raises
+- `verify_legs_flat()` confirms broker-side zero before journal CLOSED
+- VIX ≥ 35 → HALT regime, no trading
+- Earnings blackout: 14 days (Alpha), 7 days (Gamma)
+- Sentinel: path-allowlisted away from trading code, journal, broker,
+  and openclaw service; 3-attempt budget per fix
+
+---
+
+## Test coverage
+
+782 tests (unit + integration) gate every push via a pre-push hook.
+
+Recent focused work has driven the deterministic safety layer
+toward higher coverage — see [`docs/BACKLOG.md`](docs/BACKLOG.md)
+for the full plan. Notable targeted suites:
+
+- `beta/risk_engine.py` — per-source risk gates (Rules 1–6 of §16)
+- `_broker_ibkr.py` — Phase 5b partial-fill safeguard (the
+  `order_submitted` flag, async flush, recovery via
+  `_find_open_order_by_ref`, and `verify_legs_flat`)
+
+Run with:
 
 ```bash
-# 1. Clone and configure
-git clone <your-repo-url> && cd claude-auto-trader
-cp .env.example .env  # Fill in your keys
-
-# 2. Run locally
-docker compose up -d
-
-# 3. Deploy to Hetzner VPS
-./scripts/deploy.sh
+cd v2/shared-data/tests
+python3 -m pytest unit/ integration/ -q
 ```
 
-## Project Structure
+---
 
-```
-claude-auto-trader/
-├── discord-bot/          # Discord bot (command center)
-│   ├── bot.py            # Main bot entry
-│   ├── cogs/             # Slash command modules
-│   └── requirements.txt
-├── guard-engine/         # Deterministic constraint layer (NO AI)
-│   ├── guards.py         # All guard logic
-│   ├── config.json       # Guard parameters
-│   └── requirements.txt
-├── orchestrator/         # Cron scheduler + agent router
-│   ├── scheduler.py      # Cron jobs (morning brief, EOD scoring)
-│   ├── agent_router.py   # Routes signals between agents
-│   └── requirements.txt
-├── services/
-│   ├── openalice/        # OpenAlice submodule/mount
-│   └── alpaca-mcp/       # Alpaca MCP server
-├── configs/
-│   ├── watchlist.json    # Your symbol watchlist
-│   ├── strategies.json   # Strategy configs
-│   └── channels.json     # Discord channel mapping
-├── scripts/
-│   ├── deploy.sh         # One-command VPS deployment
-│   ├── setup-vps.sh      # First-time VPS hardening
-│   └── backup.sh         # Data backup
-├── data/
-│   ├── logs/             # System logs
-│   ├── journal/          # Trade journal (JSONL)
-│   ├── briefs/           # Morning research briefs
-│   └── cache/            # Market data cache
-├── docker-compose.yml
-├── .env.example
-└── Dockerfile.*          # Per-service Dockerfiles
+## Quick start (development)
+
+```bash
+# Clone
+git clone https://github.com/amitc3353/QuantAI.git && cd QuantAI
+
+# Run tests (requires pytest; deps are system-installed on VPS)
+cd v2/shared-data/tests && python3 -m pytest unit/ integration/ -q
+
+# Full system requires a VPS with IB Gateway, ClawRoute, OpenClaw,
+# and environment variables — see SETUP_GUIDE.md for deployment.
 ```
 
-## The Three Laws
+---
 
-1. **NEVER break the rules you set** — Every trade passes Guards. No exceptions.
-2. **Show your work** — Full reasoning chain on every suggestion.
-3. **Paper first. Always** — 2 weeks paper minimum before live capital.
+## Design principles
 
-## Phases
-
-- **Phase 1** (Weeks 1-3): Core infra — Discord bot, OpenAlice, Alpaca paper, Guard engine
-- **Phase 2** (Weeks 4-8): Intelligence — TradingAgents, trading_skills, NautilusTrader
-- **Phase 3** (Week 9+): Self-improvement loop, live trading (small)
+- **LLMs only where judgment is needed.** Beta and Gamma are zero-LLM.
+  Alpha uses LLMs for the debate; everything else is Python.
+- **Cost-conscious.** ClawRoute tier-routes cheap tasks to cheap models.
+  Total LLM spend: ~$4–5/month.
+- **Data sovereignty.** Everything on one VPS. No external services
+  beyond LLM providers and brokers.
+- **Cron is the metronome.** No message bus, no orchestrator, no
+  long-lived process. Each script runs to completion and exits.
+- **Journal is the single source of truth.** Append-only JSONL. Every
+  analytics question, every dashboard view, every self-learning pass
+  reads from this one file.
