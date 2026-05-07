@@ -69,7 +69,7 @@ Amit (strategy, approvals via phone/Discord)
         |
         +-- LiteLLM (Docker, localhost:4000)
         +-- Dashboard (localhost:8080, Tailscale: https://quantai.tail1465ff.ts.net/)
-        +-- Docker legacy (trader-orchestrator, trader-discord, trader-cto, trader-guards)
+        +-- Docker legacy (trader-cto, trader-guards still running; trader-discord pruned 2026-05-06, source retained; trader-orchestrator no longer started)
 ```
 
 ## Key File Paths (relative to /home/trader/QuantAI/)

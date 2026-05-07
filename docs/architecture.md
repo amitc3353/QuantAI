@@ -2325,7 +2325,13 @@ QuantAI's first real (non-dry-run) IBKR trade was 2026-04-27. Beta and Gamma wen
 
 ### Docker legacy bypass
 
-The `docker-compose.yml` containers (trader-orchestrator, trader-discord, trader-cto, trader-guards) are still running but mostly superseded by v2 cron + OpenClaw. They're dead weight — they don't break, but they don't help either. Untangling them is a project that hasn't been prioritized.
+The `docker-compose.yml` carried four legacy containers (trader-orchestrator, trader-discord, trader-cto, trader-guards). Status as of 2026-05-06:
+
+- `trader-discord` — pruned 2026-05-06 after 30 days of zero functional events. Container stopped + removed; compose block commented out; image and source tree retained. See `docs/BACKLOG.md` ("discord-bot pruned 2026-05-06").
+- `trader-cto`, `trader-guards` — still running. Superseded by v2 cron + OpenClaw but not yet retired. They don't break, but they don't help either; `trader-guards` only serves `/health` pings.
+- `trader-orchestrator` — not currently started; compose definition retained.
+
+Remaining cleanup is a project that hasn't been prioritized.
 
 ### GitHub remote stale
 

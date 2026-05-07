@@ -32,34 +32,54 @@ import from the helpers module. Once fixed, drop `--continue-on-collection-error
 from `.git/hooks/pre-push`.
 
 ---
-## discord-bot decision (covers B1–B5)
+## discord-bot pruned 2026-05-06 (B1–B5 resolved)
 
 **Category:** architecture / cleanup
-**Effort:** 1–2 hr (decision) + 2–4 hr (execution)
+**Status:** Done — see commit `chore: prune legacy discord-bot ...`
 
-The `discord-bot/` container (`trader-discord`) is still deployed but its
-user-facing slash commands (`/brief`, `/analyze`, `/emergency_stop`,
-`/buy`, `/sell`, reaction-based approval) are Phase-1 stubs. Production
-trading runs autonomously via cron (Alpha + Beta), and operator approvals
-now live on `#karna-approvals` via KARNA/OpenClaw. Decide:
+The `discord-bot/` container (`trader-discord`) carried five Phase-1 stub
+TODOs from the original audit:
 
-- **(a) Prune** — remove the stub commands and any unused cogs; keep only
-  whatever the bot is genuinely used for today (notification posting,
-  if any).
-- **(b) Wire through** — implement each stub against the real surfaces
-  (halt flag, broker.get_account for `position_pct`, KARNA approvals
-  bridge for `/emergency_stop`).
+- **B1** `/brief` slash command — `bot.py:217`, "trigger Research Agent"
+- **B2** `/analyze` slash command — `bot.py:238`, "trigger Analysis Agent"
+- **B3** `/emergency_stop` slash command — `bot.py:292`, no halt action
+  performed (trading-safety footgun)
+- **B4** Reaction-based trade approval — `bot.py:396`, "Forward to
+  execution agent"
+- **B5** `cogs/trading.py:245` — hardcoded `position_pct = 2.0` sent to
+  guard engine instead of real portfolio share
 
-The decision blocks B1–B5 because each TODO is half of a Phase-2
-integration that was never finished.
+Investigation on 2026-05-06:
 
-### B3 — `/emergency_stop` ⚠ trading-safety
+- Zero functional events in the prior 30 days (only Discord-gateway
+  RESUME heartbeats).
+- No cron, no systemd, no external code path called into the bot.
+- Production Discord traffic flows through OpenClaw and direct webhook
+  posts (different env-var namespace: `DISCORD_CHANNEL_*` vs the bot's
+  `CHANNEL_*`), not through this bot.
+- `infra_agent.py` cog mounted `/var/run/docker.sock` and could restart
+  sibling containers — meaningful blast radius for code that was inert.
 
-Whichever direction the decision lands, **B3 must land first or be
-removed first**. A Discord command that *says* it halted trading but
-performs no halt action is a safety footgun: anyone firing it during a
-live event would believe the pipeline was stopped while trades kept
-flowing.
+**What was removed**
+
+- Running container (`docker stop trader-discord && docker rm`).
+- `discord-bot:` block in `docker-compose.yml` — commented out, not
+  deleted, with a header pointing to this BACKLOG entry.
+
+**What was retained**
+
+- Full source tree under `discord-bot/` — preserves git history and
+  keeps the `ruff` step in `.github/workflows/ci.yml:47` working.
+- `configs/channels.json` — channel IDs still listed; harmless.
+- The Docker image is preserved (only the running container was
+  removed).
+
+**Reversal**
+
+Uncomment the `discord-bot:` block in `docker-compose.yml` and run
+`docker compose up -d discord-bot`. Then re-decide between options
+(a) prune-the-stubs and (b) wire-through, both of which are still
+open if the bot is brought back.
 
 ## Anthropic low-balance alert (B6)
 

@@ -1,28 +1,31 @@
 services:
   # ============================================
-  # Discord Bot — Command center for all agents
+  # Discord Bot — PRUNED 2026-05-06
+  # See docs/BACKLOG.md ("discord-bot pruned 2026-05-06") for context.
+  # Container removed; source tree retained under discord-bot/ for git
+  # history and CI ruff coverage. Reverse by uncommenting this block.
   # ============================================
-  discord-bot:
-    build:
-      context: ./discord-bot
-      dockerfile: Dockerfile
-    container_name: trader-discord
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/app/data
-      - ./configs:/app/configs
-      - .:/app/project
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - guard-engine
-    networks:
-      - trader-net
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # discord-bot:
+  #   build:
+  #     context: ./discord-bot
+  #     dockerfile: Dockerfile
+  #   container_name: trader-discord
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   volumes:
+  #     - ./data:/app/data
+  #     - ./configs:/app/configs
+  #     - .:/app/project
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   depends_on:
+  #     - guard-engine
+  #   networks:
+  #     - trader-net
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # ============================================
   # Guard Engine — Deterministic constraint layer
@@ -63,7 +66,7 @@ services:
       - ./configs:/app/configs:ro
       - ./services:/app/services:ro
     depends_on:
-      - discord-bot
+      # discord-bot removed 2026-05-06 (see docs/BACKLOG.md)
       - guard-engine
     networks:
       - trader-net
