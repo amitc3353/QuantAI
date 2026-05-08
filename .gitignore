@@ -17,6 +17,7 @@ build/
 .DS_Store
 *.swp
 *.swo
+.coverage
 
 # graphify build artifacts
 graphify-out/cache/
