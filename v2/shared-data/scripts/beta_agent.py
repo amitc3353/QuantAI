@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 from _logger import setup as _logger_setup
+from _concentration_gate import check_concentration
 
 _logger_setup("beta_agent")
 
@@ -250,6 +251,12 @@ def main() -> int:
     ok, why, proposal = check_risk(proposal, intel, acct, journal)
     if not ok:
         print(f"[beta_agent] risk block: {why}")
+        return 0
+
+    conc = check_concentration(smod.INSTRUMENT, JOURNAL)
+    if not conc.allowed:
+        print(f"[beta_agent] concentration gate blocked {smod.INSTRUMENT}: {conc.reason}")
+        logging.warning("Concentration gate blocked %s: %s", smod.INSTRUMENT, conc.reason)
         return 0
 
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])

@@ -26,7 +26,9 @@ Usage:
 
 import json, os, sys, time, requests
 from datetime import datetime, date, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
+from _concentration_gate import check_concentration
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -751,6 +753,13 @@ def run():
             log(f"  ❌ REJECTED: {reason}")
             logging.warning("Trade rejected: %s", reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": reason})
+            continue
+
+        conc = check_concentration(symbol, Path(JOURNAL))
+        if not conc.allowed:
+            log(f"  ❌ CONCENTRATION GATE: {conc.reason}")
+            logging.warning("Concentration gate blocked %s: %s", symbol, conc.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": conc.reason})
             continue
 
         log("  ✅ Guards passed")
