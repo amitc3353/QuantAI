@@ -157,6 +157,26 @@ class TestReclassifyCatalogNoise:
         result = SA.reclassify_catalog_noise(dry_run=False)
         assert result["reclassified"] >= 1
 
+    # ─── New patterns added 2026-05-09 ───
+
+    def test_openclaw_exec_denied_allowlist_miss_reclassified(self):
+        """OpenClaw security rail: a tool exec was denied because it isn't on
+        the allowlist. This is a feature, not a bug — fires once nightly when
+        backup cron runs through the agent. Should be reclassified as info."""
+        _insert(self.db, severity="warning",
+                signature="2026-05-09T02:00:03+00:00 [tools] exec failed: exec denied: allowlist miss")
+        result = SA.reclassify_catalog_noise(dry_run=False)
+        assert result["reclassified"] >= 1
+
+    def test_openclaw_coding_profile_unknown_entries_reclassified(self):
+        """OpenClaw startup warning that the coding profile lists tools
+        (apply_patch, image_generate) that aren't in the current runtime.
+        Cosmetic — silenced as info."""
+        _insert(self.db, severity="warning",
+                signature="[tools] tools.profile (coding) allowlist contains unknown entries (apply_patch, image_generate)")
+        result = SA.reclassify_catalog_noise(dry_run=False)
+        assert result["reclassified"] >= 1
+
     def test_already_resolved_NOT_touched(self):
         eid = _insert(
             self.db, severity="warning",

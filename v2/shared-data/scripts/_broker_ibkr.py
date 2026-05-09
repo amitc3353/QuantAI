@@ -12,8 +12,11 @@ Index option routing (XSP/SPX/VIX): exchange=CBOE, tradingClass disambiguates
 SPX (monthly) vs SPXW (weekly) and VIX vs VIXW. Use reqSecDefOptParams to
 discover (exchange, tradingClass) pairs rather than hardcoding the rule.
 
-Daily 23:30-00:15 ET restart window: refuse to connect with a clear log
-rather than retry-storming during IB Gateway's nightly restart.
+Daily 23:30-01:30 ET restart window (widened 2026-05-09 from 23:30-00:15
+to cover the post-restart reconnection lag): refuse to connect with a
+clear INFO log rather than retry-storming during IB Gateway's nightly
+restart. clientId is staggered across retries (base, base+1, base+2) so
+a half-open socket from a failed attempt doesn't break the next retry.
 
 Credential safety: NEVER log host/port pairs that include credentials. The
 ib_insync library does not transmit credentials over the API socket — those
@@ -141,11 +144,23 @@ ENTRY_POLL_SECONDS = 5.0
 
 
 def _is_in_restart_window(now: Optional[datetime] = None) -> bool:
-    """IB Gateway restarts at 23:45 ET. Refuse to connect 23:30-00:15."""
+    """IB Gateway restarts at 23:45 ET. Refuse to connect 23:30-01:30 ET.
+
+    Window widened 2026-05-09 from the original 23:30-00:15 to 23:30-01:30
+    after observing the post-restart reconnection lag in production:
+      - 00:15-00:44 ET: gateway restarts, holds clientId=1 in half-open state
+      - 00:44-01:15 ET: Error 1100 connectivity-lost from IBKR cloud
+      - 01:00-01:15 ET: collectors hit 3-retry timeout cascades (port-refused)
+    Five days of telemetry (2026-05-02 through 2026-05-08) show all the
+    nightly noise lands inside 23:30-01:15 ET. Window ends at 01:30 ET
+    sharp to match a nice round local hour.
+    """
     n = now or datetime.now(ET)
     if n.hour == 23 and n.minute >= 30:
         return True
-    if n.hour == 0 and n.minute < 15:
+    if n.hour == 0:
+        return True
+    if n.hour == 1 and n.minute < 30:
         return True
     return False
 
@@ -172,21 +187,31 @@ class IBKRBroker(BrokerBase):
         if self._ib is not None and self._ib.isConnected():
             return True
         if _is_in_restart_window():
-            logging.error(
-                "IBKRBroker: in IB Gateway restart window (23:30-00:15 ET) — refusing to connect"
+            # INFO not ERROR — refusing during the documented nightly restart
+            # window is correct, expected behavior. Logging at ERROR causes the
+            # event to escalate in the dashboard catalog as a "warning" or
+            # higher, polluting the unresolved-events queue every cron tick.
+            logging.info(
+                "IBKRBroker: in IB Gateway restart window (23:30-01:30 ET) — refusing to connect"
             )
             return False
         last_err: Optional[Exception] = None
         ib: Optional[IB] = None
         for attempt in range(3):
             ib = IB()
+            # Stagger clientId across retries: a half-open socket from a
+            # failed previous attempt may still hold base_client_id at the
+            # gateway, causing Error 326 (clientId already in use) on retry.
+            # Using base+attempt produces (base, base+1, base+2) so each
+            # retry gets a distinct id.
+            attempt_client_id = self.client_id + attempt
             try:
                 # readonly=True skips ib_insync's auto-sync of open orders +
                 # completed orders at connect time. We don't read either (audit
                 # in plan); reqCompletedOrders was timing out at 15s on every
                 # cron tick (~700 events/day from collect_alpaca alone).
                 # placeOrder is unaffected — readonly is a client-side hint.
-                ib.connect(self.host, self.port, clientId=self.client_id,
+                ib.connect(self.host, self.port, clientId=attempt_client_id,
                            timeout=15, readonly=True)
                 if not ib.isConnected():
                     raise ConnectionError("connect returned without isConnected()")
