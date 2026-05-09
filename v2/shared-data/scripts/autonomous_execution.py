@@ -669,6 +669,14 @@ def log_trade(trade, agent_name, fill, intel):
             "market_intel_age_seconds": age_of(intel.get("timestamp")),
             "pipeline_stage_durations": trade.get("stage_durations", {}),
         },
+        "full_trajectory": {
+            "bull_case": trade.get("bull_case", ""),
+            "bear_case": trade.get("bear_case", ""),
+            "judge_reasoning": trade.get("judge_reasoning", ""),
+            "judge_score": trade.get("judge_score"),
+            "invalidation_clause": trade.get("invalidation", ""),
+            "skills_consulted": trade.get("skills_consulted", []),
+        },
     }
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(entry) + "\n")

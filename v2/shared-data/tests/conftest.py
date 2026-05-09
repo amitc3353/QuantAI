@@ -29,6 +29,7 @@ def tmp_root(tmp_path, monkeypatch):
         "capability_requests",
         "trade_reviews",
         "weekly_reports",
+        "memory",
     ]:
         (root / sub).mkdir(parents=True)
 

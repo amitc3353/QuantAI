@@ -1485,6 +1485,16 @@ def main():
                     finally:
                         logging.info("hook:review trade=%s elapsed=%.1fs",
                                      t["id"], time.monotonic() - _t0_rev)
+                    _t0_refl = time.monotonic()
+                    try:
+                        from _memory import write_reflection
+                        write_reflection(t["id"])
+                    except Exception as _e:
+                        log(f"  WARN: reflection failed for {t['id']}: {_e}")
+                        logging.exception("Reflection write failed for %s", t["id"])
+                    finally:
+                        logging.info("hook:write_reflection trade=%s elapsed=%.1fs",
+                                     t["id"], time.monotonic() - _t0_refl)
                 for (t, reason, pnl, cq) in partial_trades:
                     post_close_alert(t, reason, pnl, is_partial=True, close_qty=cq)
             else:

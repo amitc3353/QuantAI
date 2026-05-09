@@ -7,7 +7,7 @@ Outputs top 2 trade proposals to debate_output.json.
 Called by the Orchestrator agent when it wants trade proposals.
 Usage: python3 debate_chamber.py [pre_market|mid_session]
 """
-import json, os, sys, time
+import json, logging, os, sys, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from _llm_client import Client
@@ -183,6 +183,17 @@ for sym in list(symbols.keys())[:12]:  # Show all symbols, not just 7
 
 market_context = "\n".join(context_lines)
 
+# ──────────────────────────────────────��──────────────────────────────
+# LESSONS INJECTION — retrieve reflections from past trades
+# ─────────────────────────────────────────────────────────────────────
+_lessons_text = ""
+try:
+    from _memory import format_lessons
+    _top_symbol = list(symbols.keys())[0] if symbols else "SPY"
+    _lessons_text = format_lessons("agent_alpha", _top_symbol, k_same=5, k_cross=5)
+except Exception as _e:
+    logging.warning("debate_chamber: lessons retrieval failed: %s", _e)
+
 # ─────────────────────────────────────────────────────────────────────
 # STEP 1: PROPOSAL AGENT
 # ─────────────────────────────────────────────────────────────────────
@@ -222,8 +233,9 @@ If regime is risk_off or halt: output 0 proposals.
 Output ONLY valid JSON, no markdown:
 {{"proposals":[{{"id":"P1","symbol":"SPY","strategy":"iron_condor","legs":[{{"action":"sell","type":"put","strike":555,"expiry":"0DTE"}},{{"action":"buy","type":"put","strike":550,"expiry":"0DTE"}},{{"action":"sell","type":"call","strike":575,"expiry":"0DTE"}},{{"action":"buy","type":"call","strike":580,"expiry":"0DTE"}}],"estimated_credit":0.75,"max_loss":4.25,"max_loss_pct":1.7,"probability_of_profit":68,"thesis":"SPY range-bound, VIX 17 contango.","invalidation":"SPY breaks above 572 or below 558."}}],"market_summary":"2 sentences."}}"""
 
+_proposal_system_full = _proposal_system + ("\n\n" + _lessons_text if _lessons_text else "")
 proposal_data = call_llm_json(
-    model=SONNET, system=_proposal_system, user=market_context,
+    model=SONNET, system=_proposal_system_full, user=market_context,
     max_tokens=2000, caller="debate_proposal",
 )
 if not proposal_data:
@@ -314,8 +326,9 @@ Score 0-100 per trade: risk/reward quality (25), macro timing (25), bear argumen
 Select exactly 2 (or fewer if < 2 survive). Output ONLY valid JSON:
 {{"scored_trades":[{{"id":"P1","net_score":74,"verdict":"APPROVED","reasoning":"1 sentence."}}],"approved_ids":["P1","P3"],"judge_summary":"2 sentences on why these 2."}}"""
 
+_judge_system_full = _judge_system + ("\n\n" + _lessons_text if _lessons_text else "")
 judge_data = call_llm_json(
-    model=SONNET, system=_judge_system,
+    model=SONNET, system=_judge_system_full,
     user=f"VIX {macro.get('vix',0):.1f} | Regime: {regime}\n\n{debate_text}\n\nSelect the 2 best trades.",
     max_tokens=1200, caller="debate_judge",
 )

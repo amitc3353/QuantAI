@@ -402,6 +402,14 @@ def main() -> int:
         "market_intel_age_seconds": age_of(intel.get("timestamp")),
         "pipeline_stage_durations": strikes.get("stage_durations", {}),
     }
+    entry["full_trajectory"] = {
+        "bull_case": None,
+        "bear_case": None,
+        "judge_reasoning": None,
+        "judge_score": None,
+        "invalidation_clause": _invalidation,
+        "skills_consulted": ["regime-classification", "iv-surface-reading", "greeks-management"],
+    }
     _journal_write(entry)
     print(f"[beta_agent] journaled as {entry['id']}")
 

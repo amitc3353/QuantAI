@@ -476,7 +476,11 @@ def run_execute() -> int:
                 or (payload.get("generated_at") if payload else None)
             ),
             "pipeline_stage_durations": setup.get("stage_durations", {}),
+            "rsi_at_entry": setup.get("rsi_10"),
+            "sma_200_distance_pct": setup.get("distance_above_200ma_pct"),
+            "sector": setup.get("sector"),
         }
+        entry["full_trajectory"] = None
 
         _journal_write(entry)
         print(f"[gamma_agent] journaled as {entry['id']} (order_id={entry['order_id']})")
