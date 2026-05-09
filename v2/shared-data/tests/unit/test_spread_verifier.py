@@ -225,3 +225,103 @@ class TestBlockedSymbolsHelper:
 
     def test_returns_empty_set_when_no_results(self):
         assert sv.blocked_symbols({"results": []}) == set()
+
+
+# ── Scanner integration (filter F0) ─────────────────────────────────────
+
+
+class TestScannerIntegration:
+    """The scanner's _qualifies() consults sv.blocked_symbols() before
+    its other filters. Verify the F0 layer behaves correctly with the
+    documented schema."""
+
+    def _ind(self, sym, **overrides):
+        """Build a mock indicator dict that would otherwise pass F1-F6."""
+        base = {
+            "symbol": sym,
+            "close": 200.0,
+            "sma_200": 180.0,
+            "rsi_10": 25.0,
+            "type": "stock",
+            "tax": "standard",
+            "sector": "Technology",
+            "avg_volume_20d": 50_000_000,
+            "distance_above_200ma_pct": 11.1,
+        }
+        base.update(overrides)
+        return base
+
+    def test_scanner_skips_blocked_symbols(self):
+        """F0 must reject blocked symbols regardless of indicator state."""
+        from datetime import date
+        from gamma.scanner import _qualifies
+        ind = self._ind("XYZ", rsi_10=10.0)  # extreme oversold — would otherwise pass
+        spread_status = {"results": [
+            {"symbol": "XYZ", "passed": False, "blocked_reason": "spread_too_wide"}
+        ]}
+        assert _qualifies(ind, date.today(), set(), spread_status) is False
+
+    def test_scanner_skips_permanent_block(self):
+        """permanent_block_3_strikes also blocks at F0."""
+        from datetime import date
+        from gamma.scanner import _qualifies
+        ind = self._ind("DEF", rsi_10=10.0)
+        spread_status = {"results": [
+            {"symbol": "DEF", "passed": False,
+             "blocked_reason": "permanent_block_3_strikes"}
+        ]}
+        assert _qualifies(ind, date.today(), set(), spread_status) is False
+
+    def test_scanner_allows_passed_symbols(self):
+        """Correction #3 from review: a clean symbol must pass ALL 7 filters
+        (F0 spread + F1-F6) when given good inputs. Mocks days_to_earnings
+        and days_since_earnings to return None so earnings filter is no-op."""
+        from datetime import date
+        from unittest.mock import patch
+        from gamma.scanner import _qualifies
+
+        ind = self._ind("AAPL")  # close>SMA, RSI<30, volume ok, sector Technology
+        spread_status = {"results": [
+            {"symbol": "AAPL", "passed": True, "spread_pct": 0.5}
+        ]}
+
+        # Mock both earnings calls in scanner module to None (Finnhub no-op).
+        # F5 and F6 evaluate `if d is not None and d <= N` so None disables them.
+        with patch("gamma.scanner.days_to_earnings", return_value=None), \
+             patch("gamma.scanner.days_since_earnings", return_value=None):
+            result = _qualifies(ind, date.today(), set(), spread_status)
+        assert result is True, "Clean symbol with all 7 filters passing should qualify"
+
+    def test_scanner_fail_open_on_fetch_failed(self):
+        """fetch_failed entries must NOT block the scanner — fail-open semantics.
+        The data model has `passed: False, blocked_reason: fetch_failed` but
+        scanner allows the symbol through (will retry next Monday).
+
+        Uses AAPL (a real UNIVERSE symbol) since fetch-fail falls through F0 and
+        the downstream filters need INSTRUMENT_CONFIG[sym] to succeed."""
+        from datetime import date
+        from unittest.mock import patch
+        from gamma.scanner import _qualifies
+
+        ind = self._ind("AAPL")
+        spread_status = {"results": [
+            {"symbol": "AAPL", "passed": False, "blocked_reason": "fetch_failed",
+             "error": "yfinance no chain"}
+        ]}
+        with patch("gamma.scanner.days_to_earnings", return_value=None), \
+             patch("gamma.scanner.days_since_earnings", return_value=None):
+            result = _qualifies(ind, date.today(), set(), spread_status)
+        assert result is True, "fetch_failed must fail-OPEN (allow), not block"
+
+    def test_scanner_fails_open_when_status_missing(self):
+        """No state file → spread_status=None → F0 must not reject anyone.
+        Bootstrap behavior on first deployment before verifier runs."""
+        from datetime import date
+        from unittest.mock import patch
+        from gamma.scanner import _qualifies
+
+        ind = self._ind("AAPL")
+        with patch("gamma.scanner.days_to_earnings", return_value=None), \
+             patch("gamma.scanner.days_since_earnings", return_value=None):
+            result = _qualifies(ind, date.today(), set(), spread_status=None)
+        assert result is True, "Missing spread_status must fail-OPEN, not block"
