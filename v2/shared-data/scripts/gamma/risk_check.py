@@ -26,6 +26,10 @@ from . import (
     MAX_OPEN_POSITIONS,
     MAX_POSITIONS_SAME_SECTOR,
 )
+import sys as _sys
+_sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
+from _concentration_gate import MAX_OPEN_PER_SYMBOL as _MAX_OPEN_PER_SYMBOL
+from _cooldown_gate import is_in_cooldown as _is_in_cooldown
 
 ET = ZoneInfo("America/New_York")
 JOURNAL = Path("/root/quantai-v2/shared-data/journal/paper/trades.jsonl")
@@ -144,6 +148,20 @@ def filter_setups(setups: list[dict], journal: list,
             break
         sym = s["symbol"]
         if sym in open_symbols:
+            continue
+        cross_open = sum(
+            1 for t in journal
+            if t.get("status") == "OPEN" and (t.get("symbol") or "").upper() == sym.upper()
+        )
+        if cross_open >= _MAX_OPEN_PER_SYMBOL:
+            logging.info(
+                "concentration_gate: %d cross-agent open on %s — skipping Gamma entry",
+                cross_open, sym,
+            )
+            continue
+        cool = _is_in_cooldown(sym, journal)
+        if not cool.allowed:
+            logging.info("cooldown_gate: %s — skipping Gamma entry", cool.reason)
             continue
         sec = s.get("sector", "unknown")
         if sector_count.get(sec, 0) >= MAX_POSITIONS_SAME_SECTOR:

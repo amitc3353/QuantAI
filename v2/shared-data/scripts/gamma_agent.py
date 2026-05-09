@@ -366,6 +366,31 @@ def run_execute() -> int:
             failed.append((setup, "build_spread_none"))
             continue
 
+        from _decision_helpers import rsi_depth_score
+        from _conviction_gate import check_conviction
+        conv_score = rsi_depth_score(setup.get("rsi_10"))
+        conv = check_conviction(conv_score, strategy="rsi_pullback_debit_spread")
+        if not conv.allowed:
+            print(f"[gamma_agent] conviction gate blocked {symbol}: {conv.reason}")
+            failed.append((setup, f"conviction_gate: {conv.reason}"))
+            continue
+        if conv.size_multiplier < 1.0:
+            proposal["qty"] = max(1, int(proposal["qty"] * conv.size_multiplier))
+
+        from _macro_blackout import check_macro_blackout
+        _gamma_intel: dict = {}
+        try:
+            _intel_path = Path("/root/quantai-v2/shared-data/cache/market_intelligence.json")
+            if _intel_path.exists():
+                _gamma_intel = json.loads(_intel_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
+        blk = check_macro_blackout(_gamma_intel, "rsi_pullback_debit_spread")
+        if not blk.allowed:
+            print(f"[gamma_agent] macro blackout blocked {symbol}: {blk.reason}")
+            failed.append((setup, f"macro_blackout: {blk.reason}"))
+            continue
+
         coid = f"gamma-{datetime.now(ET).strftime('%Y%m%d-%H%M%S')}-{symbol[:6]}"
         proposal["client_order_id"] = coid
 

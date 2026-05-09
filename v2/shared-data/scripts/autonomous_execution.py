@@ -26,7 +26,14 @@ Usage:
 
 import json, os, sys, time, requests
 from datetime import datetime, date, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
+from _concentration_gate import check_concentration
+from _freshness_gate import check_freshness
+from _event_calendar import check_event_timing
+from _cooldown_gate import check_cooldown
+from _conviction_gate import check_conviction
+from _macro_blackout import check_macro_blackout
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -751,6 +758,63 @@ def run():
             log(f"  ❌ REJECTED: {reason}")
             logging.warning("Trade rejected: %s", reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": reason})
+            continue
+
+        conc = check_concentration(symbol, Path(JOURNAL))
+        if not conc.allowed:
+            log(f"  ❌ CONCENTRATION GATE: {conc.reason}")
+            logging.warning("Concentration gate blocked %s: %s", symbol, conc.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": conc.reason})
+            continue
+
+        is_event = intel.get("macro", {}).get("is_event_day", False)
+        fresh = check_freshness(intel, is_event_trade=bool(is_event))
+        if not fresh.allowed:
+            log(f"  ❌ FRESHNESS GATE: {fresh.reason}")
+            logging.warning("Freshness gate blocked %s: %s", symbol, fresh.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": fresh.reason})
+            continue
+
+        evt = check_event_timing(intel, is_event_trade=bool(is_event))
+        if not evt.allowed:
+            log(f"  ❌ EVENT TIMING GATE: {evt.reason}")
+            logging.warning("Event timing gate blocked %s: %s", symbol, evt.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": evt.reason})
+            continue
+
+        cool = check_cooldown(symbol, Path(JOURNAL))
+        if not cool.allowed:
+            log(f"  ❌ COOLDOWN GATE: {cool.reason}")
+            logging.warning("Cooldown gate blocked %s: %s", symbol, cool.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": cool.reason})
+            continue
+
+        from _decision_helpers import alpha_conviction_from_judge
+        conv_score = alpha_conviction_from_judge(trade.get("judge_score"))
+        active_condors = 0
+        try:
+            with open(JOURNAL) as _jf:
+                for _jl in _jf:
+                    _jl = _jl.strip()
+                    if not _jl:
+                        continue
+                    _jt = json.loads(_jl)
+                    if _jt.get("status") == "OPEN" and "condor" in (_jt.get("strategy") or "").lower():
+                        active_condors += 1
+        except (OSError, json.JSONDecodeError):
+            pass
+        conv = check_conviction(conv_score, strategy, active_condors)
+        if not conv.allowed:
+            log(f"  ❌ CONVICTION GATE: {conv.reason}")
+            logging.warning("Conviction gate blocked %s: %s", symbol, conv.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": conv.reason})
+            continue
+
+        blk = check_macro_blackout(intel, strategy)
+        if not blk.allowed:
+            log(f"  ❌ MACRO BLACKOUT: {blk.reason}")
+            logging.warning("Macro blackout blocked %s: %s", symbol, blk.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": blk.reason})
             continue
 
         log("  ✅ Guards passed")
