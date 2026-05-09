@@ -30,6 +30,7 @@ sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 from _logger import setup as _logger_setup
 from _concentration_gate import check_concentration
 from _freshness_gate import check_freshness
+from _event_calendar import check_event_timing
 
 _logger_setup("beta_agent")
 
@@ -264,6 +265,12 @@ def main() -> int:
     if not fresh.allowed:
         print(f"[beta_agent] freshness gate blocked {smod.INSTRUMENT}: {fresh.reason}")
         logging.warning("Freshness gate blocked %s: %s", smod.INSTRUMENT, fresh.reason)
+        return 0
+
+    evt = check_event_timing(intel, is_event_trade=(regime == "PRE_EVENT"))
+    if not evt.allowed:
+        print(f"[beta_agent] event timing gate blocked {smod.INSTRUMENT}: {evt.reason}")
+        logging.warning("Event timing gate blocked %s: %s", smod.INSTRUMENT, evt.reason)
         return 0
 
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])

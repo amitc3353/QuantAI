@@ -30,6 +30,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from _concentration_gate import check_concentration
 from _freshness_gate import check_freshness
+from _event_calendar import check_event_timing
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -769,6 +770,13 @@ def run():
             log(f"  ❌ FRESHNESS GATE: {fresh.reason}")
             logging.warning("Freshness gate blocked %s: %s", symbol, fresh.reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": fresh.reason})
+            continue
+
+        evt = check_event_timing(intel, is_event_trade=bool(is_event))
+        if not evt.allowed:
+            log(f"  ❌ EVENT TIMING GATE: {evt.reason}")
+            logging.warning("Event timing gate blocked %s: %s", symbol, evt.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": evt.reason})
             continue
 
         log("  ✅ Guards passed")
