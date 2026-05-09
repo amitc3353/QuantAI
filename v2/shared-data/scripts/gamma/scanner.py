@@ -11,10 +11,17 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import random
+import time
 from datetime import date
-from typing import Iterable
+from typing import Iterable, Optional
 
 YF_FETCH_TIMEOUT_SECONDS = 20
+
+# Outer-loop parallelism for the universe scan (added 2026-05-09 with
+# universe expansion 27 → 155). 12 workers gives ~5x speedup with
+# ample headroom under yfinance's documented rate limit (~2K req/h).
+SCAN_WORKERS_DEFAULT = 12
 
 from . import (
     EARNINGS_BLACKOUT_DAYS,
@@ -98,10 +105,38 @@ def _compute_indicators(symbol: str) -> dict | None:
     }
 
 
-def _qualifies(ind: dict, today: date, open_symbols: set[str]) -> bool:
-    """Apply the 6 entry filters to a precomputed indicator row."""
+def _qualifies(ind: dict, today: date, open_symbols: set[str],
+               spread_status: Optional[dict] = None) -> bool:
+    """Apply the 7 entry filters to a precomputed indicator row.
+
+    Filters in evaluation order:
+      F0  spread_status blocklist (added 2026-05-09 with universe expansion).
+          Skips symbols flagged spread_too_wide or permanent_block_3_strikes.
+          fetch_failed entries fall through (fail-open semantics).
+      F1  open_symbols  — no duplicate position
+      F2  trend         — close > SMA(200)
+      F3  oversold      — RSI(10) < threshold
+      F4  liquidity     — avg vol(20) >= 1M for stocks
+      F5  pre-earnings  — days_to_earnings > 7 (or unknown)
+      F6  post-earnings — days_since_earnings > 2 (or unknown)
+    """
     sym = ind["symbol"]
+
+    # F0: spread blocklist (added 2026-05-09). Runs FIRST so that blocked
+    # symbols short-circuit without needing an INSTRUMENT_CONFIG entry — keeps
+    # tests isolated and lets the verifier act on transient new symbols.
+    # blocked_symbols() helper excludes fetch_failed entries → fail-open.
+    if spread_status is not None:
+        try:
+            from .spread_verifier import blocked_symbols
+            if sym in blocked_symbols(spread_status):
+                return False
+        except ImportError:
+            # Verifier module not present (very early bootstrap or test) — fail open.
+            pass
+
     cfg = INSTRUMENT_CONFIG[sym]
+
     if sym in open_symbols:
         return False
     if ind["close"] <= ind["sma_200"]:
@@ -127,33 +162,55 @@ def _qualifies(ind: dict, today: date, open_symbols: set[str]) -> bool:
 
 def scan_with_indicators(universe: Iterable[str] | None = None,
                          open_symbols: set[str] | None = None,
-                         today: date | None = None) -> tuple[list[dict], dict[str, dict]]:
-    """Single-pass scan returning both qualifying setups AND a per-symbol
-    indicator cache for the position monitor.
+                         today: date | None = None,
+                         spread_status: Optional[dict] = None,
+                         n_workers: int = SCAN_WORKERS_DEFAULT,
+                         ) -> tuple[list[dict], dict[str, dict]]:
+    """Parallel single-pass scan returning qualifying setups + indicator cache.
+
+    Outer loop parallelized 2026-05-09 with universe expansion (27 → 155):
+    sequential 27 × ~3s = ~90s; parallel 155 / 12 workers × ~3s = ~40s.
+
+    Args:
+      universe: symbols to scan (default: full UNIVERSE)
+      open_symbols: skip these (already-held positions)
+      today: scan reference date
+      spread_status: payload from gamma_spread_status.json — F0 blocklist
+      n_workers: ThreadPoolExecutor size (default 12)
 
     Returns (setups, indicator_cache):
       setups: list of qualifying entries sorted by RSI asc
       indicator_cache: {symbol: {close, rsi_10, sma_200, ...}} for every
-        symbol whose indicators successfully computed (regardless of
-        whether the symbol qualified for entry)
+        symbol whose indicators successfully computed
     """
     universe = list(universe) if universe is not None else UNIVERSE
     open_symbols = open_symbols or set()
     today = today or date.today()
 
-    setups: list[dict] = []
-    cache: dict[str, dict] = {}
-    for sym in universe:
+    def _process(sym: str):
+        # Small jitter so workers don't all hit yfinance at the exact same moment
+        time.sleep(random.uniform(0, 0.2))
         try:
-            ind = _compute_indicators(sym)
+            return sym, _compute_indicators(sym)
+        except Exception as e:
+            logging.warning("gamma scan: %s evaluation failed: %s", sym, e)
+            return sym, None
+
+    cache: dict[str, dict] = {}
+    setups: list[dict] = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as ex:
+        futures = [ex.submit(_process, s) for s in universe]
+        for fut in concurrent.futures.as_completed(futures):
+            sym, ind = fut.result()
             if ind is None:
                 continue
             cache[sym] = ind
-            if _qualifies(ind, today, open_symbols):
+            # Note: _qualifies has internal stateful side-effect (writes
+            # days_to_earnings into ind dict), so call it serially after
+            # the parallel fetch completes — keeps Finnhub serialized.
+            if _qualifies(ind, today, open_symbols, spread_status):
                 setups.append(dict(ind))
-        except Exception as e:
-            logging.warning("gamma scan: %s evaluation failed: %s", sym, e)
-            continue
 
     setups.sort(key=lambda x: x["rsi_10"])
     return setups, cache
