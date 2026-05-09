@@ -33,6 +33,7 @@ from _freshness_gate import check_freshness
 from _event_calendar import check_event_timing
 from _cooldown_gate import check_cooldown
 from _conviction_gate import check_conviction
+from _macro_blackout import check_macro_blackout
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -807,6 +808,13 @@ def run():
             log(f"  ❌ CONVICTION GATE: {conv.reason}")
             logging.warning("Conviction gate blocked %s: %s", symbol, conv.reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": conv.reason})
+            continue
+
+        blk = check_macro_blackout(intel, strategy)
+        if not blk.allowed:
+            log(f"  ❌ MACRO BLACKOUT: {blk.reason}")
+            logging.warning("Macro blackout blocked %s: %s", symbol, blk.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": blk.reason})
             continue
 
         log("  ✅ Guards passed")

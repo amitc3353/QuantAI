@@ -33,6 +33,7 @@ from _freshness_gate import check_freshness
 from _event_calendar import check_event_timing
 from _cooldown_gate import check_cooldown
 from _conviction_gate import check_conviction
+from _macro_blackout import check_macro_blackout
 
 _logger_setup("beta_agent")
 
@@ -287,6 +288,12 @@ def main() -> int:
     if not conv.allowed:
         print(f"[beta_agent] conviction gate blocked {smod.INSTRUMENT}: {conv.reason}")
         logging.warning("Conviction gate blocked %s: %s", smod.INSTRUMENT, conv.reason)
+        return 0
+
+    blk = check_macro_blackout(intel, smod.NAME)
+    if not blk.allowed:
+        print(f"[beta_agent] macro blackout blocked {smod.INSTRUMENT}: {blk.reason}")
+        logging.warning("Macro blackout blocked %s: %s", smod.INSTRUMENT, blk.reason)
         return 0
 
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])
