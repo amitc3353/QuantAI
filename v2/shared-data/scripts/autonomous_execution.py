@@ -34,6 +34,7 @@ from _event_calendar import check_event_timing
 from _cooldown_gate import check_cooldown
 from _conviction_gate import check_conviction
 from _macro_blackout import check_macro_blackout
+from _gate_logger import log_gate_block
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -764,6 +765,7 @@ def run():
         if not conc.allowed:
             log(f"  ❌ CONCENTRATION GATE: {conc.reason}")
             logging.warning("Concentration gate blocked %s: %s", symbol, conc.reason)
+            log_gate_block("concentration", symbol, "alpha", conc.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": conc.reason})
             continue
 
@@ -772,6 +774,7 @@ def run():
         if not fresh.allowed:
             log(f"  ❌ FRESHNESS GATE: {fresh.reason}")
             logging.warning("Freshness gate blocked %s: %s", symbol, fresh.reason)
+            log_gate_block("freshness", symbol, "alpha", fresh.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": fresh.reason})
             continue
 
@@ -779,6 +782,7 @@ def run():
         if not evt.allowed:
             log(f"  ❌ EVENT TIMING GATE: {evt.reason}")
             logging.warning("Event timing gate blocked %s: %s", symbol, evt.reason)
+            log_gate_block("event_timing", symbol, "alpha", evt.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": evt.reason})
             continue
 
@@ -786,6 +790,7 @@ def run():
         if not cool.allowed:
             log(f"  ❌ COOLDOWN GATE: {cool.reason}")
             logging.warning("Cooldown gate blocked %s: %s", symbol, cool.reason)
+            log_gate_block("cooldown", symbol, "alpha", cool.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": cool.reason})
             continue
 
@@ -807,6 +812,7 @@ def run():
         if not conv.allowed:
             log(f"  ❌ CONVICTION GATE: {conv.reason}")
             logging.warning("Conviction gate blocked %s: %s", symbol, conv.reason)
+            log_gate_block("conviction", symbol, "alpha", conv.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": conv.reason})
             continue
 
@@ -814,6 +820,7 @@ def run():
         if not blk.allowed:
             log(f"  ❌ MACRO BLACKOUT: {blk.reason}")
             logging.warning("Macro blackout blocked %s: %s", symbol, blk.reason)
+            log_gate_block("macro_blackout", symbol, "alpha", blk.reason, strategy)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": blk.reason})
             continue
 

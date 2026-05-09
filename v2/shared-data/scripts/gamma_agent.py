@@ -28,6 +28,7 @@ sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 os.environ.setdefault("IBKR_CLIENT_ID", "22")
 
 from _logger import setup as _logger_setup
+from _gate_logger import log_gate_block
 
 _logger_setup("gamma_agent")
 
@@ -372,6 +373,7 @@ def run_execute() -> int:
         conv = check_conviction(conv_score, strategy="rsi_pullback_debit_spread")
         if not conv.allowed:
             print(f"[gamma_agent] conviction gate blocked {symbol}: {conv.reason}")
+            log_gate_block("conviction", symbol, "gamma", conv.reason, "rsi_pullback_debit_spread")
             failed.append((setup, f"conviction_gate: {conv.reason}"))
             continue
         if conv.size_multiplier < 1.0:
@@ -388,6 +390,7 @@ def run_execute() -> int:
         blk = check_macro_blackout(_gamma_intel, "rsi_pullback_debit_spread")
         if not blk.allowed:
             print(f"[gamma_agent] macro blackout blocked {symbol}: {blk.reason}")
+            log_gate_block("macro_blackout", symbol, "gamma", blk.reason, "rsi_pullback_debit_spread")
             failed.append((setup, f"macro_blackout: {blk.reason}"))
             continue
 

@@ -34,6 +34,7 @@ from _event_calendar import check_event_timing
 from _cooldown_gate import check_cooldown
 from _conviction_gate import check_conviction
 from _macro_blackout import check_macro_blackout
+from _gate_logger import log_gate_block
 
 _logger_setup("beta_agent")
 
@@ -262,24 +263,28 @@ def main() -> int:
     if not conc.allowed:
         print(f"[beta_agent] concentration gate blocked {smod.INSTRUMENT}: {conc.reason}")
         logging.warning("Concentration gate blocked %s: %s", smod.INSTRUMENT, conc.reason)
+        log_gate_block("concentration", smod.INSTRUMENT, "beta", conc.reason, smod.NAME)
         return 0
 
     fresh = check_freshness(intel, is_event_trade=(regime == "PRE_EVENT"))
     if not fresh.allowed:
         print(f"[beta_agent] freshness gate blocked {smod.INSTRUMENT}: {fresh.reason}")
         logging.warning("Freshness gate blocked %s: %s", smod.INSTRUMENT, fresh.reason)
+        log_gate_block("freshness", smod.INSTRUMENT, "beta", fresh.reason, smod.NAME)
         return 0
 
     evt = check_event_timing(intel, is_event_trade=(regime == "PRE_EVENT"))
     if not evt.allowed:
         print(f"[beta_agent] event timing gate blocked {smod.INSTRUMENT}: {evt.reason}")
         logging.warning("Event timing gate blocked %s: %s", smod.INSTRUMENT, evt.reason)
+        log_gate_block("event_timing", smod.INSTRUMENT, "beta", evt.reason, smod.NAME)
         return 0
 
     cool = check_cooldown(smod.INSTRUMENT, JOURNAL)
     if not cool.allowed:
         print(f"[beta_agent] cooldown gate blocked {smod.INSTRUMENT}: {cool.reason}")
         logging.warning("Cooldown gate blocked %s: %s", smod.INSTRUMENT, cool.reason)
+        log_gate_block("cooldown", smod.INSTRUMENT, "beta", cool.reason, smod.NAME)
         return 0
 
     from _decision_helpers import signal_strength_score
@@ -288,12 +293,14 @@ def main() -> int:
     if not conv.allowed:
         print(f"[beta_agent] conviction gate blocked {smod.INSTRUMENT}: {conv.reason}")
         logging.warning("Conviction gate blocked %s: %s", smod.INSTRUMENT, conv.reason)
+        log_gate_block("conviction", smod.INSTRUMENT, "beta", conv.reason, smod.NAME)
         return 0
 
     blk = check_macro_blackout(intel, smod.NAME)
     if not blk.allowed:
         print(f"[beta_agent] macro blackout blocked {smod.INSTRUMENT}: {blk.reason}")
         logging.warning("Macro blackout blocked %s: %s", smod.INSTRUMENT, blk.reason)
+        log_gate_block("macro_blackout", smod.INSTRUMENT, "beta", blk.reason, smod.NAME)
         return 0
 
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])

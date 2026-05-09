@@ -30,6 +30,7 @@ import sys as _sys
 _sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 from _concentration_gate import MAX_OPEN_PER_SYMBOL as _MAX_OPEN_PER_SYMBOL
 from _cooldown_gate import is_in_cooldown as _is_in_cooldown
+from _gate_logger import log_gate_block
 
 ET = ZoneInfo("America/New_York")
 JOURNAL = Path("/root/quantai-v2/shared-data/journal/paper/trades.jsonl")
@@ -158,10 +159,14 @@ def filter_setups(setups: list[dict], journal: list,
                 "concentration_gate: %d cross-agent open on %s — skipping Gamma entry",
                 cross_open, sym,
             )
+            log_gate_block("concentration", sym, "gamma",
+                           f"{cross_open} cross-agent open positions on {sym}",
+                           "rsi_pullback_debit_spread")
             continue
         cool = _is_in_cooldown(sym, journal)
         if not cool.allowed:
             logging.info("cooldown_gate: %s — skipping Gamma entry", cool.reason)
+            log_gate_block("cooldown", sym, "gamma", cool.reason, "rsi_pullback_debit_spread")
             continue
         sec = s.get("sector", "unknown")
         if sector_count.get(sec, 0) >= MAX_POSITIONS_SAME_SECTOR:
