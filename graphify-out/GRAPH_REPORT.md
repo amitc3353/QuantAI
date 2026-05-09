@@ -1,12 +1,12 @@
-# Graph Report - QuantAI  (2026-05-08)
+# Graph Report - QuantAI  (2026-05-09)
 
 ## Corpus Check
-- 124 files · ~206,996 words
+- 125 files · ~208,479 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2945 nodes · 5059 edges · 262 communities detected
-- Extraction: 74% EXTRACTED · 26% INFERRED · 0% AMBIGUOUS · INFERRED: 1322 edges (avg confidence: 0.76)
+- 3006 nodes · 5151 edges · 262 communities detected
+- Extraction: 74% EXTRACTED · 26% INFERRED · 0% AMBIGUOUS · INFERRED: 1358 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -274,8 +274,8 @@
 - [[_COMMUNITY_Community 268|Community 268]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Client` - 89 edges
-2. `BrokerBase` - 74 edges
+1. `Client` - 98 edges
+2. `BrokerBase` - 84 edges
 3. `check_risk()` - 42 edges
 4. `IBKRBroker` - 40 edges
 5. `_trade()` - 35 edges
@@ -305,36 +305,36 @@
 ## Communities
 
 ### Community 0 - "Community 0"
-Cohesion: 0.02
-Nodes (146): Call Haiku with a tight timeout. Returns text or None on failure., Run capability diagnosis for a closed trade. Never raises., Load AGENT_*_IDENTITY.md content. Returns empty string if missing., Find trades that were OPEN overlapping with this trade's lifetime., Read journal tail to check for any status==OPEN trades. Read-only.      Returns, Post to Discord; return message id on success, None otherwise.      Uses the sam, Post to Discord; return message id on success, None otherwise.      Uses the sam, Bot self-reacts to a message (creates the voting button). (+138 more)
+Cohesion: 0.01
+Nodes (155): _direction(), Broken Wing Butterfly — XSP. Asymmetric profit if market stays in range.  Regime, select_strikes(), AlpacaBroker, BrokerBase, _build_occ(), _build_occ_from_contract(), IBKRBroker (+147 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (148): _close_position(), _estimate_condor_current_cost(), guard_check(), load_params(), log_trade(), make_embed(), monitor_positions(), post_discord() (+140 more)
+Nodes (140): _call_haiku(), Call Haiku with a tight timeout. Returns text or None on failure., Call Haiku with a tight timeout. Returns text or None on failure., Run capability diagnosis for a closed trade. Never raises., Load AGENT_*_IDENTITY.md content. Returns empty string if missing., Find trades that were OPEN overlapping with this trade's lifetime., Read journal tail to check for any status==OPEN trades. Read-only.      Returns, Post to Discord; return message id on success, None otherwise.      Uses the sam (+132 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.03
-Nodes (135): cancel_all_orders(), cancel_order(), close_all_positions(), close_position(), _generate_hash(), get_account(), get_data_client(), get_latest_quote() (+127 more)
+Cohesion: 0.02
+Nodes (124): build_context(), _build_summary(), _cache_path(), _get_agent1_params(), _get_agent2_params(), main(), context_builder.py — Pre-Trade Context Score (0–100) ===========================, Event calendar score — 15 points max. (+116 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.02
-Nodes (64): _build_context(), _call_haiku(), _concurrent_positions(), diagnose(), _load_agent_identity(), main(), _parse_json_response(), Call Haiku with a tight timeout. Returns text or None on failure. (+56 more)
+Nodes (68): _build_context(), _concurrent_positions(), diagnose(), _load_agent_identity(), main(), _parse_json_response(), Run capability diagnosis for a closed trade. Never raises., Load AGENT_*_IDENTITY.md content. Returns empty string if missing. (+60 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.02
-Nodes (96): AlpacaBroker, BrokerBase, _build_occ(), _build_occ_from_contract(), IBKRBroker, _IBKRNoiseFilter, _install_ib_log_filter(), _is_in_restart_window() (+88 more)
+Cohesion: 0.03
+Nodes (119): _close_position(), _estimate_condor_current_cost(), guard_check(), load_params(), log_trade(), make_embed(), monitor_positions(), post_discord() (+111 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.03
-Nodes (81): get_broker(), Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr), build_closing_legs(), build_occ(), check_beta_exit(), check_exit_threshold(), check_gamma_exit(), compute_trade_pnl() (+73 more)
+Nodes (83): get_broker(), Return the active broker singleton.      Reads BROKER_TYPE env var (alpaca|ibkr), build_closing_legs(), build_occ(), check_beta_exit(), check_exit_threshold(), check_gamma_exit(), compute_trade_pnl() (+75 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.04
-Nodes (76): build_occ_symbol(), check_guards(), check_no_overlapping_positions(), count_open_agent_trades(), execute_bear_call_spread(), execute_bull_put_spread(), execute_diagonal_spread(), execute_generic_spread() (+68 more)
+Nodes (54): _is_in_restart_window(), IB Gateway restarts at 23:45 ET. Refuse to connect 23:30-01:30 ET.      Window w, Structured logging helper for QuantAI Python scripts.  Adds a SQLiteHandler to t, Add a SQLiteHandler to the root logger. Idempotent: calling twice does nothing., Logging handler that inserts WARNING+ records into pyapp_inbox table.      The c, Create the inbox table if the DB exists but the table doesn't.         Does NOT, setup(), SQLiteHandler (+46 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.03
-Nodes (46): _group_capability_items(), _group_parameter_items(), _latest_weekly_report(), _load_capability_requests(), _load_parameter_suggestions(), _load_tracker(), main(), Generate a deterministic ID so resolutions persist across collector runs. (+38 more)
+Cohesion: 0.04
+Nodes (76): build_occ_symbol(), check_guards(), check_no_overlapping_positions(), count_open_agent_trades(), execute_bear_call_spread(), execute_bull_put_spread(), execute_diagonal_spread(), execute_generic_spread() (+68 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.05
@@ -345,60 +345,60 @@ Cohesion: 0.04
 Nodes (49): BaseModel, check_bull_put(), check_cooldown(), check_covered_call(), check_daily_loss(), check_earnings_blackout(), check_halted(), check_iron_condor() (+41 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.04
-Nodes (54): build_prompt(), main(), post_discord(), process_task(), cto_listener.py — Dockerized CTO Task Runner ===================================, Read the queue file. Returns the task dict if status=pending,     else None. Mat, Update the queue file's status field., Build the Claude Code prompt, matching the bash script's format. (+46 more)
+Cohesion: 0.05
+Nodes (83): get_snapshot(), Get a full snapshot: latest trade, quote, bar., ChannelRouter, cmd_analyze(), cmd_brief(), cmd_emergency_stop(), cmd_guard_check(), cmd_resume() (+75 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.04
-Nodes (79): chat_with_claude(), ChatAgent, cmd_decide(), cmd_remember(), handle_cto_scan(), handle_cto_task(), handle_lessons(), handle_remember() (+71 more)
+Nodes (54): build_prompt(), main(), post_discord(), process_task(), cto_listener.py — Dockerized CTO Task Runner ===================================, Read the queue file. Returns the task dict if status=pending,     else None. Mat, Update the queue file's status field., Build the Claude Code prompt, matching the bash script's format. (+46 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.04
-Nodes (41): Return Monday 00:00 ET of the current week (or the week containing `now`)., this_week_monday(), TestThisWeekMonday, _make_diagnosis_file(), _make_trade(), Integration tests: weekly_synthesis aggregates trade data + posts to Discord., Sonnet failure after retry → fallback text, still writes report., TestSynthesizeWithData (+33 more)
+Nodes (76): main(), parse_args(), cancel_all_orders(), cancel_order(), close_all_positions(), close_position(), _generate_hash(), get_account() (+68 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.04
-Nodes (76): build_context_embed(), Build a Discord embed from context. Used in morning brief and trade cards., build_cto_embeds(), collect_agent_stats(), collect_cache_health(), collect_eod_scores(), collect_system_metrics(), generate_cto_report() (+68 more)
+Nodes (78): chat_with_claude(), ChatAgent, cmd_decide(), cmd_remember(), handle_cto_scan(), handle_cto_task(), handle_lessons(), handle_remember() (+70 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.05
-Nodes (49): compute_spx_chain_metrics(), ATM straddle, implied move %, ATM bid-ask spread, 25-delta put/call skew.     Fa, _direction(), Broken Wing Butterfly — XSP. Asymmetric profit if market stays in range.  Regime, select_strikes(), Calendar Spread — SPX. Sell 14 DTE ATM, buy 45-60 DTE ATM at same strike.  Regim, select_strikes(), Call Ratio Backspread 1x2 — XSP. Sell 1 ATM call, buy 2 OTM calls 5-8% above.  R (+41 more)
+Nodes (38): _make_diagnosis_file(), _make_trade(), Integration tests: weekly_synthesis aggregates trade data + posts to Discord., Sonnet failure after retry → fallback text, still writes report., TestSynthesizeWithData, _write_trades(), Regression test: weekly_synthesis.py must hold an exclusive run-lock.  Before 20, A second concurrent attempt must NOT block — non-blocking flock. (+30 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.04
 Nodes (38): aggregate_status(), check_clawroute_18790(), check_collector_staleness(), check_cron_freshness(), check_dashboard_html_size(), check_disk(), check_graphify(), check_ibkr_port() (+30 more)
 
 ### Community 16 - "Community 16"
+Cohesion: 0.05
+Nodes (32): _journal_write(), _load_strategy(), main(), _next_beta_id(), _post_discord(), _simulate_slippage(), _write_dashboard_state(), age_of() (+24 more)
+
+### Community 17 - "Community 17"
 Cohesion: 0.04
 Nodes (70): Agent Alpha Core Principles, Diagonal Spreads (Primary Strategy), Agent Alpha — What I Do NOT Do, Why Agents Did Not Trade, discord.py, py_vollib, FastAPI (guard-engine dep), alpaca-py (+62 more)
 
-### Community 17 - "Community 17"
+### Community 18 - "Community 18"
 Cohesion: 0.05
 Nodes (62): days_since_earnings(), days_to_earnings(), _fetch_window(), Finnhub earnings-calendar helper for Agent Gamma.  Indices (XSP/SPX/NDX/RUT) and, Trading days until the next earnings announcement, or None if unknown., Trading days since the last earnings announcement, or None if unknown., _consume_pending_file(), _journal_write() (+54 more)
 
-### Community 18 - "Community 18"
-Cohesion: 0.06
-Nodes (37): close_wing(), log(), main(), next_manual_id(), Find next M### id not already in the journal., write_journal_entry(), Structured logging helper for QuantAI Python scripts.  Adds a SQLiteHandler to t, Add a SQLiteHandler to the root logger. Idempotent: calling twice does nothing. (+29 more)
-
 ### Community 19 - "Community 19"
-Cohesion: 0.05
-Nodes (52): main(), parse_args(), get_positions(), Get all open positions., Phase 5 close-path safeguard (added 2026-05-04 after A018 incident).          Qu, apply_correction(), build_close_legs(), compute_realized_pnl() (+44 more)
-
-### Community 20 - "Community 20"
 Cohesion: 0.06
 Nodes (26): get_ibkr_probe_state(), probe_ibkr_port(), Return True if IBKR Gateway port 4002 is accepting connections., Read persistent probe failure state (survives process restarts)., Persist probe state; return updated state dict., update_ibkr_probe_state(), _make_pipeline_beat(), _make_socket_mock() (+18 more)
 
-### Community 21 - "Community 21"
+### Community 20 - "Community 20"
 Cohesion: 0.08
-Nodes (24): Search open/recent trades for one matching client_order_id (orderRef)., Return list of result dicts for open/submitted orders.          If *client_order, _FakeBrokerBase, _make_broker(), _make_trade_mock(), pm(), Unit tests: Phase 5 partial-fill safeguard.  Three areas under test:   1. IBKRBr, Tests for the 'order_submitted=True then exception' recovery path.      We test (+16 more)
+Nodes (24): Return list of result dicts for open/submitted orders.          If *client_order, Return list of result dicts for open/submitted orders.          If *client_order, _FakeBrokerBase, _make_broker(), _make_trade_mock(), pm(), Unit tests: Phase 5 partial-fill safeguard.  Three areas under test:   1. IBKRBr, Tests for the 'order_submitted=True then exception' recovery path.      We test (+16 more)
+
+### Community 21 - "Community 21"
+Cohesion: 0.07
+Nodes (18): _entry_ids(), _load_catalog_doc(), _load_entries(), Unit tests: error-catalog.json and referenced runbook files.  Validates the cata, Guard against high-severity labels on known-noise patterns.      These are patte, Pattern must match the exact string logged by _broker_ibkr.py., Load the full envelope dict., Return the errors list (what lib_errors.load_catalog returns). (+10 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.06
-Nodes (19): catalog(), _entry_ids(), _load_catalog_doc(), _load_entries(), Unit tests: error-catalog.json and referenced runbook files.  Validates the cata, Guard against high-severity labels on known-noise patterns.      These are patte, Pattern must match the exact string logged by _broker_ibkr.py., Load the full envelope dict. (+11 more)
-
-### Community 23 - "Community 23"
 Cohesion: 0.05
 Nodes (48): Alpaca API Gotchas (mleg qty, no position_intent), Cron Schedule, Journal Agent Alpha/Beta Trade Tracking, Journal Agent Trade Closing Protocol, Journal Agent Trade Logging Protocol, Journal Agent Operating Manual, Journal Agent Core Belief (journal as most valuable asset), Journal Agent Soul (trading diary identity) (+40 more)
+
+### Community 23 - "Community 23"
+Cohesion: 0.07
+Nodes (28): _group_capability_items(), _group_parameter_items(), _latest_weekly_report(), _load_capability_requests(), _load_parameter_suggestions(), _load_tracker(), main(), Generate a deterministic ID so resolutions persist across collector runs. (+20 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.08
@@ -409,44 +409,44 @@ Cohesion: 0.05
 Nodes (42): Agent Alpha Skills Loaded, Beta Event Strangles, Beta 12-Regime Classification System, Agent Beta Skills Loaded, Connors RSI Pullback Strategy, Agent Gamma Skills Loaded, Stuck OPEN trades A008/A009/A010 finding, Beta Plan v2 Phases (10 phases) (+34 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.09
-Nodes (33): _journal_write(), _load_strategy(), main(), _next_beta_id(), _post_discord(), _simulate_slippage(), _write_dashboard_state(), compute_adx_14() (+25 more)
+Cohesion: 0.1
+Nodes (11): is_command_safe(), is_path_allowed(), Returns (allowed, reason)., Position-aware shell command validation. Returns (safe, reason).      Order matt, Run ALL safety checks. Even if LLM tagged fix_class=safe_auto, this gate     sti, validate_proposal(), Unit tests for sentinel_agent.py code-enforced safety rails.  CRITICAL: this is, Even if LLM tags safe_auto, trading-path files MUST be rejected. (+3 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.06
-Nodes (11): Regression tests: ensure the manual trading workflow stays REMOVED.  The manual, Defensive guard preserved as REQUIRES_SHARES (renamed from MANUAL_ONLY)., self_evolution.py and fetch_sofi.py must be retired (renamed), not present as li, eod_summary.py must show only Alpha + Beta + Gamma. No Amit, no SOFI, no manual_, No Manual Trades tab; agent filter widened to all agent_* prefixes., No collar scan function; no 'collars' mode branch., TestAutonomousExecutionGuard, TestEodSummaryClean (+3 more)
+Cohesion: 0.08
+Nodes (31): analyze_overall_correlation(), analyze_per_signal_correlation(), build_correlation_embed(), _build_summary(), load_context_scores(), load_trade_outcomes(), load_weights(), match_scores_to_outcomes() (+23 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.09
-Nodes (28): analyze_overall_correlation(), analyze_per_signal_correlation(), build_correlation_embed(), _build_summary(), load_context_scores(), load_trade_outcomes(), load_weights(), match_scores_to_outcomes() (+20 more)
+Cohesion: 0.06
+Nodes (11): Regression tests: ensure the manual trading workflow stays REMOVED.  The manual, Defensive guard preserved as REQUIRES_SHARES (renamed from MANUAL_ONLY)., self_evolution.py and fetch_sofi.py must be retired (renamed), not present as li, eod_summary.py must show only Alpha + Beta + Gamma. No Amit, no SOFI, no manual_, No Manual Trades tab; agent filter widened to all agent_* prefixes., No collar scan function; no 'collars' mode branch., TestAutonomousExecutionGuard, TestEodSummaryClean (+3 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.09
 Nodes (17): assert_learning_state_schema(), assert_open_item_schema(), journal_path(), _make_trade(), populated_journal(), Shared fixtures and assertion helpers for the self-learning test suite., Write two sample trades to the journal and return the path., Create a sandboxed QUANTAI_RUNTIME_ROOT and wire all _paths constants.      Yiel (+9 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.16
-Nodes (25): action_restart_service(), action_retry(), classify_lines(), handle_known(), handle_unknown(), line_matches_entry(), load_catalog(), load_dedup() (+17 more)
+Cohesion: 0.11
+Nodes (29): analyze_bull_put_spread(), analyze_covered_call(), analyze_iron_condor(), analyze_option(), classify_moneyness(), compute_greeks(), compute_iv(), dte_to_years() (+21 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.14
-Nodes (16): line_signature(), load_catalog(), log(), main(), match_catalog(), now_et(), post_discord(), Return lines from `path` whose timestamp (if parseable) is >= cutoff.     If a l (+8 more)
+Cohesion: 0.15
+Nodes (26): action_restart_service(), action_retry(), classify_lines(), handle_known(), handle_unknown(), line_matches_entry(), load_catalog(), load_dedup() (+18 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.23
-Nodes (17): _cache_path(), fetch_fred_series(), get_economic_calendar(), get_fred_macro(), get_macro_context(), get_news_sentiment(), _get_watchlist_earnings_calendar(), main() (+9 more)
+Cohesion: 0.12
+Nodes (18): post_to_channel(), Single Discord posting surface for v2 cron scripts. Bot-token only.  Use post_to, line_signature(), load_catalog(), log(), main(), match_catalog(), now_et() (+10 more)
 
 ### Community 33 - "Community 33"
 Cohesion: 0.12
-Nodes (6): _get_crontab(), Unit tests: identity file structural validation (Gap 11) + cron entries (Gap 12), Return the root crontab as a string, or None if unavailable.      The pipeline c, Verify each expected cron entry is present in the root crontab., test_cron_entry_exists(), TestIdentityFiles
+Nodes (24): compute_adx_14(), compute_bb_width_percentile(), compute_ema_slope(), compute_iv_rank_252d(), compute_spx_chain_metrics(), SPX-derived intelligence helpers for Agent Beta.  market_intelligence.py imports, ATM straddle, implied move %, ATM bid-ask spread, 25-delta put/call skew.     Fa, ADX(14) per spec § 3B. Pandas Series in. Float out, or None on failure. (+16 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.14
-Nodes (17): ADR-001: Adopt Graphify for Knowledge Graphs, ADR-004: Migrate Alpaca to IBKR, Agent Alpha — Who I Am, Agent Beta — Who I Am, Agent Gamma — Who I Am, Infra Agent Operating Manual, Beta Plan v1 Context (SUPERSEDED), Beta v1 INSTRUMENT_MAP (SPY/VXX proxies) (+9 more)
+Cohesion: 0.12
+Nodes (6): _get_crontab(), Unit tests: identity file structural validation (Gap 11) + cron entries (Gap 12), Return the root crontab as a string, or None if unavailable.      The pipeline c, Verify each expected cron entry is present in the root crontab., test_cron_entry_exists(), TestIdentityFiles
 
 ### Community 35 - "Community 35"
-Cohesion: 0.12
-Nodes (7): ca(), Unit tests for the circuit breaker added to /var/dashboard/collect_alpaca.py., Calling _trip_circuit() twice updates the timestamp., _reset_circuit() must not raise if the file doesn't exist., Load collect_alpaca with broker mocked and all file paths redirected to tmp_path, TestResetCircuit, TestTripCircuit
+Cohesion: 0.14
+Nodes (17): ADR-001: Adopt Graphify for Knowledge Graphs, ADR-004: Migrate Alpaca to IBKR, Agent Alpha — Who I Am, Agent Beta — Who I Am, Agent Gamma — Who I Am, Infra Agent Operating Manual, Beta Plan v1 Context (SUPERSEDED), Beta v1 INSTRUMENT_MAP (SPY/VXX proxies) (+9 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.25
@@ -490,11 +490,11 @@ Nodes (4): Design Principles (LLMs for judgment, cost-conscious, data sovereignt
 
 ### Community 46 - "Community 46"
 Cohesion: 0.67
-Nodes (3): Orchestrator Soul: What Winning Looks Like, Success Metrics (win rate targets, live capital), Pre-Live Checklist
+Nodes (3): Discord Server and Bot Setup, Four Agents (Orchestrator, Research, Infra, Journal), Discord Channels (#chat, #research, #infra, #journal)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.67
-Nodes (3): Discord Server and Bot Setup, Four Agents (Orchestrator, Research, Infra, Journal), Discord Channels (#chat, #research, #infra, #journal)
+Nodes (3): Orchestrator Soul: What Winning Looks Like, Success Metrics (win rate targets, live capital), Pre-Live Checklist
 
 ### Community 48 - "Community 48"
 Cohesion: 0.67
@@ -502,15 +502,15 @@ Nodes (3): SOFI 5 Trigger Actions, SOFI Collar (200 paper shares), SOFI Collar S
 
 ### Community 49 - "Community 49"
 Cohesion: 0.67
-Nodes (3): check_sector_correlation function, Sector Mapping Table, Sector Correlation Hard/Soft Rules
+Nodes (3): Alpaca API Gotchas, Bug1: mleg qty missing, Bug2: position_intent rejected
 
 ### Community 50 - "Community 50"
 Cohesion: 0.67
-Nodes (3): Phase 4: orchestrator vs v2 double-trading audit, Phase 5: trader-guards usage audit, Known Issues (git divergence, legacy containers)
+Nodes (3): check_sector_correlation function, Sector Mapping Table, Sector Correlation Hard/Soft Rules
 
 ### Community 51 - "Community 51"
 Cohesion: 0.67
-Nodes (3): Alpaca API Gotchas, Bug1: mleg qty missing, Bug2: position_intent rejected
+Nodes (3): Phase 4: orchestrator vs v2 double-trading audit, Phase 5: trader-guards usage audit, Known Issues (git divergence, legacy containers)
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
@@ -530,11 +530,11 @@ Nodes (2): Research Agent Operating Manual, Research Agent Core Beliefs (edge vi
 
 ### Community 56 - "Community 56"
 Cohesion: 1.0
-Nodes (2): Infra Health Check Procedure, Scripts Inventory
+Nodes (2): Cron Schedule (UTC), Auto-Heal Schedule (4x/day)
 
 ### Community 57 - "Community 57"
 Cohesion: 1.0
-Nodes (2): Credit Spreads (Secondary), IV Skew (Put vs Call)
+Nodes (2): Infra Health Check Procedure, Scripts Inventory
 
 ### Community 58 - "Community 58"
 Cohesion: 1.0
@@ -546,7 +546,7 @@ Nodes (2): Agent Gamma Core Principles, Agent Gamma — What I Do NOT Do
 
 ### Community 60 - "Community 60"
 Cohesion: 1.0
-Nodes (2): Cron Schedule (UTC), Auto-Heal Schedule (4x/day)
+Nodes (2): Credit Spreads (Secondary), IV Skew (Put vs Call)
 
 ### Community 61 - "Community 61"
 Cohesion: 1.0
@@ -1353,7 +1353,7 @@ Cohesion: 1.0
 Nodes (1): Close Order Failed Symptom
 
 ## Knowledge Gaps
-- **989 isolated node(s):** `Shared fixtures and assertion helpers for the self-learning test suite.`, `Create a sandboxed QUANTAI_RUNTIME_ROOT and wire all _paths constants.      Yiel`, `Return the trade journal path inside the sandbox.`, `Write two sample trades to the journal and return the path.`, `Hand-written assertion that a diagnosis dict matches the expected schema.` (+984 more)
+- **1025 isolated node(s):** `Shared fixtures and assertion helpers for the self-learning test suite.`, `Create a sandboxed QUANTAI_RUNTIME_ROOT and wire all _paths constants.      Yiel`, `Return the trade journal path inside the sandbox.`, `Write two sample trades to the journal and return the path.`, `Hand-written assertion that a diagnosis dict matches the expected schema.` (+1020 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **Thin community `Community 39`** (7 nodes): `Unit tests for _paths.py — env-var override and constant structure.`, `test_dashboard_state_override()`, `test_defaults_point_under_root()`, `test_env_override_redirects_all_paths()`, `test_journal_ends_with_jsonl()`, `test_learning_tracker_ends_with_json()`, `test_paths.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1369,15 +1369,15 @@ Nodes (1): Close Order Failed Symptom
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 55`** (2 nodes): `Research Agent Operating Manual`, `Research Agent Core Beliefs (edge via research)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (2 nodes): `Infra Health Check Procedure`, `Scripts Inventory`
+- **Thin community `Community 56`** (2 nodes): `Cron Schedule (UTC)`, `Auto-Heal Schedule (4x/day)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (2 nodes): `Credit Spreads (Secondary)`, `IV Skew (Put vs Call)`
+- **Thin community `Community 57`** (2 nodes): `Infra Health Check Procedure`, `Scripts Inventory`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 58`** (2 nodes): `Agent Beta Core Principles`, `Agent Beta — What I Do NOT Do`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 59`** (2 nodes): `Agent Gamma Core Principles`, `Agent Gamma — What I Do NOT Do`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (2 nodes): `Cron Schedule (UTC)`, `Auto-Heal Schedule (4x/day)`
+- **Thin community `Community 60`** (2 nodes): `Credit Spreads (Secondary)`, `IV Skew (Put vs Call)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 61`** (2 nodes): `Severity-to-Discord Behavior`, `Logger Sources Ingested (systemd/docker/textlog/syslog/pyapp)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1785,16 +1785,16 @@ Nodes (1): Close Order Failed Symptom
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Client` connect `Community 0` to `Community 18`, `Community 3`, `Community 12`?**
-  _High betweenness centrality (0.042) - this node is a cross-community bridge._
-- **Why does `diagnose()` connect `Community 3` to `Community 0`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
-- **Why does `main()` connect `Community 26` to `Community 1`, `Community 2`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 14`, `Community 17`, `Community 18`, `Community 21`, `Community 24`, `Community 30`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
-- **Are the 85 inferred relationships involving `Client` (e.g. with `TestClawRouteReachable` and `TestLiveDiagnose`) actually correct?**
-  _`Client` has 85 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 71 inferred relationships involving `BrokerBase` (e.g. with `IBKRBroker` and `_IBKRNoiseFilter`) actually correct?**
-  _`BrokerBase` has 71 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `BrokerBase` connect `Community 0` to `Community 12`, `Community 20`, `Community 6`?**
+  _High betweenness centrality (0.060) - this node is a cross-community bridge._
+- **Why does `Client` connect `Community 1` to `Community 26`, `Community 3`, `Community 6`, `Community 14`?**
+  _High betweenness centrality (0.049) - this node is a cross-community bridge._
+- **Why does `_is_in_restart_window()` connect `Community 6` to `Community 0`, `Community 2`?**
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Are the 94 inferred relationships involving `Client` (e.g. with `TestClawRouteReachable` and `TestLiveDiagnose`) actually correct?**
+  _`Client` has 94 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 81 inferred relationships involving `BrokerBase` (e.g. with `IBKRBroker` and `_IBKRNoiseFilter`) actually correct?**
+  _`BrokerBase` has 81 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 35 inferred relationships involving `check_risk()` (e.g. with `.test_allowed_with_no_open_positions()` and `.test_allowed_with_two_open_positions()`) actually correct?**
   _`check_risk()` has 35 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 17 inferred relationships involving `IBKRBroker` (e.g. with `_OptionSpec` and `BrokerBase`) actually correct?**
