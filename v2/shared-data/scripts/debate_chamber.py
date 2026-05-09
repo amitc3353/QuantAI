@@ -183,14 +183,52 @@ for sym in list(symbols.keys())[:12]:  # Show all symbols, not just 7
 
 market_context = "\n".join(context_lines)
 
-# ──────────────────────────────────────��──────────────────────────────
-# LESSONS INJECTION — retrieve reflections from past trades
+# ─────────────────────────────────────────────────────────────────────
+# LESSONS INJECTION — retrieve reflections from past trades per candidate
 # ─────────────────────────────────────────────────────────────────────
 _lessons_text = ""
 try:
-    from _memory import format_lessons
-    _top_symbol = list(symbols.keys())[0] if symbols else "SPY"
-    _lessons_text = format_lessons("agent_alpha", _top_symbol, k_same=5, k_cross=5)
+    from _memory import format_lessons_multi
+    _candidate_symbols = []
+    # Collect unique candidate symbols from scanner outputs (order preserved)
+    _seen = set()
+    for s in setups:
+        sym = s.get("symbol", "")
+        if sym and sym not in _seen:
+            _candidate_symbols.append(sym)
+            _seen.add(sym)
+    if os.path.exists(spread_path):
+        try:
+            for o in json.load(open(spread_path)).get("top_opportunities", [])[:5]:
+                sym = o.get("symbol", "")
+                if sym and sym not in _seen:
+                    _candidate_symbols.append(sym)
+                    _seen.add(sym)
+        except Exception:
+            pass
+    if os.path.exists(diag_path):
+        try:
+            for o in json.load(open(diag_path)).get("top_opportunities", [])[:5]:
+                sym = o.get("symbol", "")
+                if sym and sym not in _seen:
+                    _candidate_symbols.append(sym)
+                    _seen.add(sym)
+        except Exception:
+            pass
+    if os.path.exists(condor_path):
+        try:
+            for o in json.load(open(condor_path)).get("top_opportunities", [])[:3]:
+                sym = o.get("symbol", "")
+                if sym and sym not in _seen:
+                    _candidate_symbols.append(sym)
+                    _seen.add(sym)
+        except Exception:
+            pass
+    if _candidate_symbols:
+        _lessons_text = format_lessons_multi(
+            "agent_alpha", _candidate_symbols,
+            k_per_symbol=3, k_cross=5, max_total=25,
+        )
 except Exception as _e:
     logging.warning("debate_chamber: lessons retrieval failed: %s", _e)
 

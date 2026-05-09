@@ -228,42 +228,54 @@ def get_lessons(
     """
 ```
 
-### C2. Injection Format (into LLM prompt)
+### C2. Injection Format (into LLM prompt) — MULTI-SYMBOL
 
-Injected as a markdown section appended to the proposal system prompt.
+**[RESOLVED]** Initial implementation used a single hardcoded symbol. Now retrieves
+lessons per candidate symbol from the scanner output.
 
-**Rule:** The most recent same-symbol lesson includes a `judge_reasoning` snippet from `full_trajectory` (~150 tokens) in addition to `reflection_text`. This surfaces the L1 trajectory data at retrieval time. All other lessons (older same-symbol + all cross-symbol) use reflection-text-only format.
+Candidate symbols are collected from: high-conviction setups, credit spread scan,
+diagonal scan, condor scan — in that order, deduplicated.
+
+`format_lessons_multi(agent, candidate_symbols, k_per_symbol=3, k_cross=5, max_total=25)`
+
+**Rule:** The most recent lesson per symbol includes a `judge_reasoning` snippet
+from `full_trajectory` (~150 tokens). All other lessons use reflection-text only.
 
 ```markdown
 ## Lessons from recent trades
 
-### Same symbol (SPY):
-- [A023] iron_condor, CLOSED stop_loss, -$42 (-1.7%), 3d hold:
-  Judge reasoning: "Selected iron condor over diagonal due to low VIX (16.5)
-  and 14-day range compression. Conviction 6/10 — modest. Key risk was CPI
-  print in 2 days but assessed as priced in based on implied move."
-  Reflection: "The iron condor thesis was invalidated by a post-CPI gap that
-  exceeded the expected move. Should have checked event calendar proximity."
+### INTC (3 prior trades):
+- [A024] iron_condor, CLOSED stop_loss, -$98 (-3.9%), 2d hold:
+  Judge reasoning: "INTC range compression favored condor..."
+  Reflection: "Concentration risk — 3rd INTC condor in a week."
 
-- [A019] bull_put_spread, CLOSED profit_target, +$180 (+7.2%), 5d hold:
-  "Thesis confirmed — SPY support at 550 held. High conviction correct."
+- [A019] iron_condor, CLOSED stop_loss, -$76 (-3.0%), 3d hold:
+  "Same thesis repeated. Pattern: INTC condors fail in sequences."
 
-### Recent cross-symbol lessons:
-- [A024] INTC iron_condor, CLOSED stop_loss, -$98 (-3.9%), 2d hold:
-  "Concentration risk — 3rd INTC condor in a week. Cooldown gate would
-  have prevented this."
+- [A017] iron_condor, CLOSED stop_loss, -$202 (-8.1%), 1d hold:
+  "Earnings proximity missed. Blackout gate would have blocked."
 
-- [A022] GOOGL bear_call_spread, CLOSED stop_loss, -$81 (-3.2%), 1d hold:
-  "Re-entry too soon after prior GOOGL stop. Same thesis, same failure."
+### GOOGL (2 prior trades):
+- [A022] bear_call_spread, CLOSED stop_loss, -$81 (-3.2%), 1d hold:
+  Judge reasoning: "Selected bear call on resistance rejection..."
+  Reflection: "Re-entry too soon after prior GOOGL stop."
+
+- [A015] bear_call_spread, CLOSED stop_loss, -$44 (-1.8%), 2d hold:
+  "Same direction, same failure. Cooldown needed."
+
+### Cross-symbol patterns:
+- [A023] SPY iron_condor, CLOSED stop_loss, -$42 (-1.7%), 3d hold:
+  "CPI gap exceeded expected move. Event calendar proximity."
 ```
 
 ### C3. Token Budget
 
-- Most recent same-symbol lesson: ~200-250 tokens (includes judge_reasoning snippet + reflection)
-- Other 9 lessons: ~80-120 tokens each (reflection-text only)
-- K=5 same + K=5 cross = 10 lessons max
-- **Total budget: ~1130-1330 tokens** (~6% of a 2000-token proposal response window)
-- This fits comfortably within the system prompt alongside CONSTITUTION and strategy descriptions
+- Per-symbol max: 3 lessons × ~120 tokens = ~360 tokens per symbol with history
+- Most recent per symbol: ~200-250 tokens (includes judge_reasoning snippet)
+- Cross-symbol: up to 5 × ~120 = ~600 tokens
+- Hard caps: k_per_symbol=3, k_cross=5, max_total=25
+- **Typical budget: ~1500-3000 tokens** (~1.5% of Sonnet context)
+- Symbols with no prior history are skipped (no empty headers rendered)
 
 ### C4. Retrieval Scope (per user correction)
 

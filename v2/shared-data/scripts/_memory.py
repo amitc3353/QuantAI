@@ -221,6 +221,30 @@ def _append_record(agent: str, record: dict) -> None:
         logging.error("Failed to write reflection JSONL for %s: %s", agent, e)
 
 
+def _load_complete_records(agent: str) -> list[dict]:
+    """Load all completed reflection records for an agent."""
+    path = _jsonl_path(agent)
+    if not path.exists():
+        return []
+
+    records = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    if rec.get("reflection_status") == "complete":
+                        records.append(rec)
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return records
+
+
 def get_lessons(
     agent: str,
     symbol: str,
@@ -233,24 +257,8 @@ def get_lessons(
     Only returns records with reflection_status == "complete".
     Newest first (by file order, which is append-order).
     """
-    path = _jsonl_path(agent)
-    if not path.exists():
-        return []
-
-    all_records = []
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                    if rec.get("reflection_status") == "complete":
-                        all_records.append(rec)
-                except Exception:
-                    continue
-    except Exception:
+    all_records = _load_complete_records(agent)
+    if not all_records:
         return []
 
     same = [r for r in all_records if r.get("ticker") == symbol]
@@ -260,6 +268,46 @@ def get_lessons(
     cross = list(reversed(cross))[:k_cross]
 
     return same + cross
+
+
+def get_lessons_multi(
+    agent: str,
+    candidate_symbols: list[str],
+    k_per_symbol: int = 3,
+    k_cross: int = 5,
+    max_total: int = 25,
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Retrieve lessons grouped by candidate symbol + cross-symbol.
+
+    Returns:
+        (per_symbol_dict, cross_lessons)
+        per_symbol_dict: {symbol: [lessons]} — only symbols with history
+        cross_lessons: up to k_cross lessons from symbols NOT in candidate list
+    """
+    all_records = _load_complete_records(agent)
+    if not all_records:
+        return {}, []
+
+    reversed_records = list(reversed(all_records))
+    candidate_set = set(candidate_symbols)
+
+    per_symbol: dict[str, list[dict]] = {}
+    total_count = 0
+
+    for sym in candidate_symbols:
+        if total_count >= max_total:
+            break
+        sym_records = [r for r in reversed_records if r.get("ticker") == sym]
+        if sym_records:
+            take = min(k_per_symbol, max_total - total_count, len(sym_records))
+            per_symbol[sym] = sym_records[:take]
+            total_count += take
+
+    cross = [r for r in reversed_records if r.get("ticker") not in candidate_set]
+    remaining = max_total - total_count
+    cross_out = cross[:min(k_cross, remaining)]
+
+    return per_symbol, cross_out
 
 
 def format_lessons(
@@ -315,6 +363,78 @@ def format_lessons(
 
     if cross:
         parts.append("### Recent cross-symbol lessons:")
+        for l in cross:
+            pnl = l.get("realized_return_raw")
+            pnl_pct = l.get("realized_return_pct")
+            pnl_str = f"${pnl:+.0f} ({pnl_pct:+.1f}%)" if pnl is not None and pnl_pct is not None else "N/A"
+            hold = l.get("hold_days", "?")
+            ticker = l.get("ticker", "?")
+            parts.append(
+                f"- [{l['trade_id']}] {ticker} {l.get('strategy', '?')}, "
+                f"CLOSED {l.get('close_reason', '?')}, {pnl_str}, {hold}d hold:"
+            )
+            if l.get("reflection_text"):
+                parts.append(f'  "{l["reflection_text"]}"')
+            parts.append("")
+
+    return "\n".join(parts).strip()
+
+
+def format_lessons_multi(
+    agent: str,
+    candidate_symbols: list[str],
+    k_per_symbol: int = 3,
+    k_cross: int = 5,
+    max_total: int = 25,
+) -> str:
+    """Format lessons grouped by candidate symbol for injection into LLM prompts.
+
+    Per-symbol sections: up to k_per_symbol lessons each.
+    Cross-symbol section: up to k_cross general pattern lessons.
+    Max total lessons capped at max_total.
+    Symbols with no prior history are skipped (no empty headers).
+    Most recent lesson per symbol includes judge_reasoning snippet.
+    """
+    per_symbol, cross = get_lessons_multi(
+        agent, candidate_symbols, k_per_symbol, k_cross, max_total,
+    )
+    if not per_symbol and not cross:
+        return ""
+
+    parts = ["## Lessons from recent trades\n"]
+
+    for sym, lessons in per_symbol.items():
+        parts.append(f"### {sym} ({len(lessons)} prior trade{'s' if len(lessons) != 1 else ''}):")
+        for i, l in enumerate(lessons):
+            pnl = l.get("realized_return_raw")
+            pnl_pct = l.get("realized_return_pct")
+            pnl_str = f"${pnl:+.0f} ({pnl_pct:+.1f}%)" if pnl is not None and pnl_pct is not None else "N/A"
+            hold = l.get("hold_days", "?")
+            header = (
+                f"- [{l['trade_id']}] {l.get('strategy', '?')}, "
+                f"CLOSED {l.get('close_reason', '?')}, {pnl_str}, {hold}d hold:"
+            )
+
+            if i == 0:
+                traj = l.get("full_trajectory") or {}
+                judge = traj.get("judge_reasoning", "")
+                if judge:
+                    parts.append(f"{header}")
+                    parts.append(f'  Judge reasoning: "{judge[:500]}"')
+                    if l.get("reflection_text"):
+                        parts.append(f'  Reflection: "{l["reflection_text"]}"')
+                else:
+                    parts.append(f"{header}")
+                    if l.get("reflection_text"):
+                        parts.append(f'  "{l["reflection_text"]}"')
+            else:
+                parts.append(f"{header}")
+                if l.get("reflection_text"):
+                    parts.append(f'  "{l["reflection_text"]}"')
+            parts.append("")
+
+    if cross:
+        parts.append("### Cross-symbol patterns:")
         for l in cross:
             pnl = l.get("realized_return_raw")
             pnl_pct = l.get("realized_return_pct")

@@ -471,3 +471,94 @@ class TestAlphaVsSpy:
         rec = json.loads(jsonl.read_text().strip())
         # alpha_vs_spy may be None if SPY data isn't available — that's ok
         assert "alpha_vs_spy" in rec
+
+
+class TestGetLessonsMulti:
+    def test_per_candidate_symbol(self, memory_dir):
+        """Retrieve lessons grouped by each candidate symbol."""
+        import _memory
+        importlib.reload(_memory)
+        records = [
+            _make_reflection("A001", "INTC", reflection="INTC loss 1"),
+            _make_reflection("A002", "INTC", reflection="INTC loss 2"),
+            _make_reflection("A003", "INTC", reflection="INTC loss 3"),
+            _make_reflection("A004", "INTC", reflection="INTC loss 4"),
+            _make_reflection("A005", "GOOGL", reflection="GOOGL loss 1"),
+            _make_reflection("A006", "GOOGL", reflection="GOOGL loss 2"),
+            _make_reflection("A007", "SPY", reflection="SPY lesson"),
+            _make_reflection("A008", "AAPL", reflection="AAPL cross"),
+        ]
+        _write_reflection_records(memory_dir / "alpha_reflections.jsonl", records)
+
+        per_sym, cross = _memory.get_lessons_multi(
+            "agent_alpha", ["INTC", "GOOGL"], k_per_symbol=3, k_cross=5,
+        )
+        assert "INTC" in per_sym
+        assert "GOOGL" in per_sym
+        assert len(per_sym["INTC"]) == 3  # capped at k_per_symbol
+        assert len(per_sym["GOOGL"]) == 2  # only 2 exist
+        # Cross should be from symbols NOT in candidate list
+        assert all(l["ticker"] not in ("INTC", "GOOGL") for l in cross)
+        assert len(cross) == 2  # SPY + AAPL
+
+    def test_total_cap_enforced(self, memory_dir):
+        """Total lessons capped at max_total."""
+        import _memory
+        importlib.reload(_memory)
+        records = [
+            _make_reflection(f"A{i:03d}", f"SYM{i // 5}", reflection=f"lesson {i}")
+            for i in range(30)
+        ]
+        _write_reflection_records(memory_dir / "alpha_reflections.jsonl", records)
+
+        candidates = [f"SYM{i}" for i in range(6)]  # 6 symbols × 5 each = 30 records
+        per_sym, cross = _memory.get_lessons_multi(
+            "agent_alpha", candidates, k_per_symbol=3, k_cross=5, max_total=10,
+        )
+        total = sum(len(v) for v in per_sym.values()) + len(cross)
+        assert total <= 10
+
+    def test_no_history_not_in_output(self, memory_dir):
+        """Symbols with no prior history don't appear in per_symbol dict."""
+        import _memory
+        importlib.reload(_memory)
+        records = [_make_reflection("A001", "SPY", reflection="SPY lesson")]
+        _write_reflection_records(memory_dir / "alpha_reflections.jsonl", records)
+
+        per_sym, cross = _memory.get_lessons_multi(
+            "agent_alpha", ["INTC", "GOOGL", "SPY"], k_per_symbol=3, k_cross=5,
+        )
+        assert "INTC" not in per_sym
+        assert "GOOGL" not in per_sym
+        assert "SPY" in per_sym
+
+
+class TestFormatLessonsMulti:
+    def test_no_empty_headers(self, memory_dir):
+        """Symbols with no history don't get rendered headers."""
+        import _memory
+        importlib.reload(_memory)
+        records = [_make_reflection("A001", "SPY", reflection="SPY lesson")]
+        _write_reflection_records(memory_dir / "alpha_reflections.jsonl", records)
+
+        text = _memory.format_lessons_multi("agent_alpha", ["INTC", "SPY", "GOOGL"])
+        assert "### INTC" not in text
+        assert "### GOOGL" not in text
+        assert "### SPY" in text
+
+    def test_multi_symbol_includes_judge_for_most_recent(self, memory_dir):
+        """Most recent lesson per symbol includes judge_reasoning."""
+        import _memory
+        importlib.reload(_memory)
+        records = [
+            _make_reflection("A001", "INTC", reflection="Old INTC",
+                             judge_reasoning="Chose condor for INTC range."),
+            _make_reflection("A002", "INTC", reflection="New INTC",
+                             judge_reasoning="INTC low vol favors condor."),
+        ]
+        _write_reflection_records(memory_dir / "alpha_reflections.jsonl", records)
+
+        text = _memory.format_lessons_multi("agent_alpha", ["INTC"])
+        # Most recent (A002) should have judge reasoning
+        assert "INTC low vol favors condor" in text
+        assert "Judge reasoning:" in text
