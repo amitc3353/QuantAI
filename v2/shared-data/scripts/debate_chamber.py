@@ -11,6 +11,7 @@ import json, os, sys, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from _llm_client import Client
+from _llm_call import call_llm_json
 from _debate_cases import build_case
 
 # Auto-load .env from repo root
@@ -187,10 +188,7 @@ market_context = "\n".join(context_lines)
 # ─────────────────────────────────────────────────────────────────────
 print("[debate] Step 1: Proposal Agent generating candidates...")
 
-proposal_resp = client.messages.create(
-    model=SONNET,
-    max_tokens=2000,
-    system=f"""You are QuantAI's Trade Proposal Agent. Generate 3-5 specific options trade candidates.
+_proposal_system = f"""You are QuantAI's Trade Proposal Agent. Generate 3-5 specific options trade candidates.
 
 {CONSTITUTION}
 
@@ -222,16 +220,14 @@ Every proposal MUST have fully defined max loss. No naked short options ever.
 Every proposal MUST include: symbol, strategy, specific strikes, expiration, estimated_credit, max_loss_pct, probability_of_profit, thesis (1 sentence), invalidation (1 sentence).
 If regime is risk_off or halt: output 0 proposals.
 Output ONLY valid JSON, no markdown:
-{{"proposals":[{{"id":"P1","symbol":"SPY","strategy":"iron_condor","legs":[{{"action":"sell","type":"put","strike":555,"expiry":"0DTE"}},{{"action":"buy","type":"put","strike":550,"expiry":"0DTE"}},{{"action":"sell","type":"call","strike":575,"expiry":"0DTE"}},{{"action":"buy","type":"call","strike":580,"expiry":"0DTE"}}],"estimated_credit":0.75,"max_loss":4.25,"max_loss_pct":1.7,"probability_of_profit":68,"thesis":"SPY range-bound, VIX 17 contango.","invalidation":"SPY breaks above 572 or below 558."}}],"market_summary":"2 sentences."}}""",
-    messages=[{"role": "user", "content": market_context}]
-)
+{{"proposals":[{{"id":"P1","symbol":"SPY","strategy":"iron_condor","legs":[{{"action":"sell","type":"put","strike":555,"expiry":"0DTE"}},{{"action":"buy","type":"put","strike":550,"expiry":"0DTE"}},{{"action":"sell","type":"call","strike":575,"expiry":"0DTE"}},{{"action":"buy","type":"call","strike":580,"expiry":"0DTE"}}],"estimated_credit":0.75,"max_loss":4.25,"max_loss_pct":1.7,"probability_of_profit":68,"thesis":"SPY range-bound, VIX 17 contango.","invalidation":"SPY breaks above 572 or below 558."}}],"market_summary":"2 sentences."}}"""
 
-try:
-    raw = proposal_resp.content[0].text.strip().replace("```json","").replace("```","").strip()
-    proposal_data = json.loads(raw)
-except Exception as e:
-    print(f"[debate] Proposal parse error: {e}\nRaw: {raw[:300]}")
-    proposal_data = {"proposals": [], "market_summary": "Parse error"}
+proposal_data = call_llm_json(
+    model=SONNET, system=_proposal_system, user=market_context,
+    max_tokens=2000, caller="debate_proposal",
+)
+if not proposal_data:
+    proposal_data = {"proposals": [], "market_summary": "LLM call failed after retries"}
 
 def _to_float(v, default=0.0):
     """Coerce LLM-returned values to float. Handles None, numeric strings,
@@ -312,22 +308,19 @@ BULL: {bull}
 BEAR: {bear}
 """
 
-judge_resp = client.messages.create(
-    model=SONNET, max_tokens=1200,
-    system=f"""You are the Judge Agent. Score each trade and select exactly 2 to execute.
+_judge_system = f"""You are the Judge Agent. Score each trade and select exactly 2 to execute.
 {CONSTITUTION}
 Score 0-100 per trade: risk/reward quality (25), macro timing (25), bear argument strength (25, penalize if devastating), guard compliance (25).
 Select exactly 2 (or fewer if < 2 survive). Output ONLY valid JSON:
-{{"scored_trades":[{{"id":"P1","net_score":74,"verdict":"APPROVED","reasoning":"1 sentence."}}],"approved_ids":["P1","P3"],"judge_summary":"2 sentences on why these 2."}}""",
-    messages=[{"role":"user","content":f"VIX {macro.get('vix',0):.1f} | Regime: {regime}\n\n{debate_text}\n\nSelect the 2 best trades."}]
-)
+{{"scored_trades":[{{"id":"P1","net_score":74,"verdict":"APPROVED","reasoning":"1 sentence."}}],"approved_ids":["P1","P3"],"judge_summary":"2 sentences on why these 2."}}"""
 
-try:
-    raw_j = judge_resp.content[0].text.strip().replace("```json","").replace("```","").strip()
-    judge_data = json.loads(raw_j)
-except Exception as e:
-    print(f"[debate] Judge parse error: {e}")
-    judge_data = {"scored_trades":[], "approved_ids":[], "judge_summary":"Parse error"}
+judge_data = call_llm_json(
+    model=SONNET, system=_judge_system,
+    user=f"VIX {macro.get('vix',0):.1f} | Regime: {regime}\n\n{debate_text}\n\nSelect the 2 best trades.",
+    max_tokens=1200, caller="debate_judge",
+)
+if not judge_data:
+    judge_data = {"scored_trades": [], "approved_ids": [], "judge_summary": "LLM call failed after retries"}
 
 approved_ids   = judge_data.get("approved_ids", [])
 judge_summary  = judge_data.get("judge_summary", "")

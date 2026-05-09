@@ -121,44 +121,14 @@ def _build_user_prompt(trade: dict) -> str:
     )
 
 
-def _call_haiku(system: str, user: str) -> str | None:
-    try:
-        from _llm_client import Client
-        client = Client()
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2000,  # bumped 2026-05-03: 800 was truncating reviews mid-JSON
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            timeout=LLM_TIMEOUT,
-        )
-        return resp.content[0].text
-    except Exception as e:
-        logging.warning("Haiku call failed: %s", e)
-        return None
-
-
-def _parse_json_response(text: str) -> dict | None:
-    if not text:
-        return None
-    s = text.strip()
-    if s.startswith("```"):
-        s = s.lstrip("`")
-        if s.lower().startswith("json"):
-            s = s[4:]
-        s = s.strip()
-        if s.endswith("```"):
-            s = s[:-3].strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        first, last = s.find("{"), s.rfind("}")
-        if first >= 0 and last > first:
-            try:
-                return json.loads(s[first:last + 1])
-            except Exception:
-                return None
-        return None
+def _call_haiku_json(system: str, user: str) -> dict | None:
+    from _llm_call import call_llm_json
+    return call_llm_json(
+        model="claude-haiku-4-5-20251001",
+        system=system, user=user,
+        max_tokens=2000, timeout=LLM_TIMEOUT,
+        caller="trade_review",
+    )
 
 
 def _write_review_md(agent_source: str, trade_id: str, review: dict) -> None:
@@ -226,14 +196,9 @@ def review(trade_id: str, dry_run: bool = False) -> dict | None:
             print("USER:", user_prompt[:600], "...")
             return {"dry_run": True, "context_size": len(user_prompt)}
 
-        text = _call_haiku(system_prompt, user_prompt)
-        if not text:
-            logging.warning("review: empty Haiku response for %s", trade_id)
-            return None
-
-        review_data = _parse_json_response(text)
+        review_data = _call_haiku_json(system_prompt, user_prompt)
         if not review_data:
-            logging.warning("review: unparseable response for %s: %s", trade_id, text[:200])
+            logging.warning("review: LLM call failed for %s after retries", trade_id)
             return None
 
         update_trade_entry(trade_id, {"post_trade": review_data})

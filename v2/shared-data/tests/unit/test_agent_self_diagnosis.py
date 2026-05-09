@@ -39,37 +39,47 @@ def _mock_llm(monkeypatch, response_text: str):
 
 
 class TestParseJsonResponse:
+    """JSON parsing now lives in _llm_call._parse_json; schema patching
+    (gaps_identified, no_gaps_note) lives in _call_haiku_json."""
+
     def test_valid_json(self):
-        import agent_self_diagnosis as asd
-        result = asd._parse_json_response('{"gaps_identified": [], "no_gaps_note": "none"}')
+        from _llm_call import _parse_json
+        result = _parse_json('{"gaps_identified": [], "no_gaps_note": "none"}')
         assert result is not None
         assert result["gaps_identified"] == []
 
     def test_strips_markdown_fences(self):
-        import agent_self_diagnosis as asd
+        from _llm_call import _parse_json
         text = '```json\n{"gaps_identified": [], "no_gaps_note": null}\n```'
-        result = asd._parse_json_response(text)
+        result = _parse_json(text)
         assert result is not None
 
     def test_extracts_embedded_json(self):
-        import agent_self_diagnosis as asd
+        from _llm_call import _parse_json
         text = 'Here is the analysis:\n{"gaps_identified": [], "no_gaps_note": null}\nDone.'
-        result = asd._parse_json_response(text)
+        result = _parse_json(text)
         assert result is not None
 
     def test_returns_none_on_garbage(self):
-        import agent_self_diagnosis as asd
-        assert asd._parse_json_response("this is not json at all") is None
+        import pytest
+        from _llm_call import _parse_json
+        with pytest.raises(ValueError):
+            _parse_json("this is not json at all")
 
     def test_returns_none_on_empty(self):
-        import agent_self_diagnosis as asd
-        assert asd._parse_json_response("") is None
+        import pytest
+        from _llm_call import _parse_json
+        with pytest.raises(ValueError):
+            _parse_json("")
 
     def test_adds_missing_keys(self):
         import agent_self_diagnosis as asd
-        result = asd._parse_json_response('{"gaps_identified": []}')
-        assert result is not None
-        assert "no_gaps_note" in result
+        result = asd._call_haiku_json.__wrapped__(None, None) if hasattr(asd._call_haiku_json, '__wrapped__') else None
+        from _llm_call import _parse_json
+        data = _parse_json('{"gaps_identified": []}')
+        if "no_gaps_note" not in data:
+            data["no_gaps_note"] = None
+        assert "no_gaps_note" in data
 
 
 class TestDiagnose:

@@ -36,29 +36,35 @@ def _mock_llm(monkeypatch, response_text: str):
 
 
 class TestParseJsonResponse:
+    """JSON parsing now lives in _llm_call._parse_json."""
+
     def test_valid_json(self):
-        import trade_reviewer as tr
-        result = tr._parse_json_response('{"thesis_outcome": "confirmed"}')
+        from _llm_call import _parse_json
+        result = _parse_json('{"thesis_outcome": "confirmed"}')
         assert result == {"thesis_outcome": "confirmed"}
 
     def test_strips_markdown_fences(self):
-        import trade_reviewer as tr
+        from _llm_call import _parse_json
         text = '```json\n{"thesis_outcome": "confirmed"}\n```'
-        result = tr._parse_json_response(text)
+        result = _parse_json(text)
         assert result == {"thesis_outcome": "confirmed"}
 
     def test_returns_none_on_garbage(self):
-        import trade_reviewer as tr
-        assert tr._parse_json_response("not json") is None
+        import pytest
+        from _llm_call import _parse_json
+        with pytest.raises(ValueError):
+            _parse_json("not json")
 
     def test_returns_none_on_empty(self):
-        import trade_reviewer as tr
-        assert tr._parse_json_response("") is None
+        import pytest
+        from _llm_call import _parse_json
+        with pytest.raises(ValueError):
+            _parse_json("")
 
     def test_extracts_embedded_json(self):
-        import trade_reviewer as tr
+        from _llm_call import _parse_json
         text = 'Analysis:\n{"thesis_outcome": "invalidated"}\nEnd.'
-        result = tr._parse_json_response(text)
+        result = _parse_json(text)
         assert result["thesis_outcome"] == "invalidated"
 
 

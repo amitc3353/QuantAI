@@ -229,20 +229,13 @@ Agent identity:
 
 
 def _call_sonnet(system: str, user: str) -> str | None:
-    try:
-        from _llm_client import Client
-        client = Client()
-        resp = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2500,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            timeout=LLM_TIMEOUT,
-        )
-        return resp.content[0].text
-    except Exception as e:
-        logging.warning("Sonnet call failed: %s", e)
-        return None
+    from _llm_call import call_llm_text
+    return call_llm_text(
+        model="claude-sonnet-4-6",
+        system=system, user=user,
+        max_tokens=2500, timeout=LLM_TIMEOUT,
+        caller="weekly_synthesis",
+    )
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -381,11 +374,8 @@ def synthesize(week_start: datetime, dry_run: bool = False) -> int:
 
         text = _call_sonnet(sys_prompt, user)
         if not text:
-            # Retry once
-            text = _call_sonnet(sys_prompt, user)
-        if not text:
             all_syntheses[agent] = (
-                "Synthesis failed (Sonnet call returned no text after retry). "
+                "Synthesis failed (Sonnet call returned no text after retries). "
                 "Raw aggregated data is available in this report file."
             )
             continue

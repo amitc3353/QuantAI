@@ -689,14 +689,14 @@ def call_llm(bundle: dict, mode: str, dry_run: bool) -> dict:
 
     sys.path.insert(0, str(SCRIPT_DIR))
     try:
-        from _llm_client import Client
+        from _llm_call import call_llm_json
     except Exception as e:
-        log_line(f"ERROR: cannot import _llm_client: {e}")
+        log_line(f"ERROR: cannot import _llm_call: {e}")
         return {"summary": "LLM import failed", "findings": [], "proposals": [], "_error": str(e)}
 
     if mode == "observe":
         model = "claude-haiku-4-5"
-        tier = None  # default → Haiku floor
+        tier = None
     else:
         model = "claude-sonnet-4-6"
         tier = "COMPLEX"
@@ -706,27 +706,14 @@ def call_llm(bundle: dict, mode: str, dry_run: bool) -> dict:
         f"Mode: {mode}. Be silent if nothing's wrong.\n\n"
         f"```json\n{json.dumps(bundle, indent=2)[:60000]}\n```"
     )
-    try:
-        client = Client()
-        resp = client.messages.create(
-            model=model,
-            max_tokens=4000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
-            tier=tier,
-        )
-        text = resp.content[0].text.strip()
-    except Exception as e:
-        log_line(f"ERROR: LLM call failed: {e}")
-        return {"summary": "LLM call failed", "findings": [], "proposals": [], "_error": str(e)}
-
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.MULTILINE).strip()
-    try:
-        return json.loads(text)
-    except Exception as e:
-        log_line(f"ERROR: LLM returned non-JSON: {e}; raw[:300]={text[:300]!r}")
-        return {"summary": "LLM JSON parse failed", "findings": [], "proposals": [], "_error": str(e)}
+    result = call_llm_json(
+        model=model, system=SYSTEM_PROMPT, user=user_msg,
+        max_tokens=4000, caller="sentinel",
+        tier=tier,
+    )
+    if not result:
+        return {"summary": "LLM call failed after retries", "findings": [], "proposals": []}
+    return result
 
 
 # ── Proposal writing ────────────────────────────────────────────────────

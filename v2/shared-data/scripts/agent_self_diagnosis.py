@@ -169,49 +169,15 @@ Respond with ONLY valid JSON (no surrounding prose, no markdown fences) in this 
 """
 
 
-def _call_haiku(system: str, user: str) -> str | None:
-    """Call Haiku with a tight timeout. Returns text or None on failure."""
-    try:
-        from _llm_client import Client
-        client = Client()
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=800,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            timeout=LLM_TIMEOUT,
-        )
-        return resp.content[0].text
-    except Exception as e:
-        logging.warning("Haiku call failed: %s", e)
-        return None
-
-
-def _parse_json_response(text: str) -> dict | None:
-    if not text:
-        return None
-    s = text.strip()
-    # Strip optional markdown fences
-    if s.startswith("```"):
-        s = s.lstrip("`")
-        if s.lower().startswith("json"):
-            s = s[4:]
-        s = s.strip()
-        if s.endswith("```"):
-            s = s[:-3].strip()
-    try:
-        data = json.loads(s)
-    except Exception:
-        # Try to find a JSON object in the response
-        first = s.find("{")
-        last = s.rfind("}")
-        if first >= 0 and last > first:
-            try:
-                data = json.loads(s[first:last + 1])
-            except Exception:
-                return None
-        else:
-            return None
+def _call_haiku_json(system: str, user: str) -> dict | None:
+    """Call Haiku via hardened retry envelope. Returns parsed dict or None."""
+    from _llm_call import call_llm_json
+    data = call_llm_json(
+        model="claude-haiku-4-5-20251001",
+        system=system, user=user,
+        max_tokens=800, timeout=LLM_TIMEOUT,
+        caller="self_diagnosis",
+    )
     if not isinstance(data, dict):
         return None
     if "gaps_identified" not in data:
@@ -276,15 +242,9 @@ def diagnose(trade_id: str, dry_run: bool = False) -> dict | None:
             print("USER:", user_prompt[:600], "...")
             return {"dry_run": True, "context_size": len(user_prompt)}
 
-        text = _call_haiku(system_prompt, user_prompt)
-        if not text:
-            logging.warning("diagnose: empty Haiku response for %s", trade_id)
-            update_trade_entry(trade_id, {"capability_diagnosis": None})
-            return None
-
-        diagnosis = _parse_json_response(text)
+        diagnosis = _call_haiku_json(system_prompt, user_prompt)
         if not diagnosis:
-            logging.warning("diagnose: unparseable response for %s: %s", trade_id, text[:200])
+            logging.warning("diagnose: LLM call failed for %s after retries", trade_id)
             update_trade_entry(trade_id, {"capability_diagnosis": None})
             return None
 
