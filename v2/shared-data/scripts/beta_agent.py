@@ -32,6 +32,7 @@ from _concentration_gate import check_concentration
 from _freshness_gate import check_freshness
 from _event_calendar import check_event_timing
 from _cooldown_gate import check_cooldown
+from _conviction_gate import check_conviction
 
 _logger_setup("beta_agent")
 
@@ -280,7 +281,17 @@ def main() -> int:
         logging.warning("Cooldown gate blocked %s: %s", smod.INSTRUMENT, cool.reason)
         return 0
 
+    from _decision_helpers import signal_strength_score
+    conv_score = signal_strength_score(strikes, regime)
+    conv = check_conviction(conv_score, strategy=smod.NAME)
+    if not conv.allowed:
+        print(f"[beta_agent] conviction gate blocked {smod.INSTRUMENT}: {conv.reason}")
+        logging.warning("Conviction gate blocked %s: %s", smod.INSTRUMENT, conv.reason)
+        return 0
+
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])
+    if conv.size_multiplier < 1.0:
+        qty = max(1, int(qty * conv.size_multiplier))
     if qty <= 0:
         print("[beta_agent] position_size=0 — skipping")
         return 0

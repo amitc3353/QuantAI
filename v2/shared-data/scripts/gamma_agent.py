@@ -366,6 +366,17 @@ def run_execute() -> int:
             failed.append((setup, "build_spread_none"))
             continue
 
+        from _decision_helpers import rsi_depth_score
+        from _conviction_gate import check_conviction
+        conv_score = rsi_depth_score(setup.get("rsi_10"))
+        conv = check_conviction(conv_score, strategy="rsi_pullback_debit_spread")
+        if not conv.allowed:
+            print(f"[gamma_agent] conviction gate blocked {symbol}: {conv.reason}")
+            failed.append((setup, f"conviction_gate: {conv.reason}"))
+            continue
+        if conv.size_multiplier < 1.0:
+            proposal["qty"] = max(1, int(proposal["qty"] * conv.size_multiplier))
+
         coid = f"gamma-{datetime.now(ET).strftime('%Y%m%d-%H%M%S')}-{symbol[:6]}"
         proposal["client_order_id"] = coid
 
