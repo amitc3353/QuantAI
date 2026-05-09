@@ -29,6 +29,7 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from _concentration_gate import check_concentration
+from _freshness_gate import check_freshness
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -760,6 +761,14 @@ def run():
             log(f"  ❌ CONCENTRATION GATE: {conc.reason}")
             logging.warning("Concentration gate blocked %s: %s", symbol, conc.reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": conc.reason})
+            continue
+
+        is_event = intel.get("macro", {}).get("is_event_day", False)
+        fresh = check_freshness(intel, is_event_trade=bool(is_event))
+        if not fresh.allowed:
+            log(f"  ❌ FRESHNESS GATE: {fresh.reason}")
+            logging.warning("Freshness gate blocked %s: %s", symbol, fresh.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": fresh.reason})
             continue
 
         log("  ✅ Guards passed")

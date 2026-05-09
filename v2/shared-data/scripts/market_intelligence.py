@@ -113,6 +113,7 @@ try:
     term_structure = "backwardation" if (vix3m > 0 and vix > vix3m) else "contango"
 
     result["macro"]["vix"] = round(vix, 2)
+    result["macro"]["vix_timestamp"] = datetime.now(ET).isoformat()
     result["macro"]["vix_prev_close"] = round(vix_prev_close, 2)
     result["macro"]["vix_3m"] = round(vix3m, 2)
     result["macro"]["vix_regime"] = regime
