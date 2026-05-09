@@ -477,6 +477,12 @@ RECLASSIFY_PATTERNS = [
      "catalog-reclassify: defensive risk-guard rejection (positions cap hit) — system working as designed (added 2026-05-05)"),
     ("Disconnecting authenticating user", "info",
      "catalog-reclassify: SSH brute-force 'Too many auth' noise (added 2026-05-05)"),
+    # KARNA / OpenClaw security-rail noise (added 2026-05-09)
+    ("exec denied: allowlist miss", "info",
+     "catalog-reclassify: openclaw tool allowlist deny — security rail working as designed"),
+    ("tools.profile (coding) allowlist contains unknown entries", "info",
+     "catalog-reclassify: openclaw startup config warning (apply_patch/image_generate "
+     "shipped but unavailable in current runtime) — cosmetic only"),
 ]
 
 
