@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 from _concentration_gate import check_concentration
 from _freshness_gate import check_freshness
 from _event_calendar import check_event_timing
+from _cooldown_gate import check_cooldown
 
 # Unique IBKR clientId so concurrent cron jobs don't collide on clientId=1.
 os.environ.setdefault("IBKR_CLIENT_ID", "12")
@@ -777,6 +778,13 @@ def run():
             log(f"  ❌ EVENT TIMING GATE: {evt.reason}")
             logging.warning("Event timing gate blocked %s: %s", symbol, evt.reason)
             skipped.append({"symbol": symbol, "strategy": strategy, "reason": evt.reason})
+            continue
+
+        cool = check_cooldown(symbol, Path(JOURNAL))
+        if not cool.allowed:
+            log(f"  ❌ COOLDOWN GATE: {cool.reason}")
+            logging.warning("Cooldown gate blocked %s: %s", symbol, cool.reason)
+            skipped.append({"symbol": symbol, "strategy": strategy, "reason": cool.reason})
             continue
 
         log("  ✅ Guards passed")

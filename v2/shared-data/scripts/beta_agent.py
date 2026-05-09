@@ -31,6 +31,7 @@ from _logger import setup as _logger_setup
 from _concentration_gate import check_concentration
 from _freshness_gate import check_freshness
 from _event_calendar import check_event_timing
+from _cooldown_gate import check_cooldown
 
 _logger_setup("beta_agent")
 
@@ -271,6 +272,12 @@ def main() -> int:
     if not evt.allowed:
         print(f"[beta_agent] event timing gate blocked {smod.INSTRUMENT}: {evt.reason}")
         logging.warning("Event timing gate blocked %s: %s", smod.INSTRUMENT, evt.reason)
+        return 0
+
+    cool = check_cooldown(smod.INSTRUMENT, JOURNAL)
+    if not cool.allowed:
+        print(f"[beta_agent] cooldown gate blocked {smod.INSTRUMENT}: {cool.reason}")
+        logging.warning("Cooldown gate blocked %s: %s", smod.INSTRUMENT, cool.reason)
         return 0
 
     qty = smod.position_size(equity, proposal["max_risk"], proposal["risk_pct"])
