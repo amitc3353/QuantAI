@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Agent Gamma — Connors RSI(10) pullback agent.
 
-Two-phase cron:
-  --scan     30 20 * * 1-5  (4:30 PM ET, post-close)
-             Fetch daily data, compute Wilder RSI(10) + SMA(200),
-             filter for setups, write top-N to gamma_pending_entries.json.
-  --execute  33 13 * * 1-5  (9:33 AM ET, market open)
-             Read pending file, re-validate, place bull-call debit spreads
-             via shared IBKR adapter. Journal as G###.
+Three-phase cron:
+  --scan            30 20 * * 1-5  (4:30 PM ET, post-close)
+                    Fetch daily data, compute Wilder RSI(10) + SMA(200),
+                    filter for setups, write top-N to gamma_pending_entries.json.
+  --execute         33 13 * * 1-5  (9:33 AM ET, market open)
+                    Read pending file, re-validate, place bull-call debit
+                    spreads via shared IBKR adapter. Journal as G###.
+  --verify-spreads  30 13 * * 1    (9:30 AM ET Monday, added 2026-05-09)
+                    Pull live ATM bid/ask for every UNIVERSE symbol, write
+                    pass/blocked status to gamma_spread_status.json. Scanner
+                    consults this file as filter F0. Block list refreshed
+                    weekly. Gated by env var GAMMA_SPREAD_CHECK_ENABLED=1
+                    (default on).
 
 Optional flags:
   --dry-run        skip Discord posts and order submission; log proposals only
@@ -57,8 +63,15 @@ DISCORD_ALERTS_CH = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
 DRY_RUN = "--dry-run" in sys.argv
 SCAN = "--scan" in sys.argv
 EXECUTE = "--execute" in sys.argv
+VERIFY_SPREADS = "--verify-spreads" in sys.argv
 
 PENDING_MAX_AGE_HOURS = 18  # drop pending entries older than this on --execute
+
+# Spread verifier feature flag (added 2026-05-09 with universe expansion).
+# Default ON. To disable without git operations:
+#   sudo sed -i 's/GAMMA_SPREAD_CHECK_ENABLED=1/GAMMA_SPREAD_CHECK_ENABLED=0/' .env
+SPREAD_CHECK_ENABLED = os.environ.get("GAMMA_SPREAD_CHECK_ENABLED", "1") == "1"
+SPREAD_STATUS_PATH = Path("/root/quantai-v2/shared-data/cache/gamma_spread_status.json")
 
 
 # ── small helpers ─────────────────────────────────────────────────────────────
@@ -567,17 +580,87 @@ def _write_dashboard_state_after_execute(journal: list, placed: list[dict]) -> N
     })
 
 
+# ── --verify-spreads mode (Monday market open) ────────────────────────────────
+
+def run_verify_spreads() -> int:
+    """Pull current ATM bid/ask for every UNIVERSE symbol; write
+    gamma_spread_status.json. Scanner reads this as filter F0.
+
+    Gated by GAMMA_SPREAD_CHECK_ENABLED env var (default 1). When disabled,
+    exits early with a log line so the cron entry is harmless.
+    """
+    if not SPREAD_CHECK_ENABLED:
+        print("[gamma_agent] verify-spreads: GAMMA_SPREAD_CHECK_ENABLED=0 — skipping")
+        return 0
+
+    from gamma import UNIVERSE
+    from gamma import spread_verifier as sv
+
+    print(f"[gamma_agent] VERIFY-SPREADS start {datetime.now(ET).isoformat()}  "
+          f"dry_run={DRY_RUN}  universe_size={len(UNIVERSE)}")
+
+    previous = sv.load_status(SPREAD_STATUS_PATH)
+    payload = sv.verify_all(UNIVERSE, previous_state=previous)
+
+    print(f"[gamma_agent] verify-spreads results: "
+          f"passed={payload['n_passed']} "
+          f"blocked={payload['n_blocked']} "
+          f"fetch_failed={payload['n_fetch_failed']} "
+          f"permanent={payload['n_permanent_blocks']}")
+
+    if DRY_RUN:
+        print("[gamma_agent] DRY-RUN — not writing state file or posting Discord")
+        # Print the would-be-blocked symbols for review
+        blocked = [r for r in payload["results"]
+                    if not r.get("passed")
+                    and r.get("blocked_reason") in ("spread_too_wide", "permanent_block_3_strikes")]
+        if blocked:
+            print(f"[gamma_agent] would-block: {[(b['symbol'], b.get('blocked_reason')) for b in blocked]}")
+        return 0
+
+    sv.write_status(payload, SPREAD_STATUS_PATH)
+    print(f"[gamma_agent] wrote {SPREAD_STATUS_PATH}")
+
+    # Discord alert (informational, weekly)
+    blocked_syms = [r["symbol"] for r in payload["results"]
+                     if not r.get("passed")
+                     and r.get("blocked_reason") in ("spread_too_wide", "permanent_block_3_strikes")]
+    fetch_failed_syms = [r["symbol"] for r in payload["results"]
+                          if r.get("blocked_reason") == "fetch_failed"]
+
+    if blocked_syms or fetch_failed_syms:
+        msg_lines = [f"🚧 Gamma spread-verifier — {len(payload['results'])} symbols checked"]
+        if blocked_syms:
+            msg_lines.append(f"  Blocked ({len(blocked_syms)}): {blocked_syms[:10]}"
+                             + ("..." if len(blocked_syms) > 10 else ""))
+        if fetch_failed_syms:
+            msg_lines.append(f"  Fetch-failed ({len(fetch_failed_syms)}): "
+                             f"{fetch_failed_syms[:5]}"
+                             + ("..." if len(fetch_failed_syms) > 5 else ""))
+        if payload.get("n_permanent_blocks", 0) > 0:
+            permanent = [r["symbol"] for r in payload["results"]
+                          if r.get("blocked_reason") == "permanent_block_3_strikes"]
+            msg_lines.append(f"  🔴 Permanent blocks (3-strike): {permanent}")
+        _post_discord("\n".join(msg_lines))
+    return 0
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
-    if SCAN and EXECUTE:
-        print("[gamma_agent] choose --scan OR --execute, not both", file=sys.stderr)
+    modes = sum([SCAN, EXECUTE, VERIFY_SPREADS])
+    if modes > 1:
+        print("[gamma_agent] choose exactly one of --scan, --execute, --verify-spreads",
+              file=sys.stderr)
         return 1
     if SCAN:
         return run_scan()
     if EXECUTE:
         return run_execute()
-    print("usage: gamma_agent.py --scan | --execute  [--dry-run]", file=sys.stderr)
+    if VERIFY_SPREADS:
+        return run_verify_spreads()
+    print("usage: gamma_agent.py --scan | --execute | --verify-spreads  [--dry-run]",
+          file=sys.stderr)
     return 1
 
 
