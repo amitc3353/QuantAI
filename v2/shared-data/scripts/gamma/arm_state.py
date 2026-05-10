@@ -68,13 +68,17 @@ RECONCILE_DOLLAR_THRESHOLD = 1.00  # alert if invariants drift by > $1
 # ── Path helpers ──────────────────────────────────────────────────────
 
 
-def _arm_state_path(arm_id: str, base_dir: Path = CACHE_DIR) -> Path:
+def _arm_state_path(arm_id: str, base_dir: Path | None = None) -> Path:
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = CACHE_DIR  # call-time lookup so monkeypatch works
     return base_dir / f"gamma_arm_{arm_id}_account.json"
 
 
-def _arm_journal_path(arm_id: str, base_dir: Path = JOURNAL_DIR) -> Path:
+def _arm_journal_path(arm_id: str, base_dir: Path | None = None) -> Path:
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = JOURNAL_DIR
     return base_dir / f"gamma_arm_{arm_id}_trades.jsonl"
 
 
@@ -142,11 +146,13 @@ def _default_state(arm_id: str, starting_equity: float = DEFAULT_STARTING_EQUITY
 # ── State load / save (atomic) ────────────────────────────────────────
 
 
-def load_arm_state(arm_id: str, base_dir: Path = CACHE_DIR) -> dict:
+def load_arm_state(arm_id: str, base_dir: Path | None = None) -> dict:
     """Read state file. Returns a fresh default dict if the file is missing
     or corrupt — the caller shouldn't crash just because the experiment
     hasn't been initialized yet. Logs a warning on parse failure."""
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = CACHE_DIR
     path = _arm_state_path(arm_id, base_dir)
     try:
         if not path.exists():
@@ -164,10 +170,12 @@ def load_arm_state(arm_id: str, base_dir: Path = CACHE_DIR) -> dict:
         return _default_state(arm_id)
 
 
-def save_arm_state(arm_id: str, state: dict, base_dir: Path = CACHE_DIR) -> None:
+def save_arm_state(arm_id: str, state: dict, base_dir: Path | None = None) -> None:
     """Atomic write via tempfile + os.replace. Same pattern as
     ``gamma_spread_status.json``. Updates ``last_updated`` automatically."""
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = CACHE_DIR
     path = _arm_state_path(arm_id, base_dir)
     state["last_updated"] = _now_iso()
     state["experiment_day"] = compute_experiment_day(state)
@@ -193,11 +201,13 @@ def save_arm_state(arm_id: str, state: dict, base_dir: Path = CACHE_DIR) -> None
 def init_arm_state(arm_id: str,
                    starting_equity: float = DEFAULT_STARTING_EQUITY,
                    experiment_started_at: Optional[str] = None,
-                   base_dir: Path = CACHE_DIR) -> dict:
+                   base_dir: Path | None = None) -> dict:
     """Create a fresh state file at $10K (or specified) starting equity.
     Idempotent: overwrites any existing file. Raises ``ValueError`` for
     invalid ``arm_id`` (must be one of a/b/c/d)."""
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = CACHE_DIR
     state = _default_state(arm_id, starting_equity, experiment_started_at)
     save_arm_state(arm_id, state, base_dir)
     return state
@@ -205,13 +215,17 @@ def init_arm_state(arm_id: str,
 
 def init_all_arms(starting_equity: float = DEFAULT_STARTING_EQUITY,
                    experiment_started_at: Optional[str] = None,
-                   cache_dir: Path = CACHE_DIR,
-                   journal_dir: Path = JOURNAL_DIR) -> dict:
+                   cache_dir: Path | None = None,
+                   journal_dir: Path | None = None) -> dict:
     """Initialize all 4 arms' state files + create empty journal files.
     Idempotent. Returns a dict {arm_id: state}.
 
     Used as part of pre-flight checklist (item 5 in plan §K) before flipping
     the GAMMA_AB_TEST_ENABLED feature flag in commit 5."""
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    if journal_dir is None:
+        journal_dir = JOURNAL_DIR
     journal_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     states = {}
@@ -245,10 +259,12 @@ def compute_experiment_day(state: dict) -> int:
 
 
 def load_arm_journal(arm_id: str,
-                      base_dir: Path = JOURNAL_DIR) -> list[dict]:
+                      base_dir: Path | None = None) -> list[dict]:
     """Read per-arm journal as list of dicts. Returns empty list on missing
     file. Lines that fail to parse are skipped with a warning."""
     _validate_arm_id(arm_id)
+    if base_dir is None:
+        base_dir = JOURNAL_DIR
     path = _arm_journal_path(arm_id, base_dir)
     if not path.exists():
         return []
@@ -271,7 +287,7 @@ def load_arm_journal(arm_id: str,
 
 
 def append_arm_trade(arm_id: str, trade: dict,
-                      journal_dir: Path = JOURNAL_DIR) -> None:
+                      journal_dir: Path | None = None) -> None:
     """Append a trade to BOTH the per-arm journal AND the union trades.jsonl.
     The trade dict must include ``arm_id`` (we set it if not present).
 
@@ -282,6 +298,8 @@ def append_arm_trade(arm_id: str, trade: dict,
     _validate_arm_id(arm_id)
     if trade.get("arm_id") != arm_id:
         trade["arm_id"] = arm_id
+    if journal_dir is None:
+        journal_dir = JOURNAL_DIR
     journal_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(trade, default=str) + "\n"
     arm_path = _arm_journal_path(arm_id, journal_dir)
@@ -294,10 +312,55 @@ def append_arm_trade(arm_id: str, trade: dict,
 
 
 def arm_open_positions(arm_id: str,
-                        journal_dir: Path = JOURNAL_DIR) -> list[dict]:
+                        journal_dir: Path | None = None) -> list[dict]:
     """All trades in this arm's journal with status=='OPEN'."""
+    if journal_dir is None:
+        journal_dir = JOURNAL_DIR
     journal = load_arm_journal(arm_id, journal_dir)
     return [t for t in journal if (t.get("status") or "").upper() == "OPEN"]
+
+
+def update_arm_journal_entry(arm_id: str, trade_id: str, updates: dict,
+                              journal_dir: Path | None = None) -> bool:
+    """Atomically update an entry in the per-arm journal by trade ID.
+
+    Symmetric with ``rewrite_journal_atomic`` in position_monitor — finds
+    the entry, merges ``updates`` into it, rewrites the entire JSONL file.
+    Used by position_monitor when a Gamma trade closes (commit 3) to keep
+    the per-arm journal in sync with the union trades.jsonl.
+
+    Returns True if the trade was found and updated, False if not found.
+    """
+    _validate_arm_id(arm_id)
+    if journal_dir is None:
+        journal_dir = JOURNAL_DIR
+    journal = load_arm_journal(arm_id, journal_dir)
+    found = False
+    for entry in journal:
+        if entry.get("id") == trade_id:
+            entry.update(updates)
+            found = True
+            break
+    if not found:
+        return False
+
+    path = _arm_journal_path(arm_id, journal_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        dir=path.parent, prefix=path.name + ".", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            for e in journal:
+                f.write(json.dumps(e, default=str) + "\n")
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # ── Trade ID generation (per-arm counter) ─────────────────────────────
@@ -452,8 +515,8 @@ def reconcile_and_alert(arm_id: str, state: dict, open_trades: list[dict],
 def reset_arm(arm_id: str,
               starting_equity: float = DEFAULT_STARTING_EQUITY,
               archive_dir: Optional[Path] = None,
-              cache_dir: Path = CACHE_DIR,
-              journal_dir: Path = JOURNAL_DIR) -> dict:
+              cache_dir: Path | None = None,
+              journal_dir: Path | None = None) -> dict:
     """Clean restart for one arm: zero state, archive old journal+state.
 
     Used by the ``--reset-experiment`` operator command (added in commit 3)
@@ -463,6 +526,10 @@ def reset_arm(arm_id: str,
     Returns the fresh state dict.
     """
     _validate_arm_id(arm_id)
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    if journal_dir is None:
+        journal_dir = JOURNAL_DIR
     if archive_dir is None:
         archive_dir = journal_dir / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)

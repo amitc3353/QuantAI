@@ -64,6 +64,24 @@ DRY_RUN = "--dry-run" in sys.argv
 SCAN = "--scan" in sys.argv
 EXECUTE = "--execute" in sys.argv
 VERIFY_SPREADS = "--verify-spreads" in sys.argv
+RESET_EXPERIMENT = "--reset-experiment" in sys.argv
+PROMOTE_ARM = "--promote-arm" in sys.argv
+CONFIRM = "--confirm" in sys.argv
+
+# Optional --reason "..." and --promote-arm <a|b|c|d> CLI arg parsing
+def _parse_arg_value(name: str) -> str | None:
+    """Extract the value following a ``--name`` token, e.g. --reason 'foo'."""
+    try:
+        idx = sys.argv.index(name)
+        if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("--"):
+            return sys.argv[idx + 1]
+    except ValueError:
+        pass
+    return None
+
+
+RESET_REASON = _parse_arg_value("--reason")
+PROMOTE_ARM_ID = _parse_arg_value("--promote-arm")
 
 PENDING_MAX_AGE_HOURS = 18  # drop pending entries older than this on --execute
 
@@ -72,6 +90,20 @@ PENDING_MAX_AGE_HOURS = 18  # drop pending entries older than this on --execute
 #   sudo sed -i 's/GAMMA_SPREAD_CHECK_ENABLED=1/GAMMA_SPREAD_CHECK_ENABLED=0/' .env
 SPREAD_CHECK_ENABLED = os.environ.get("GAMMA_SPREAD_CHECK_ENABLED", "1") == "1"
 SPREAD_STATUS_PATH = Path("/root/quantai-v2/shared-data/cache/gamma_spread_status.json")
+
+# 4-arm A/B/C/D test feature flag (added 2026-05-10 with commit 3 of the
+# implementation phasing per docs/gamma-four-arm-ab-test-plan.md §J).
+# Default OFF — when 0, run_scan() and run_execute() behave EXACTLY as
+# pre-experiment Gamma. When 1, dispatch routes to run_scan_4arm() and
+# run_execute_4arm() which orchestrate four independent virtual portfolios.
+GAMMA_AB_TEST_ENABLED = os.environ.get("GAMMA_AB_TEST_ENABLED", "0") == "1"
+
+# Per-arm pending entries paths
+def _arm_pending_path(arm_id: str) -> Path:
+    return CACHE / f"gamma_arm_{arm_id}_pending_entries.json"
+
+# Master ranking_decisions log
+RANKING_DECISIONS_PATH = Path("/root/quantai-v2/shared-data/logs/gamma_ranking_decisions.jsonl")
 
 
 # ── small helpers ─────────────────────────────────────────────────────────────
@@ -645,22 +677,625 @@ def run_verify_spreads() -> int:
     return 0
 
 
+# ── 4-arm A/B/C/D dispatch (commit 3 of plan §J) ──────────────────────────────
+
+
+def _log_ranking_decision(payload: dict) -> None:
+    """Append one entry to gamma_ranking_decisions.jsonl. Used by run_scan_4arm
+    to capture every per-arm rank decision for forensic + post-hoc analysis."""
+    if DRY_RUN:
+        return
+    try:
+        RANKING_DECISIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(RANKING_DECISIONS_PATH, "a") as f:
+            f.write(json.dumps(payload, default=str) + "\n")
+    except Exception as e:
+        logging.warning("failed to write ranking_decisions.jsonl: %s", e)
+
+
+def run_scan_4arm() -> int:
+    """4-arm scan dispatch. Per docs/gamma-four-arm-ab-test-plan.md §A:
+
+      shared scanner output
+        → reward:risk estimate (commit 1)
+        → for each arm: ranker.rank → filter_setups_for_arm → top-N → per-arm pending file
+        → ranking_decisions.jsonl audit log
+        → Discord summary
+    """
+    print(f"[gamma_agent] SCAN-4ARM start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
+
+    from gamma import UNIVERSE, MAX_DAILY_ENTRIES
+    from gamma.scanner import scan_with_indicators
+    from gamma.risk_check import (
+        check_portfolio_gates_for_arm,
+        filter_setups_for_arm,
+        load_journal,
+    )
+    from gamma.rankers import ARM_TO_RANKER, RANKERS, get_ranker
+    from gamma.arm_state import (
+        VALID_ARM_IDS, load_arm_state, save_arm_state,
+    )
+    from gamma.reward_risk_estimator import compute_reward_risk_estimates
+
+    journal = load_journal()
+
+    # Connect broker (needed for reward:risk estimator chain pulls)
+    from broker import get_broker
+    broker = get_broker()
+    if not broker.connect():
+        logging.warning("IBKR connect failed during 4-arm scan — skipping")
+        return 0
+
+    # Compute "open across all arms" set so the scanner skips them
+    all_arm_open: set[str] = set()
+    for aid in VALID_ARM_IDS:
+        for t in journal:
+            if (t.get("arm_id") == aid
+                    and t.get("source") == f"agent_gamma_arm_{aid}"
+                    and t.get("status") == "OPEN"):
+                if t.get("symbol"):
+                    all_arm_open.add(t["symbol"])
+
+    # Shared scanner output (same scanner as single-arm; spread blocklist applied)
+    setups, indicator_cache = scan_with_indicators(UNIVERSE)
+    print(f"[gamma_agent] {len(setups)} qualifying setups (indicators for {len(indicator_cache)})")
+
+    # Persist indicator cache for position_monitor's RSI exit checks
+    if not DRY_RUN and indicator_cache:
+        try:
+            INDICATOR_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            INDICATOR_CACHE.write_text(json.dumps({
+                "scan_timestamp": datetime.now(ET).isoformat(),
+                "indicators": indicator_cache,
+            }, indent=2))
+        except Exception as e:
+            logging.warning("indicator cache write failed: %s", e)
+
+    # Reward:risk estimates (commit 1) — used by Arms B and D
+    setups, estimator_duration = compute_reward_risk_estimates(setups, broker)
+    print(f"[gamma_agent] reward_risk_estimator: {estimator_duration:.2f}s "
+          f"({sum(1 for s in setups if s.get('reward_risk_estimate') is not None)}/{len(setups)} estimated)")
+
+    # Load market intelligence for ranker context (VIX etc.)
+    context: dict = {"today": datetime.now(ET).date(),
+                     "scan_timestamp": datetime.now(ET).isoformat()}
+    try:
+        intel_path = Path("/root/quantai-v2/shared-data/cache/market_intelligence.json")
+        if intel_path.exists():
+            intel = json.loads(intel_path.read_text())
+            context["vix"] = intel.get("vix") or intel.get("VIX")
+    except Exception:
+        pass
+
+    # Per-arm dispatch
+    decisions_record: dict = {
+        "scan_timestamp": context["scan_timestamp"],
+        "n_qualifying": len(setups),
+        "qualifying_symbols": [s["symbol"] for s in setups],
+        "vix_at_scan": context.get("vix"),
+        "estimator_duration_sec": round(estimator_duration, 2),
+        "ranks_per_arm": {},
+        "picked_per_arm": {},
+        "skipped_arms": {},
+    }
+    arm_summary: dict[str, list[str]] = {}
+
+    for arm_id in VALID_ARM_IDS:
+        # Per-arm portfolio gate — circuit breaker, daily cap, etc.
+        ok, why = check_portfolio_gates_for_arm(journal, arm_id)
+        if not ok:
+            decisions_record["skipped_arms"][arm_id] = why
+            arm_summary[arm_id] = []
+            print(f"[gamma_agent] arm {arm_id.upper()} blocked: {why}")
+            continue
+
+        # Apply ranker (using fresh copy so fields don't bleed between arms)
+        ranker = get_ranker(arm_id)
+        ranked = ranker.rank([dict(s) for s in setups], context)
+        decisions_record["ranks_per_arm"][arm_id] = [r["symbol"] for r in ranked]
+
+        # Apply per-arm caps
+        eligible = filter_setups_for_arm(ranked, journal, arm_id)
+        picks = eligible[:MAX_DAILY_ENTRIES]
+        decisions_record["picked_per_arm"][arm_id] = [p["symbol"] for p in picks]
+        arm_summary[arm_id] = [p["symbol"] for p in picks]
+
+        # Write per-arm pending file
+        pending_payload = {
+            "arm_id": arm_id,
+            "ranker_used": ARM_TO_RANKER[arm_id],
+            "scan_timestamp": context["scan_timestamp"],
+            "scan_date": datetime.now(ET).date().isoformat(),
+            "entries": picks,
+        }
+        if not DRY_RUN:
+            try:
+                path = _arm_pending_path(arm_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(pending_payload, indent=2, default=str))
+                print(f"[gamma_agent] arm {arm_id.upper()}: wrote {len(picks)} pending → {path.name}")
+            except Exception as e:
+                logging.error("failed to write %s pending: %s", arm_id, e)
+        else:
+            print(f"[gamma_agent] DRY-RUN arm {arm_id.upper()} pending: "
+                  f"{[p['symbol'] for p in picks]}")
+
+    _log_ranking_decision(decisions_record)
+
+    # Discord summary — 4 arms side-by-side
+    msg_lines = [
+        "📊 Agent Gamma 4-Arm | Daily Scan Complete",
+        f"🔍 Qualifying setups: {len(setups)}",
+    ]
+    for aid in VALID_ARM_IDS:
+        ranker_name = ARM_TO_RANKER[aid]
+        picks = arm_summary.get(aid, [])
+        skipped = decisions_record["skipped_arms"].get(aid)
+        if skipped:
+            msg_lines.append(f"  • Arm {aid.upper()} ({ranker_name}): SKIPPED — {skipped}")
+        else:
+            picks_str = ", ".join(picks) if picks else "—"
+            msg_lines.append(f"  • Arm {aid.upper()} ({ranker_name}): {picks_str}")
+    _post_discord("\n".join(msg_lines))
+    return 0
+
+
+def run_execute_4arm() -> int:
+    """4-arm execute dispatch. Per docs/gamma-four-arm-ab-test-plan.md §C.
+
+    For each symbol picked by ANY arm: submit each picking arm's order
+    within ~5s. If any arm's order terminal-fails, cancel all still-working
+    orders for that symbol (skip-all per plan §G). Each arm books its own
+    fill (no averaging). Per-arm journal + state file updated on success.
+    """
+    print(f"[gamma_agent] EXECUTE-4ARM start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
+
+    from broker import get_broker
+    broker = get_broker()
+    if broker.name != "ibkr":
+        logging.error("Gamma requires BROKER_TYPE=ibkr (got %s)", broker.name)
+        return 2
+    try:
+        if not broker.connect():
+            print("[gamma_agent] IBKR connect failed — preserving pending files for retry")
+            return 0
+    except Exception as e:
+        logging.warning("IBKR connect raised: %s", e)
+        return 0
+
+    from gamma import MAX_DAILY_ENTRIES
+    from gamma.risk_check import (
+        check_portfolio_gates_for_arm, filter_setups_for_arm, load_journal,
+    )
+    from gamma.strike_selector import build_spread
+    from gamma.arm_state import (
+        VALID_ARM_IDS, append_arm_trade, load_arm_state, save_arm_state,
+        load_arm_journal, next_arm_trade_id,
+    )
+
+    # Equity sizing cap (mirror single-arm path)
+    acct = broker.get_account() or {}
+    real_equity = float(acct.get("equity") or 0)
+    if real_equity <= 0:
+        logging.error("get_account returned zero equity — refusing to execute")
+        return 4
+
+    journal = load_journal()
+    today_iso = datetime.now(ET).date().isoformat()
+
+    # 1. Load each arm's pending entries
+    arm_pending: dict[str, list[dict]] = {}
+    for aid in VALID_ARM_IDS:
+        path = _arm_pending_path(aid)
+        if not path.exists():
+            arm_pending[aid] = []
+            continue
+        try:
+            data = json.loads(path.read_text())
+            arm_pending[aid] = list(data.get("entries") or [])
+        except Exception as e:
+            logging.warning("could not load %s pending: %s", aid, e)
+            arm_pending[aid] = []
+
+    total_pending = sum(len(v) for v in arm_pending.values())
+    if total_pending == 0:
+        print("[gamma_agent] no per-arm pending entries to execute")
+        return 0
+
+    # 2. Group by symbol — for each symbol, collect (arm_id, setup) tuples
+    by_symbol: dict[str, list[tuple[str, dict]]] = {}
+    for aid, entries in arm_pending.items():
+        for e in entries:
+            by_symbol.setdefault(e["symbol"], []).append((aid, e))
+
+    placed_per_arm: dict[str, list[dict]] = {a: [] for a in VALID_ARM_IDS}
+    failed_per_arm: dict[str, list[tuple[dict, str]]] = {a: [] for a in VALID_ARM_IDS}
+
+    # 3. Per-symbol orchestration
+    for symbol, arm_entries in by_symbol.items():
+        proposals: list[tuple[str, dict, dict]] = []  # (arm_id, setup, proposal)
+
+        # Build proposals per arm using arm-specific equity
+        for aid, setup in arm_entries:
+            arm_state = load_arm_state(aid)
+            arm_equity = float(arm_state["current_equity"])
+            proposal = build_spread(setup, broker, arm_equity, today_iso)
+            if not proposal:
+                failed_per_arm[aid].append((setup, "build_spread_none"))
+                continue
+            coid = (
+                f"gamma-arm-{aid}-{datetime.now(ET).strftime('%Y%m%d-%H%M%S')}"
+                f"-{symbol[:6]}"
+            )
+            proposal["client_order_id"] = coid
+            proposals.append((aid, setup, proposal))
+
+        if not proposals:
+            continue
+
+        # 4. Submit all arms' orders for this symbol
+        submission_results: list[tuple[str, dict, dict, dict | None]] = []
+        for aid, setup, proposal in proposals:
+            if DRY_RUN:
+                submission_results.append((aid, setup, proposal, {
+                    "order_id": f"DRY-{aid}-{symbol}",
+                    "status": "Filled",
+                    "filled_qty": proposal["qty"],
+                    "avg_fill_price": proposal["net_debit"],
+                }))
+                continue
+            try:
+                fill = broker.place_mleg_order(
+                    proposal["legs"], qty=proposal["qty"], tif="day",
+                    client_order_id=proposal["client_order_id"],
+                )
+            except Exception as e:
+                logging.error("place_mleg_order raised arm %s %s: %s", aid, symbol, e)
+                fill = None
+            submission_results.append((aid, setup, proposal, fill))
+
+        # 5. Skip-all on partial failure (plan §C)
+        TERMINAL_FAIL_STATUSES = {"cancelled", "canceled", "rejected", "inactive",
+                                   "apicancelled", "apicanceled"}
+        any_failed = any(
+            (fill is None) or
+            (str(fill.get("status") or "").lower() in TERMINAL_FAIL_STATUSES)
+            for _, _, _, fill in submission_results
+        )
+        if any_failed and not DRY_RUN:
+            # Cancel any still-working orders for this symbol
+            for aid, setup, proposal, fill in submission_results:
+                if fill and (fill.get("order_id") or fill.get("id")):
+                    status = str(fill.get("status") or "").lower()
+                    if status not in TERMINAL_FAIL_STATUSES and status != "filled":
+                        try:
+                            broker.cancel_order(fill.get("order_id") or fill.get("id"))
+                        except Exception:
+                            pass
+                failed_per_arm[aid].append(
+                    (setup, f"skip_all_partial_failure: {fill}"),
+                )
+            failures_summary = ", ".join(
+                f"{aid.upper()}={(fill or {}).get('status', 'None')}"
+                for aid, _, _, fill in submission_results
+            )
+            _post_discord(
+                f"🔴 Gamma 4-arm | {symbol} cancelled — partial broker failure: {failures_summary}"
+            )
+            continue
+
+        # 6. Record fills per arm
+        for aid, setup, proposal, fill in submission_results:
+            entry = dict(proposal)
+            arm_journal = load_arm_journal(aid)
+            entry["id"] = next_arm_trade_id(aid, arm_journal + placed_per_arm[aid])
+            entry["arm_id"] = aid
+            entry["timestamp"] = datetime.now(ET).isoformat()
+            entry["mode"] = "paper"
+            entry["status"] = "OPEN"
+            entry["source"] = f"agent_gamma_arm_{aid}"
+            entry["ranker_used"] = (
+                "rsi_only" if aid == "a" else
+                "composite" if aid == "b" else
+                "weighted_blend" if aid == "c" else
+                "reward_risk_first"
+            )
+            entry["order_id"] = (fill or {}).get("order_id") or (fill or {}).get("id") or ""
+            entry["fill_status"] = (fill or {}).get("status", "")
+            entry["filled_qty"] = (fill or {}).get("filled_qty", 0)
+            entry["avg_fill_price"] = (fill or {}).get("avg_fill_price", 0)
+            entry["arm_equity_at_entry"] = load_arm_state(aid)["current_equity"]
+            entry["rsi_at_entry"] = setup.get("rsi_10")
+            entry["sma_200_distance_pct"] = setup.get("distance_above_200ma_pct")
+            entry["sector"] = setup.get("sector")
+
+            if not DRY_RUN:
+                append_arm_trade(aid, entry)
+                # Update arm state: cash decreases by max_risk
+                state = load_arm_state(aid)
+                state["cash"] = float(state["cash"]) - float(entry["max_risk"])
+                save_arm_state(aid, state)
+                print(f"[gamma_agent] arm {aid.upper()} {entry['id']} {symbol} "
+                       f"max_risk=${entry['max_risk']:.0f}")
+            placed_per_arm[aid].append(entry)
+            _post_discord(
+                f"🟢 Agent Gamma 4-arm | Arm {aid.upper()} ENTRY\n"
+                f"📈 {symbol} ${entry['legs'][0].get('strike')}/${entry['legs'][1].get('strike')} | "
+                f"{entry.get('expiry', '')}\n"
+                f"💰 Debit ${entry['net_debit']:.2f} | r:r {entry.get('reward_risk', 0):.2f}\n"
+                f"🆔 {entry['id']} | order={str(entry['order_id'])[:12]}"
+            )
+
+    # 7. Cleanup pending files
+    if not DRY_RUN:
+        for aid in VALID_ARM_IDS:
+            path = _arm_pending_path(aid)
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                pass
+
+    total_placed = sum(len(v) for v in placed_per_arm.values())
+    total_failed = sum(len(v) for v in failed_per_arm.values())
+    print(f"[gamma_agent] EXECUTE-4ARM done: {total_placed} placed, {total_failed} failed")
+    return 0
+
+
+def run_reset_experiment() -> int:
+    """Clean restart all 4 arms back to $10K. Archives current state +
+    journals to gamma/journal/paper/archive/. Per plan §G.
+
+    Two-phase: without --confirm, posts a Discord notice and prints what
+    WOULD happen. With --confirm, performs the reset.
+    """
+    from gamma.arm_state import (
+        VALID_ARM_IDS, reset_arm, _arm_state_path, _arm_journal_path,
+        load_arm_state, JOURNAL_DIR,
+    )
+
+    reason = RESET_REASON or "operator-initiated"
+    archive_dir = JOURNAL_DIR / "archive"
+
+    if not CONFIRM:
+        print(f"[gamma_agent] RESET-EXPERIMENT requested (reason: {reason})")
+        print("  This will:")
+        for aid in VALID_ARM_IDS:
+            try:
+                state = load_arm_state(aid)
+                eq = state.get("current_equity", 0)
+                trades = state.get("total_trades", 0)
+            except Exception:
+                eq, trades = "?", "?"
+            print(f"    - Arm {aid.upper()}: reset ${eq} → $10K, archive {trades} trade(s)")
+        print(f"  Archive directory: {archive_dir}")
+        print("  Re-run with --confirm to proceed.")
+        _post_discord(
+            f"🔁 Gamma 4-arm RESET requested\nreason: {reason}\n"
+            f"Re-run `gamma_agent.py --reset-experiment --reason \"{reason}\" --confirm` "
+            f"to zero all 4 arms back to $10K."
+        )
+        return 0
+
+    # Confirmed — perform the reset
+    print(f"[gamma_agent] RESET-EXPERIMENT confirmed (reason: {reason})")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for aid in VALID_ARM_IDS:
+        if DRY_RUN:
+            print(f"  DRY-RUN would reset arm {aid.upper()}")
+            continue
+        reset_arm(aid, archive_dir=archive_dir)
+        print(f"  arm {aid.upper()} reset → $10K, archived to {archive_dir}/")
+
+    # Log reset event
+    if not DRY_RUN:
+        reset_log = archive_dir / "experiment_resets.jsonl"
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "reason": reason,
+            "archive_timestamp": timestamp,
+        }
+        try:
+            with open(reset_log, "a") as f:
+                f.write(json.dumps(event) + "\n")
+        except Exception as e:
+            logging.warning("could not log reset event: %s", e)
+
+    _post_discord(
+        f"🔁 Gamma 4-arm RESET complete\n"
+        f"All arms back to $10K starting equity.\n"
+        f"reason: {reason}"
+    )
+    return 0
+
+
+def run_promote_arm() -> int:
+    """Declare the winning arm. Closes other arms' open positions are NOT
+    auto-closed (operator runs position_monitor or manual closes); this
+    subcommand archives all 4 arms' final state and disables
+    GAMMA_AB_TEST_ENABLED. Per plan §K."""
+    if PROMOTE_ARM_ID not in ("a", "b", "c", "d"):
+        print(f"[gamma_agent] invalid --promote-arm value: {PROMOTE_ARM_ID!r}")
+        print("  Expected one of: a, b, c, d")
+        return 1
+
+    from gamma.arm_state import (
+        VALID_ARM_IDS, _arm_state_path, _arm_journal_path,
+        load_arm_state, arm_open_positions, JOURNAL_DIR,
+    )
+    from gamma.rankers import ARM_TO_RANKER
+
+    arm_id = PROMOTE_ARM_ID
+    ranker_name = ARM_TO_RANKER[arm_id]
+    archive_dir = JOURNAL_DIR / "archive"
+    reason = RESET_REASON or "promotion-evaluator-decision"
+
+    if not CONFIRM:
+        print(f"[gamma_agent] PROMOTE-ARM requested: arm {arm_id.upper()} ({ranker_name})")
+        print("  This will:")
+        print(f"    - Archive all 4 arms' state and journals to {archive_dir}/")
+        print(f"    - Disable GAMMA_AB_TEST_ENABLED in .env (set to 0)")
+        print(f"    - List other arms' open positions for operator to close")
+        for aid in VALID_ARM_IDS:
+            try:
+                state = load_arm_state(aid)
+                eq = state.get("current_equity", 0)
+                pnl = state.get("total_realized_pnl", 0)
+                trades = state.get("total_trades", 0)
+            except Exception:
+                eq, pnl, trades = "?", "?", "?"
+            tag = " ← WINNER" if aid == arm_id else ""
+            print(f"    - Arm {aid.upper()} ({ARM_TO_RANKER[aid]}): "
+                   f"${eq} (P&L ${pnl}, {trades} trades){tag}")
+        print(f"  Re-run with --confirm to proceed.")
+        _post_discord(
+            f"🏆 Gamma promote-arm requested: Arm {arm_id.upper()} ({ranker_name})\n"
+            f"Re-run `gamma_agent.py --promote-arm {arm_id} --confirm` "
+            f"to finalize."
+        )
+        return 0
+
+    # Confirmed — perform the promotion
+    print(f"[gamma_agent] PROMOTE-ARM confirmed: arm {arm_id.upper()} ({ranker_name})")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    # Archive all 4 arms' state + journals
+    for aid in VALID_ARM_IDS:
+        src_state = _arm_state_path(aid)
+        if src_state.exists():
+            dst_state = archive_dir / f"gamma_arm_{aid}_account_promote_{timestamp}.json"
+            if not DRY_RUN:
+                dst_state.write_bytes(src_state.read_bytes())
+            print(f"  archived state: {dst_state.name}")
+        src_j = _arm_journal_path(aid)
+        if src_j.exists() and src_j.stat().st_size > 0:
+            dst_j = archive_dir / f"gamma_arm_{aid}_trades_promote_{timestamp}.jsonl"
+            if not DRY_RUN:
+                dst_j.write_bytes(src_j.read_bytes())
+            print(f"  archived journal: {dst_j.name}")
+
+    # List other arms' open positions
+    others = [a for a in VALID_ARM_IDS if a != arm_id]
+    print(f"\n  Open positions in non-winning arms (operator must close):")
+    for aid in others:
+        opens = arm_open_positions(aid)
+        if not opens:
+            print(f"    Arm {aid.upper()}: no open positions")
+        else:
+            print(f"    Arm {aid.upper()}: {len(opens)} position(s)")
+            for t in opens:
+                print(f"      - {t.get('id')} {t.get('symbol')} "
+                       f"max_risk=${t.get('max_risk', 0):.0f}")
+
+    # Disable feature flag in .env
+    if not DRY_RUN:
+        try:
+            _set_env_var_in_dotenv("GAMMA_AB_TEST_ENABLED", "0")
+            print(f"  GAMMA_AB_TEST_ENABLED set to 0 in .env")
+        except Exception as e:
+            logging.error("failed to update .env: %s", e)
+            print(f"  WARNING: could not update .env automatically: {e}")
+            print(f"  Manually: sudo sed -i 's/GAMMA_AB_TEST_ENABLED=1/GAMMA_AB_TEST_ENABLED=0/' /home/trader/QuantAI/.env")
+
+    # Log promotion event
+    if not DRY_RUN:
+        event_log = archive_dir / "promotion_decisions.jsonl"
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "winning_arm": arm_id,
+            "winning_ranker": ranker_name,
+            "reason": reason,
+            "archive_timestamp": timestamp,
+            "final_equity_per_arm": {
+                aid: load_arm_state(aid).get("current_equity") for aid in VALID_ARM_IDS
+            },
+        }
+        try:
+            with open(event_log, "a") as f:
+                f.write(json.dumps(event, default=str) + "\n")
+        except Exception as e:
+            logging.warning("could not log promotion: %s", e)
+
+    final_equities = {aid: load_arm_state(aid).get("current_equity") for aid in VALID_ARM_IDS}
+    msg_lines = [
+        f"🏆 Gamma 4-arm test concluded",
+        f"Winner: Arm {arm_id.upper()} ({ranker_name})",
+        f"Final equity:",
+    ]
+    for aid in VALID_ARM_IDS:
+        tag = " ← winner" if aid == arm_id else ""
+        msg_lines.append(f"  Arm {aid.upper()}: ${final_equities[aid]:.2f}{tag}")
+    msg_lines.append(f"GAMMA_AB_TEST_ENABLED=0 — single-arm production resumes.")
+    _post_discord("\n".join(msg_lines))
+    return 0
+
+
+def _set_env_var_in_dotenv(key: str, value: str,
+                             env_path: Path = Path("/home/trader/QuantAI/.env")) -> None:
+    """Update one specific KEY=VALUE in .env without exposing other lines.
+
+    Reads the file line-by-line, replaces the matching key (or appends if
+    missing), writes atomically via temp+rename. Never logs file contents.
+    Critical: .env contains Discord bot tokens and IBKR credentials.
+    """
+    if not env_path.exists():
+        raise FileNotFoundError(f"{env_path} does not exist")
+    lines = env_path.read_text().splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}")
+    # Atomic replace
+    import tempfile as _tf, os as _os
+    fd, tmp = _tf.mkstemp(dir=str(env_path.parent), prefix=".env.", suffix=".tmp")
+    try:
+        with _os.fdopen(fd, "w") as f:
+            f.write("\n".join(new_lines) + "\n")
+        _os.replace(tmp, env_path)
+    except Exception:
+        try:
+            _os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
+    # Operator subcommands take priority
+    if RESET_EXPERIMENT:
+        return run_reset_experiment()
+    if PROMOTE_ARM:
+        return run_promote_arm()
+
     modes = sum([SCAN, EXECUTE, VERIFY_SPREADS])
     if modes > 1:
         print("[gamma_agent] choose exactly one of --scan, --execute, --verify-spreads",
               file=sys.stderr)
         return 1
     if SCAN:
-        return run_scan()
+        # 4-arm dispatch behind feature flag (commit 3). When flag is OFF,
+        # behavior is byte-identical to pre-experiment Gamma.
+        return run_scan_4arm() if GAMMA_AB_TEST_ENABLED else run_scan()
     if EXECUTE:
-        return run_execute()
+        return run_execute_4arm() if GAMMA_AB_TEST_ENABLED else run_execute()
     if VERIFY_SPREADS:
         return run_verify_spreads()
-    print("usage: gamma_agent.py --scan | --execute | --verify-spreads  [--dry-run]",
-          file=sys.stderr)
+    print(
+        "usage: gamma_agent.py --scan | --execute | --verify-spreads "
+        "| --reset-experiment [--reason \"...\"] [--confirm] "
+        "| --promote-arm <a|b|c|d> [--confirm]  [--dry-run]",
+        file=sys.stderr,
+    )
     return 1
 
 

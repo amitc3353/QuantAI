@@ -1088,6 +1088,102 @@ def post_discord(msg):
             pass
 
 
+def _update_arm_state_on_close(trade: dict, exit_reason: str, pnl: float) -> None:
+    """Per-arm state update on Gamma trade close. Added 2026-05-10 for the
+    4-arm A/B/C/D test (commit 3 of plan §J).
+
+    Behavior:
+
+    * Pre-experiment Gamma trades (no ``arm_id``, or ``source == 'agent_gamma'``)
+      → no-op. Existing close path handles them via trades.jsonl + sheets sync.
+    * Per-arm Gamma trades (``arm_id`` ∈ {a,b,c,d}) → update the arm's state
+      file (equity += pnl, cash += max_risk + pnl, total_realized_pnl += pnl,
+      consecutive_losses, circuit breaker if hit, peak_equity, drawdown_pct)
+      AND mirror the close to the arm's per-arm journal via
+      ``arm_state.update_arm_journal_entry``.
+
+    Reconciliation alert is posted to Discord if the per-arm state drifts
+    from invariants (sum-of-positions ≠ equity by > $1).
+    """
+    arm_id = trade.get("arm_id")
+    if not arm_id or arm_id not in ("a", "b", "c", "d"):
+        return  # legacy / non-arm Gamma trade — no per-arm state to update
+
+    try:
+        from gamma.arm_state import (
+            arm_open_positions,
+            load_arm_state,
+            reconcile_and_alert,
+            save_arm_state,
+            update_arm_journal_entry,
+        )
+        from gamma import CIRCUIT_BREAKER_HOURS, CIRCUIT_BREAKER_LOSSES
+    except Exception as e:
+        log(f"  arm state import failed (commit 3 modules unavailable?): {e}")
+        return
+
+    state = load_arm_state(arm_id)
+    max_risk = float(trade.get("max_risk") or 0)
+    pnl_f = float(pnl or 0)
+    now_iso = datetime.now(ET).isoformat()
+
+    # Equity + cash flow
+    state["current_equity"] = float(state["current_equity"]) + pnl_f
+    state["cash"] = float(state["cash"]) + max_risk + pnl_f
+    state["total_realized_pnl"] = float(state["total_realized_pnl"]) + pnl_f
+    state["total_trades"] = int(state["total_trades"]) + 1
+    state["last_trade_close_ts"] = now_iso
+
+    # Win / loss + circuit breaker
+    if pnl_f > 0:
+        state["winning_trades"] = int(state["winning_trades"]) + 1
+        state["consecutive_losses"] = 0
+        state["circuit_breaker_active"] = False
+        state["circuit_breaker_until"] = None
+    else:
+        state["losing_trades"] = int(state["losing_trades"]) + 1
+        state["consecutive_losses"] = int(state["consecutive_losses"]) + 1
+        if state["consecutive_losses"] >= CIRCUIT_BREAKER_LOSSES:
+            from datetime import timedelta as _td
+            state["circuit_breaker_active"] = True
+            state["circuit_breaker_until"] = (
+                datetime.now(ET) + _td(hours=CIRCUIT_BREAKER_HOURS)
+            ).isoformat()
+            log(f"  arm {arm_id.upper()} circuit breaker ACTIVATED "
+                 f"({state['consecutive_losses']} consecutive losses, "
+                 f"48h pause)")
+
+    # Drawdown
+    state["peak_equity"] = max(
+        float(state.get("peak_equity") or 0), state["current_equity"]
+    )
+    if state["peak_equity"] > 0:
+        state["drawdown_pct"] = round(
+            (state["current_equity"] / state["peak_equity"] - 1) * 100, 2
+        )
+
+    save_arm_state(arm_id, state)
+    log(f"  arm {arm_id.upper()} state: equity ${state['current_equity']:.2f} "
+         f"(P&L {pnl_f:+.2f}) trades={state['total_trades']} "
+         f"W/L={state['winning_trades']}/{state['losing_trades']}")
+
+    # Mirror to per-arm journal
+    update_arm_journal_entry(arm_id, trade["id"], {
+        "status": "CLOSED",
+        "pnl": pnl_f,
+        "close_timestamp": now_iso,
+        "close_reason": exit_reason,
+    })
+
+    # Reconciliation: verify per-arm invariants still hold after this close.
+    # Drift triggers a Discord alert via reconcile_and_alert.
+    try:
+        opens_after = arm_open_positions(arm_id)
+        reconcile_and_alert(arm_id, state, opens_after, post_discord=post_discord)
+    except Exception as _rec_err:
+        log(f"  arm {arm_id.upper()} reconcile raised: {_rec_err}")
+
+
 def post_close_alert(trade, exit_reason, pnl, is_partial=False, close_qty=None):
     strategy = (trade.get("strategy") or "").replace("_", " ").upper()
     instrument = trade.get("instrument") or trade.get("symbol") or "?"
@@ -1462,6 +1558,17 @@ def main():
                     sync_sheets()
                 for (t, reason, pnl) in closed_trades:
                     post_close_alert(t, reason, pnl)
+                    # 4-arm A/B/C/D test (commit 3): if the closed trade has
+                    # an arm_id, route the close to the correct arm's state +
+                    # journal. Pre-experiment trades (no arm_id, or
+                    # source=="agent_gamma") use the legacy path — no per-arm
+                    # update fires. Wrapped in try/except so a per-arm bug
+                    # can never block the regular close flow.
+                    try:
+                        _update_arm_state_on_close(t, reason, pnl)
+                    except Exception as _arm_err:
+                        log(f"  WARN: arm state update failed for {t.get('id','?')}: {_arm_err}")
+                        logging.exception("Arm state update failed for %s", t.get("id"))
                     # Self-learning hooks — inline + try/except so a hang or LLM
                     # failure can never affect the next monitor cycle. Bounded by
                     # 20s LLM timeout in each script (worst-case ~40s per close).
