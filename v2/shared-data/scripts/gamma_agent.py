@@ -66,6 +66,7 @@ EXECUTE = "--execute" in sys.argv
 VERIFY_SPREADS = "--verify-spreads" in sys.argv
 RESET_EXPERIMENT = "--reset-experiment" in sys.argv
 PROMOTE_ARM = "--promote-arm" in sys.argv
+EVALUATE_PROMOTION = "--evaluate-promotion" in sys.argv
 CONFIRM = "--confirm" in sys.argv
 
 # Optional --reason "..." and --promote-arm <a|b|c|d> CLI arg parsing
@@ -1232,6 +1233,43 @@ def run_promote_arm() -> int:
     return 0
 
 
+def run_evaluate_promotion() -> int:
+    """Read all 4 arms' state + journal, run promotion_evaluator, print decision.
+
+    Pure read-only. No state mutations, no Discord posts (unless caller
+    explicitly enables). Used by the operator at days 60/90/120/150/180
+    to decide whether to promote an arm. Per plan §K rollout flow."""
+    from gamma.arm_state import (
+        VALID_ARM_IDS, compute_experiment_day,
+        load_arm_state, load_arm_journal,
+    )
+    from gamma.promotion_evaluator import (
+        evaluate_promotion, format_decision_human_readable,
+    )
+
+    states = {aid: load_arm_state(aid) for aid in VALID_ARM_IDS}
+    journals = {aid: load_arm_journal(aid) for aid in VALID_ARM_IDS}
+
+    # Use the experiment_day from any arm's state (they should match —
+    # same experiment_started_at across arms)
+    exp_day = compute_experiment_day(states["a"])
+
+    decision = evaluate_promotion(states, journals, exp_day)
+    print(format_decision_human_readable(decision))
+
+    if decision["decision"] == "promote":
+        print()
+        print(f"  Next step: gamma_agent.py --promote-arm {decision['winner']} --confirm")
+    elif decision["decision"] == "extend":
+        print()
+        print(f"  Next step: continue running. Re-evaluate in 30 days.")
+    elif decision["decision"] == "hard_cap_default":
+        print()
+        print(f"  Next step: gamma_agent.py --promote-arm a --confirm "
+               f"(hard cap default → Arm A)")
+    return 0
+
+
 def _set_env_var_in_dotenv(key: str, value: str,
                              env_path: Path = Path("/home/trader/QuantAI/.env")) -> None:
     """Update one specific KEY=VALUE in .env without exposing other lines.
@@ -1276,6 +1314,8 @@ def main() -> int:
         return run_reset_experiment()
     if PROMOTE_ARM:
         return run_promote_arm()
+    if EVALUATE_PROMOTION:
+        return run_evaluate_promotion()
 
     modes = sum([SCAN, EXECUTE, VERIFY_SPREADS])
     if modes > 1:
@@ -1293,7 +1333,8 @@ def main() -> int:
     print(
         "usage: gamma_agent.py --scan | --execute | --verify-spreads "
         "| --reset-experiment [--reason \"...\"] [--confirm] "
-        "| --promote-arm <a|b|c|d> [--confirm]  [--dry-run]",
+        "| --promote-arm <a|b|c|d> [--confirm] "
+        "| --evaluate-promotion  [--dry-run]",
         file=sys.stderr,
     )
     return 1
