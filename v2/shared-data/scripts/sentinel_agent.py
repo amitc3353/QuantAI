@@ -108,6 +108,11 @@ NEVER_MODIFY_PATHS = {
     "scripts/position_monitor.py",
     "scripts/_broker_ibkr.py",
     "scripts/broker.py",
+    # Gamma 4-arm A/B/C/D test internals (frozen during experiment per plan §G)
+    "scripts/gamma/rankers/",            # ranker abstraction + 4 implementations
+    "scripts/gamma/arm_state.py",        # per-arm state tracking + atomic writes
+    "scripts/gamma/reward_risk_estimator.py",  # pre-rank r:r estimator
+    "scripts/gamma/promotion_evaluator.py",    # win-criteria evaluator (locked rules)
 }
 
 NEVER_TOUCH_PATHS = [
