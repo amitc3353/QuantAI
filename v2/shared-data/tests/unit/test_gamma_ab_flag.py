@@ -23,31 +23,66 @@ SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 
-def _reload_gamma_agent_with_env(env_overrides: dict[str, str]):
+# Path of the production .env auto-load happens during gamma_agent import; we
+# block it in tests by short-circuiting the .env file existence check.
+# Without this, any .env line for GAMMA_AB_TEST_ENABLED bleeds into the test
+# environment after the .env flip activates the experiment in production.
+_DOTENV_PATHS = (
+    "/home/trader/QuantAI/.env",
+    "/root/quantai-v2/.env",
+)
+
+
+def _reload_gamma_agent_with_env(env_overrides: dict[str, str],
+                                  block_dotenv: bool = True):
     """Reload gamma_agent with a fresh environment so the module-level
-    GAMMA_AB_TEST_ENABLED flag is re-evaluated."""
-    # Clear any cached gamma_agent
+    GAMMA_AB_TEST_ENABLED flag is re-evaluated.
+
+    When ``block_dotenv=True`` (default), the .env auto-loader inside
+    gamma_agent.py is neutered for the duration of the import so tests can
+    deterministically control the flag value regardless of what's on disk.
+    """
     if "gamma_agent" in sys.modules:
         del sys.modules["gamma_agent"]
+
+    # Wrap Path.exists so the two known .env file lookups return False during
+    # import. Other Path.exists calls are unaffected.
+    original_exists = Path.exists
+
+    def _filtered_exists(self):
+        if block_dotenv and str(self) in _DOTENV_PATHS:
+            return False
+        return original_exists(self)
+
     with patch.dict(os.environ, env_overrides, clear=False):
-        # Patch sys.argv too so we don't accidentally trip --scan / --execute
-        # on the test-runner's own argv
         with patch.object(sys, "argv", ["gamma_agent.py"]):
-            module = importlib.import_module("gamma_agent")
+            with patch.object(Path, "exists", _filtered_exists):
+                module = importlib.import_module("gamma_agent")
     return module
 
 
 class TestFeatureFlag:
     def test_flag_off_by_default(self):
-        """If env doesn't set GAMMA_AB_TEST_ENABLED, default is OFF."""
-        # Remove the var if present
-        env = {k: v for k, v in os.environ.items() if k != "GAMMA_AB_TEST_ENABLED"}
+        """With no env override AND no .env source providing the flag,
+        the code default is OFF."""
+        # Strip the var and block .env auto-load so neither source can set it.
+        env = {k: v for k, v in os.environ.items()
+                if k != "GAMMA_AB_TEST_ENABLED"}
+        if "gamma_agent" in sys.modules:
+            del sys.modules["gamma_agent"]
+
+        original_exists = Path.exists
+
+        def _filtered_exists(self):
+            if str(self) in _DOTENV_PATHS:
+                return False
+            return original_exists(self)
+
         with patch.dict(os.environ, env, clear=True):
             with patch.object(sys, "argv", ["gamma_agent.py"]):
-                if "gamma_agent" in sys.modules:
-                    del sys.modules["gamma_agent"]
-                import gamma_agent
-                assert gamma_agent.GAMMA_AB_TEST_ENABLED is False
+                with patch.object(Path, "exists", _filtered_exists):
+                    import gamma_agent
+                    assert gamma_agent.GAMMA_AB_TEST_ENABLED is False
 
     def test_flag_on_via_env(self):
         mod = _reload_gamma_agent_with_env({"GAMMA_AB_TEST_ENABLED": "1"})
@@ -59,9 +94,13 @@ class TestFeatureFlag:
 
     def test_flag_only_truthy_for_exactly_1(self):
         """``GAMMA_AB_TEST_ENABLED=true`` (non-1) → flag stays OFF.
-        Strict equality with '1' avoids accidental enablement."""
+        Strict equality with '1' avoids accidental enablement.
+        .env auto-load is blocked so empty-string and other non-1 values
+        don't get silently overridden by the production .env."""
         for val in ("0", "true", "True", "yes", "on", "", "x"):
-            mod = _reload_gamma_agent_with_env({"GAMMA_AB_TEST_ENABLED": val})
+            mod = _reload_gamma_agent_with_env(
+                {"GAMMA_AB_TEST_ENABLED": val}, block_dotenv=True,
+            )
             assert mod.GAMMA_AB_TEST_ENABLED is False, (
                 f"Unexpected truthy: {val!r}"
             )
