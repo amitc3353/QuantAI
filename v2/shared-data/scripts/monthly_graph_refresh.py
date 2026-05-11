@@ -132,8 +132,16 @@ def commit_graphify_changes(stamp: datetime) -> tuple[bool, str]:
 
 
 def run_graphify_update(dry_run: bool) -> tuple[int, str]:
-    """Invoke claude -p with /graphify --update. Returns (exit_code, output)."""
-    cmd = [
+    """Invoke claude -p with /graphify --update. Returns (exit_code, output).
+
+    Claude Code refuses to run with bypass-permissions under root/sudo for
+    security reasons. Cron runs this script as root (so it can write to the
+    root-owned log file), but the claude invocation itself must run as the
+    `trader` user. We wrap with `runuser -u trader --` to drop privileges
+    just for the subprocess; the parent Python continues as root for the
+    surrounding log / git work.
+    """
+    claude_cmd = [
         CLAUDE,
         "-p",
         "Run `/graphify . --update` and report a one-line summary of what changed (nodes/edges/communities delta).",
@@ -143,13 +151,22 @@ def run_graphify_update(dry_run: bool) -> tuple[int, str]:
         "--output-format", "text",
         "--no-session-persistence",
     ]
+    # Drop privileges only if we're root. `runuser` is the standard way to do
+    # this without password; when invoked by a non-root user it would prompt,
+    # so we no-op the wrapping for already-trader-owned invocations.
+    if os.geteuid() == 0:
+        cmd = ["/usr/sbin/runuser", "-u", "trader", "--"] + claude_cmd
+    else:
+        cmd = claude_cmd
+
     if dry_run:
         log.info("DRY RUN — would execute: %s", " ".join(cmd))
         return 0, "(dry-run — no actual call)"
 
-    # Run as user trader's HOME so claude finds its config
+    # runuser inherits env by default; setting HOME explicitly for safety so
+    # claude finds /home/trader/.claude/ config regardless of cron's env.
     env = dict(os.environ)
-    env.setdefault("HOME", "/home/trader")
+    env["HOME"] = "/home/trader"
 
     try:
         r = subprocess.run(

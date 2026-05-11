@@ -14,6 +14,38 @@ SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 
+# ── Discord side-effect blocker (autouse) ────────────────────────────────────
+# Tests in test_agent_self_diagnosis.py / test_trade_reviewer.py / etc. mock
+# the LLM client to return bad responses (e.g. "this is not json"). When the
+# mocked-bad response flows through _llm_call.call_llm_json's retry-exhausted
+# path, _discord_alert() is called — and on the VPS that posts to the real
+# Discord channel because DISCORD_CHANNEL_ALERTS is set in .env (auto-loaded
+# by the scripts under test). Symptom: pytest run on the VPS triggers real
+# Discord "🔴 LLM call failed after 3 attempts" messages.
+#
+# Fix: stub only the HTTP-side-effect function `_do_discord_post`, NOT the
+# `_discord_alert` rate-limiter wrapper. This preserves rate-limit logic that
+# test_llm_call.py:TestDiscordRateLimit exercises (it depends on
+# `_discord_alert` running for real and calling `_do_discord_post`, which
+# tests then re-patch locally to capture posted messages). Belt-and-braces:
+# also clear DISCORD_CHANNEL_ALERTS env so the actual HTTP path
+# short-circuits even if a test forgets to patch `_do_discord_post`.
+#
+# Tests that need to verify Discord-post content re-patch `_do_discord_post`
+# in-test; pytest's monkeypatch resolves nearer-to-test overrides over the
+# autouse one, so those tests continue to work without modification.
+@pytest.fixture(autouse=True)
+def _block_real_discord_posts(monkeypatch):
+    monkeypatch.setenv("DISCORD_CHANNEL_ALERTS", "")
+    try:
+        import _llm_call  # noqa: F401
+        monkeypatch.setattr(
+            "_llm_call._do_discord_post", lambda *a, **kw: None, raising=False,
+        )
+    except ImportError:
+        pass
+
+
 # ── Runtime sandbox fixture ──────────────────────────────────────────────────
 @pytest.fixture()
 def tmp_root(tmp_path, monkeypatch):
