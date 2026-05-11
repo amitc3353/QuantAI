@@ -3,6 +3,53 @@
 **Date:** 2026-05-11 · **Status:** Plan only — implementation deferred to a follow-up commit
 **Author:** Claude (read-only audit of `sentinel_agent.py`, `system_monitor.py`, `gamma/arm_state.py`, `gamma_agent.py`, `position_monitor.py`)
 
+---
+
+## ⚠️ Notes for the implementation session
+
+Two follow-ups raised by the operator after plan approval. Read these BEFORE starting implementation:
+
+### N1 — `promotion_history.jsonl` schema (pin before Commit 4)
+
+The plan references this file in G11 but the prior draft didn't pin the shape. Use this exactly:
+
+```json
+{
+  "event": "promote" | "reset",
+  "arm_id": "a" | "b" | "c" | "d" | null,
+  "timestamp": "<ISO-8601 with timezone>",
+  "reason": "<operator-provided string captured at --confirm>"
+}
+```
+
+- `arm_id` is **null for reset events** (`event="reset"`); always set for `event="promote"`
+- `timestamp` is ISO-8601 with timezone, e.g. `"2026-07-10T20:31:42-04:00"`
+- `reason` is the free-form string the operator passes via `--reason "..."` (already captured by `gamma_agent.py` for both subcommands)
+- File: `/root/quantai-v2/shared-data/logs/promotion_history.jsonl` (append-only)
+- Created lazily on first `--confirm` invocation; G11 must handle "file missing" as "no recent legitimate action → don't suppress"
+- Sentinel's G11 check reads the **last line only** and checks `timestamp` is within 24h of now. No need to parse the whole file.
+
+Tests for Commit 4 must cover both event shapes and the "file missing" path.
+
+### N2 — G3 threshold assumption documentation
+
+The "1 line per market day" baseline holds **only while Gamma uses the cron-driven scan model** (`30 20 * * 1-5` → `run_scan_4arm` called once per weekday). If the architecture ever moves to event-driven scans (WebSocket triggers, multi-timeframe scans, intraday rescans, etc.), the growth threshold (≥2/day=warn, ≥5/day=crit) will start producing false positives.
+
+**Required in Commit 1** — directly above the G3 check in `system_monitor.py`, add a comment:
+
+```python
+# G3: threshold assumes single daily scan cron (30 20 * * 1-5).
+# Baseline = 1 line/market day in gamma_ranking_decisions.jsonl.
+# Recalibrate the growth thresholds (currently >=2 warn, >=5 crit)
+# if scan frequency changes — e.g. event-driven scans, multi-timeframe
+# triggers, intraday rescans. The stagnation check (0 entries on a
+# market day after 21:00 UTC) remains valid regardless of cadence.
+```
+
+This is the kind of implicit assumption that bites future maintainers. The comment is the audit trail.
+
+---
+
 ## Step 1a — What Sentinel monitors today
 
 Sentinel is an LLM-driven (Sonnet for apply, Haiku for observe) operations agent that wakes on a fixed ET schedule and consumes a deterministic context bundle assembled by `gather_context()` (`sentinel_agent.py:576`). It produces a structured plan via Claude with `findings` + `proposals` (fix-class = `safe_auto` / `propose_wait` / `never_touch`), gated through hardcoded Python safety rails before any LLM output can mutate the system.
