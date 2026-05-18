@@ -1309,13 +1309,29 @@ def _set_env_var_in_dotenv(key: str, value: str,
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
-    # Operator subcommands take priority
+    # Operator subcommands take priority — these MUST still run even when
+    # GAMMA_ENABLED=0 so the operator can reset / promote / evaluate the
+    # experiment while gamma's normal scan/execute is paused.
     if RESET_EXPERIMENT:
         return run_reset_experiment()
     if PROMOTE_ARM:
         return run_promote_arm()
     if EVALUATE_PROMOTION:
         return run_evaluate_promotion()
+
+    # Per-agent kill switch (added 2026-05-11). Default ON — see _agent_flags.py.
+    # When GAMMA_ENABLED=0 in .env, skip SCAN/EXECUTE/VERIFY_SPREADS entirely.
+    # Stacks above GAMMA_AB_TEST_ENABLED: if Gamma is re-enabled later, the
+    # existing 4-arm test state resumes seamlessly. position_monitor runs
+    # independently and continues to exit existing Gamma positions.
+    try:
+        from _agent_flags import is_agent_enabled, notify_once_per_day_disabled
+        if not is_agent_enabled("gamma"):
+            print("[gamma_agent] GAMMA_ENABLED=0 in .env — skipping scan/execute/verify")
+            notify_once_per_day_disabled("gamma", post_discord=_post_discord)
+            return 0
+    except Exception as e:
+        print(f"[gamma_agent] _agent_flags check failed: {e} (defaulting to enabled)")
 
     modes = sum([SCAN, EXECUTE, VERIFY_SPREADS])
     if modes > 1:

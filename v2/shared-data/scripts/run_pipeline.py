@@ -187,6 +187,28 @@ def run_eod():
 
 # ── ENTRY mode ────────────────────────────────────────────────────────
 def run_entry(state):
+    # Per-agent kill switch (added 2026-05-11). Default ON — see _agent_flags.py.
+    # When ALPHA_ENABLED=0 in .env, skip the entry path entirely. position_monitor
+    # runs independently and continues to exit existing positions.
+    try:
+        from _agent_flags import is_agent_enabled, notify_once_per_day_disabled
+        if not is_agent_enabled("alpha"):
+            log("[alpha] ALPHA_ENABLED=0 in .env — skipping entry path")
+
+            def _post(msg: str) -> None:
+                try:
+                    from _discord import post_to_channel
+                    ch = os.environ.get("DISCORD_CHANNEL_ALERTS", "")
+                    if ch:
+                        post_to_channel(ch, msg)
+                except Exception:
+                    pass
+
+            notify_once_per_day_disabled("alpha", post_discord=_post)
+            return state
+    except Exception as e:
+        log(f"[alpha] _agent_flags check failed: {e} (defaulting to enabled)")
+
     log(f"Considering entry — {state['entries_today']} entries today so far")
 
     # Refresh intelligence

@@ -142,6 +142,18 @@ def _journal_write(entry: dict) -> None:
 def main() -> int:
     print(f"[beta_agent] start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
 
+    # Per-agent kill switch (added 2026-05-11). Default ON — see _agent_flags.py.
+    # When BETA_ENABLED=0 in .env, skip the cycle entirely. position_monitor
+    # runs independently and continues to exit existing Beta positions.
+    try:
+        from _agent_flags import is_agent_enabled, notify_once_per_day_disabled
+        if not is_agent_enabled("beta"):
+            print("[beta_agent] BETA_ENABLED=0 in .env — skipping")
+            notify_once_per_day_disabled("beta", post_discord=_post_discord)
+            return 0
+    except Exception as e:
+        print(f"[beta_agent] _agent_flags check failed: {e} (defaulting to enabled)")
+
     if not INTEL_PATH.exists():
         logging.error("market_intelligence.json not found at %s", INTEL_PATH)
         return 1
