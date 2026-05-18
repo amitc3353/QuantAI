@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sys
+import time as _time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -157,6 +159,108 @@ def _next_gamma_id(journal: list) -> str:
             except ValueError:
                 continue
     return f"G{max_n + 1:03d}"
+
+
+# ── Regime gate (added 2026-05-18) ────────────────────────────────────────────
+# Broad-market environment filter. Runs in run_scan_4arm() after
+# indicator-cache write (so position_monitor always gets fresh data)
+# but before reward:risk estimation + ranking.  Three branches:
+#   skip   — VIX extreme / panic-structured → no entries
+#   half   — elevated VIX or structural downtrend → size_multiplier 0.5
+#   normal — proceed at full size
+# Fail-OPEN on every degradation path: a monitoring-data problem must
+# never cause a silent no-trade day or a wrong order.
+
+REGIME_INTEL_STALE_HOURS = 24
+
+
+def _check_regime_gate(intel_path: Path) -> tuple[str, float, dict]:
+    """Evaluate broad-market regime for scan gating.
+
+    Returns (decision, size_multiplier, detail_dict).
+      decision: "skip" | "half" | "normal"
+      size_multiplier: 0.5 or 1.0  (0.0 never used for sizing — skip
+          returns from run_scan_4arm before any multiplier is applied)
+      detail_dict: audit fields for ranking_decisions.jsonl
+    """
+    detail: dict = {
+        "intel_present": False,
+        "intel_age_hours": None,
+        "vix": None,
+        "vix_regime": None,
+        "term_structure": None,
+        "spy_above_ema200": None,
+    }
+
+    # ── 1. File presence ────────────────────────────────────────────
+    if not intel_path.exists():
+        logging.warning("regime gate: %s missing — fail-open", intel_path)
+        return ("normal", 1.0, detail)
+
+    # ── 2. Staleness ────────────────────────────────────────────────
+    try:
+        age_hours = (_time.time() - intel_path.stat().st_mtime) / 3600.0
+    except OSError:
+        age_hours = None
+    detail["intel_age_hours"] = round(age_hours, 2) if age_hours is not None else None
+    if age_hours is not None and age_hours > REGIME_INTEL_STALE_HOURS:
+        logging.warning(
+            "regime gate: intel file stale (%.1fh) — fail-open", age_hours,
+        )
+        detail["intel_present"] = True
+        return ("normal", 1.0, detail)
+
+    # ── 3. Parse JSON ───────────────────────────────────────────────
+    try:
+        intel = json.loads(intel_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logging.warning("regime gate: could not parse intel: %s — fail-open", e)
+        detail["intel_present"] = True
+        return ("normal", 1.0, detail)
+
+    detail["intel_present"] = True
+    macro = intel.get("macro") or {}
+
+    # ── 4. Extract fields ───────────────────────────────────────────
+    vix = macro.get("vix")
+    vix_regime = macro.get("vix_regime")
+    term_structure = macro.get("vix_term_structure")
+    spy_data = (intel.get("symbols") or {}).get("SPY") or {}
+    spy_above_ema200 = spy_data.get("above_ema200")
+
+    detail["vix"] = vix
+    detail["vix_regime"] = vix_regime
+    detail["term_structure"] = term_structure
+    detail["spy_above_ema200"] = spy_above_ema200
+
+    # ── 5. VIX sanity ──────────────────────────────────────────────
+    # If VIX is missing or NaN, we cannot evaluate regime — fail-open.
+    if vix is None or (isinstance(vix, float) and math.isnan(vix)):
+        logging.warning("regime gate: VIX is %s — fail-open", vix)
+        return ("normal", 1.0, detail)
+
+    if vix_regime is None:
+        logging.warning("regime gate: vix_regime missing — fail-open")
+        return ("normal", 1.0, detail)
+
+    # ── 6. Decision logic ──────────────────────────────────────────
+    # SKIP: extreme VIX (danger/HALT = VIX ≥ 30)
+    if vix_regime in ("danger", "HALT"):
+        return ("skip", 1.0, detail)
+
+    # SKIP: high VIX + inverted term structure (panic)
+    if vix_regime == "high" and term_structure == "backwardation":
+        return ("skip", 1.0, detail)
+
+    # HALF: high VIX without backwardation (VIX 24-30)
+    if vix_regime == "high":
+        return ("half", 0.5, detail)
+
+    # HALF: SPY below 200 EMA — broad structural downtrend
+    if spy_above_ema200 is False:  # explicit False, not None
+        return ("half", 0.5, detail)
+
+    return ("normal", 1.0, detail)
 
 
 # ── --scan mode (post-close) ──────────────────────────────────────────────────
@@ -752,21 +856,59 @@ def run_scan_4arm() -> int:
         except Exception as e:
             logging.warning("indicator cache write failed: %s", e)
 
+    # ── Regime gate (added 2026-05-18) ─────────────────────────────────
+    # Runs AFTER indicator-cache write so position_monitor always has
+    # fresh RSI data. Runs BEFORE reward:risk estimation + ranking so
+    # a "skip" decision short-circuits the expensive broker chain pulls.
+    intel_path = Path("/root/quantai-v2/shared-data/cache/market_intelligence.json")
+    try:
+        regime_decision, regime_size_mult, regime_detail = _check_regime_gate(intel_path)
+    except Exception as e:
+        logging.warning("regime gate raised — fail-open: %s", e)
+        regime_decision, regime_size_mult, regime_detail = "normal", 1.0, {"error": str(e)}
+
+    # Build context dict (VIX for rankers, timestamps for audit)
+    context: dict = {
+        "today": datetime.now(ET).date(),
+        "scan_timestamp": datetime.now(ET).isoformat(),
+        "vix": regime_detail.get("vix"),
+    }
+
+    print(f"[gamma_agent] regime gate: {regime_decision} "
+          f"(vix={regime_detail.get('vix')}, regime={regime_detail.get('vix_regime')}, "
+          f"term={regime_detail.get('term_structure')}, "
+          f"spy_ema200={regime_detail.get('spy_above_ema200')})")
+
+    if regime_decision == "skip":
+        _post_discord(
+            f"🔴 Gamma 4-Arm | Regime gate SKIP\n"
+            f"VIX={regime_detail.get('vix')}, "
+            f"regime={regime_detail.get('vix_regime')}, "
+            f"term={regime_detail.get('term_structure')}"
+        )
+        # Log the skip decision for audit — no ranking happened
+        _log_ranking_decision({
+            "scan_timestamp": context["scan_timestamp"],
+            "n_qualifying": len(setups),
+            "qualifying_symbols": [s["symbol"] for s in setups],
+            "vix_at_scan": context.get("vix"),
+            "regime_decision": "skip",
+            "regime_detail": regime_detail,
+            "ranks_per_arm": {},
+            "picked_per_arm": {},
+            "skipped_arms": {},
+        })
+        return 0
+
     # Reward:risk estimates (commit 1) — used by Arms B and D
     setups, estimator_duration = compute_reward_risk_estimates(setups, broker)
     print(f"[gamma_agent] reward_risk_estimator: {estimator_duration:.2f}s "
           f"({sum(1 for s in setups if s.get('reward_risk_estimate') is not None)}/{len(setups)} estimated)")
 
-    # Load market intelligence for ranker context (VIX etc.)
-    context: dict = {"today": datetime.now(ET).date(),
-                     "scan_timestamp": datetime.now(ET).isoformat()}
-    try:
-        intel_path = Path("/root/quantai-v2/shared-data/cache/market_intelligence.json")
-        if intel_path.exists():
-            intel = json.loads(intel_path.read_text())
-            context["vix"] = intel.get("vix") or intel.get("VIX")
-    except Exception:
-        pass
+    # Tag setups with regime_size_multiplier for execute-time half-size
+    # (acted on in a future commit; stored now for audit completeness)
+    for s in setups:
+        s["regime_size_multiplier"] = regime_size_mult
 
     # Per-arm dispatch
     decisions_record: dict = {
@@ -775,6 +917,8 @@ def run_scan_4arm() -> int:
         "qualifying_symbols": [s["symbol"] for s in setups],
         "vix_at_scan": context.get("vix"),
         "estimator_duration_sec": round(estimator_duration, 2),
+        "regime_decision": regime_decision,
+        "regime_detail": regime_detail,
         "ranks_per_arm": {},
         "picked_per_arm": {},
         "skipped_arms": {},
@@ -1052,7 +1196,7 @@ def run_reset_experiment() -> int:
     """
     from gamma.arm_state import (
         VALID_ARM_IDS, reset_arm, _arm_state_path, _arm_journal_path,
-        load_arm_state, JOURNAL_DIR,
+        load_arm_state, save_arm_state, JOURNAL_DIR,
     )
 
     reason = RESET_REASON or "operator-initiated"
@@ -1088,6 +1232,17 @@ def run_reset_experiment() -> int:
             continue
         reset_arm(aid, archive_dir=archive_dir)
         print(f"  arm {aid.upper()} reset → $10K, archived to {archive_dir}/")
+
+    # Set experiment_started_at on all arms (reset_arm leaves it None,
+    # which would break compute_experiment_day). Must happen after ALL
+    # arms are reset so the start timestamp is identical across arms.
+    if not DRY_RUN:
+        now_iso = datetime.now(ET).isoformat()
+        for aid in VALID_ARM_IDS:
+            state = load_arm_state(aid)
+            state["experiment_started_at"] = now_iso
+            save_arm_state(aid, state)
+            print(f"  arm {aid.upper()} experiment_started_at = {now_iso}")
 
     # Log reset event
     if not DRY_RUN:

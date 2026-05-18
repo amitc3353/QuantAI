@@ -111,8 +111,9 @@ EXPECTED_CRON_PATTERNS = [
     # Sentinel agent (replaced auto_heal 2026-05-03). Cron is wrapper-driven —
     # fires every 15 min in bracket windows; sentinel_agent.py --auto reads ET
     # clock and dispatches to apply/observe/None.
+    # 2026-05-18: weekend cron (0,6) removed to cut Sentinel LLM spend while
+    # Alpha+Beta are paused. Only weekday cron remains.
     r"\*/15\s+12-21\s+\*\s+\*\s+1-5.*sentinel_agent\.py\s+--auto",
-    r"\*/15\s+13-16\s+\*\s+\*\s+0,6.*sentinel_agent\.py\s+--auto",
     # system_monitor: deterministic 13-check health report, every 2 min, all days
     r"\*/2\s+\*\s+\*\s+\*\s+\*\s+python3\s+/home/trader/QuantAI/v2/shared-data/scripts/system_monitor\.py",
 ]
