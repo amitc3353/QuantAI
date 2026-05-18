@@ -174,6 +174,53 @@ class TestSynthesizeWithData:
 
         assert any(ch == "test-channel-id" for ch, _ in discord_calls)
 
+    def test_disabled_agent_skips_llm_and_discord(self, tmp_root, journal_path, monkeypatch):
+        """When ALPHA_ENABLED=0 in env, weekly_synthesis must skip the LLM call
+        and the Discord post for that agent. The report file is still written
+        but the synthesis section reads "(agent disabled via .env ..)".
+        Added 2026-05-18 to verify per-agent kill-switch cost-cut path."""
+        _write_trades(journal_path, [_make_trade("A001", "agent_alpha", 180)])
+        _make_diagnosis_file(tmp_root, "agent_alpha", "A001")
+
+        # LLM client SHOULD NOT be called for alpha. Wire a mock that records.
+        llm_calls = []
+        mock_client = MagicMock()
+        def _record(*a, **kw):
+            llm_calls.append((a, kw))
+            r = MagicMock()
+            r.content = [MagicMock(text="should-not-reach")]
+            return r
+        mock_client.messages.create.side_effect = _record
+        mock_module = MagicMock()
+        mock_module.Client.return_value = mock_client
+        monkeypatch.setitem(sys.modules, "_llm_client", mock_module)
+
+        # Discord SHOULD NOT receive an alpha post.
+        discord_calls = []
+        mock_discord = MagicMock()
+        mock_discord.post_to_channel = lambda ch, msg: discord_calls.append((ch, msg)) or True
+        monkeypatch.setitem(sys.modules, "_discord", mock_discord)
+        monkeypatch.setenv("DISCORD_CHANNEL_ALERTS", "test-channel")
+
+        # The key override: disable alpha. Per-test value wins over conftest autouse.
+        monkeypatch.setenv("ALPHA_ENABLED", "0")
+
+        import weekly_synthesis as ws
+        importlib.reload(ws)
+        week_start = datetime(2026, 4, 27, 0, 0, tzinfo=ET)
+        rc = ws.synthesize(week_start, dry_run=False)
+        assert rc == 0
+        # No LLM call attempted for alpha (the only agent with data)
+        assert llm_calls == [], f"Expected no LLM calls, got {len(llm_calls)}"
+        # No Discord post for alpha
+        alpha_posts = [(ch, m) for (ch, m) in discord_calls if "alpha" in (m or "").lower()]
+        assert alpha_posts == [], f"Expected no alpha Discord posts, got {alpha_posts}"
+        # Report file written + contains the disabled-note for alpha
+        reports = list((tmp_root / "weekly_reports").glob("*.md"))
+        assert len(reports) == 1
+        content = reports[0].read_text()
+        assert "agent disabled via .env" in content
+
     def test_llm_failure_uses_fallback_text(self, tmp_root, journal_path, monkeypatch):
         """Sonnet failure after retry → fallback text, still writes report."""
         _write_trades(journal_path, [_make_trade("A001", "agent_alpha", 180)])

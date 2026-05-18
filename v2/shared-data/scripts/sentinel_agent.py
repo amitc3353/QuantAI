@@ -150,17 +150,24 @@ APPROVAL_EXPIRY_HOURS = 48
 
 SCHEDULE_ET = {
     "weekday": {
-        (8, 30):  "apply",
-        (10, 0):  "observe",
+        (8, 30):  "apply",      # pre-market apply — overnight breakage safety net
+        (10, 0):  "observe",    # hourly observes during market hours (10–15 ET)
         (11, 0):  "observe",
         (12, 0):  "observe",
         (13, 0):  "observe",
         (14, 0):  "observe",
         (15, 0):  "observe",
-        (16, 15): "apply",
-        (21, 0):  "observe",
+        (16, 15): "apply",      # post-close apply — drain daily digest
+        # 2026-05-18: removed (21, 0) late-evening observe — pruned per operator
+        # cost-reduction directive while Alpha+Beta are paused. Gamma's last
+        # scheduled action is the 16:30 ET scan, so a 21:00 ET observe added
+        # little signal value. Re-add if/when 24-hour visibility returns.
     },
-    "weekend": {(10, 0): "observe"},
+    # 2026-05-18: removed weekend observe slot — Sentinel did one Saturday/Sunday
+    # observe at 10:00 ET. With weekends fully idle and the dashboard already
+    # showing system-monitor's deterministic 13-check health report, the LLM
+    # call wasn't earning its keep.
+    "weekend": {},
 }
 
 

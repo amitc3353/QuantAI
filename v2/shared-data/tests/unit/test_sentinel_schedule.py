@@ -38,11 +38,10 @@ class TestResolveModeFromClock:
         (_at(2026, 5, 4, 14, 0), "observe"),
         (_at(2026, 5, 4, 15, 0), "observe"),
         (_at(2026, 5, 4, 16, 15), "apply"),
-        (_at(2026, 5, 4, 21, 0), "observe"),
-        # Sat = 5
-        (_at(2026, 5, 9, 10, 0), "observe"),
-        # Sun = 6
-        (_at(2026, 5, 10, 10, 0), "observe"),
+        # 2026-05-18: (21,0) weekday observe + Sat/Sun (10,0) observes were
+        # removed from SCHEDULE_ET to cut Sentinel LLM spend while Alpha+Beta
+        # are paused. These three former slots are asserted as non-slots in
+        # test_non_slot_returns_none below.
     ])
     def test_scheduled_slots_resolve(self, dt, expected, monkeypatch):
         monkeypatch.setattr(SA, "datetime", _FakeDatetime(dt))
@@ -53,8 +52,11 @@ class TestResolveModeFromClock:
         _at(2026, 5, 4, 8, 31),   # one minute past 8:30 — not aligned
         _at(2026, 5, 4, 16, 0),   # 16:00 not a slot (16:15 is)
         _at(2026, 5, 4, 22, 0),   # 22:00 not a slot
+        _at(2026, 5, 4, 21, 0),   # 2026-05-18: 21:00 ET weekday observe REMOVED
         _at(2026, 5, 9, 11, 0),   # Sat 11 AM — not a slot
         _at(2026, 5, 9, 8, 30),   # Sat 8:30 — weekday slot but it's a weekend
+        _at(2026, 5, 9, 10, 0),   # 2026-05-18: Sat 10:00 weekend observe REMOVED
+        _at(2026, 5, 10, 10, 0),  # 2026-05-18: Sun 10:00 weekend observe REMOVED
     ])
     def test_non_slot_returns_none(self, dt, monkeypatch):
         monkeypatch.setattr(SA, "datetime", _FakeDatetime(dt))
@@ -63,15 +65,17 @@ class TestResolveModeFromClock:
 
 class TestNextScheduledET:
     def test_after_last_weekday_slot_returns_next_weekend_or_monday(self, monkeypatch):
-        # Mon 22:00 — past 21:00 slot. Next is either Sat 10:00 or next Mon 8:30.
-        # Schedule: weekday has up through 21:00, then weekend Sat 10:00, then Mon 8:30
+        # Mon 22:00 — past the last weekday slot (16:15 apply). With the
+        # 2026-05-18 SCHEDULE_ET prune (no more 21:00 weekday + no weekend),
+        # the next slot is Tuesday 08:30.
         monkeypatch.setattr(SA, "datetime", _FakeDatetime(_at(2026, 5, 4, 22, 0)))
         nxt = SA.next_scheduled_et()
-        # Tuesday 8:30 AM is the next slot
         assert "Tue 08:30 ET (apply)" in nxt
 
     def test_sunday_after_slot_returns_monday(self, monkeypatch):
-        # Sunday 14:00 — past Sun 10:00. Next is Mon 8:30.
+        # Sunday 14:00 — with the 2026-05-18 prune the weekend table is empty,
+        # so the next slot is Monday 08:30 regardless of where in the weekend
+        # we are.
         monkeypatch.setattr(SA, "datetime", _FakeDatetime(_at(2026, 5, 10, 14, 0)))
         nxt = SA.next_scheduled_et()
         assert "Mon 08:30 ET (apply)" in nxt

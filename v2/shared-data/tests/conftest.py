@@ -46,6 +46,22 @@ def _block_real_discord_posts(monkeypatch):
         pass
 
 
+# ── Per-agent flags default-ON during tests (added 2026-05-18) ────────────────
+# Once ALPHA_ENABLED=0 / BETA_ENABLED=0 / GAMMA_ENABLED=1 landed in .env to
+# pause Alpha+Beta in production, scripts that auto-load .env (including
+# weekly_synthesis.py via its module-level loader) pick up those values
+# inside the test process too. That breaks pre-existing tests that assumed
+# all agents enabled by default. This autouse fixture sets all three flags
+# to "1" before each test runs; any test that wants to exercise the
+# disabled-path overrides per-test with monkeypatch.setenv("..._ENABLED", "0"),
+# which wins over this fixture's value.
+@pytest.fixture(autouse=True)
+def _default_agent_flags_enabled(monkeypatch):
+    monkeypatch.setenv("ALPHA_ENABLED", "1")
+    monkeypatch.setenv("BETA_ENABLED", "1")
+    monkeypatch.setenv("GAMMA_ENABLED", "1")
+
+
 # ── Runtime sandbox fixture ──────────────────────────────────────────────────
 @pytest.fixture()
 def tmp_root(tmp_path, monkeypatch):

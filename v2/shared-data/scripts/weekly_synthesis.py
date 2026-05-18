@@ -286,7 +286,13 @@ def _write_full_report(week_start: datetime, all_agg: dict,
         md += f"- Trades opened: {agg.get('trades_opened', 0)}\n"
         md += f"- Win rate: {agg.get('win_rate', 0)}%\n"
         md += f"- P&L: ${agg.get('total_pnl', 0)}\n\n"
-        synth = all_syntheses.get(agent) or "(no synthesis — agent had no activity or LLM failed)"
+        # all_syntheses[agent] is None iff the agent is disabled via .env.
+        # Distinguish "disabled" from "no activity / LLM failed" in the report.
+        raw = all_syntheses.get(agent)
+        if raw is None:
+            synth = "(agent disabled via .env — LLM synthesis skipped to cut cost)"
+        else:
+            synth = raw or "(no synthesis — agent had no activity or LLM failed)"
         md += f"### Synthesis\n\n{synth}\n\n"
     try:
         fp.write_text(md)
@@ -320,9 +326,25 @@ def synthesize(week_start: datetime, dry_run: bool = False) -> int:
     all_agg = {}
     all_syntheses = {}
 
+    # Per-agent kill-switch check (added 2026-05-18). If an agent is disabled
+    # via .env (<AGENT>_ENABLED=0), skip its block entirely — no LLM call,
+    # no Discord post. Matches the operator's intent to stop ALL LLM spend
+    # attributable to a paused agent. Errors fall open (treat as enabled).
+    def _agent_enabled(agent_full: str) -> bool:
+        try:
+            from _agent_flags import is_agent_enabled
+            return is_agent_enabled(agent_full.replace("agent_", ""))
+        except Exception:
+            return True
+
     for agent in AGENTS:
         agg = _aggregate_for_agent(agent, closed, opened, week_start)
         all_agg[agent] = agg
+
+        if not _agent_enabled(agent):
+            print(f"[weekly_synthesis] {agent}: disabled via .env — skipping LLM call + Discord post")
+            all_syntheses[agent] = None  # sentinel: signals second loop to skip Discord
+            continue
 
         if agg["trades_closed"] == 0 and agg["trades_opened"] == 0 and not agg["diagnoses"]:
             print(f"[weekly_synthesis] {agent}: no activity — skipping LLM call")
@@ -386,10 +408,14 @@ def synthesize(week_start: datetime, dry_run: bool = False) -> int:
     if fp:
         print(f"[weekly_synthesis] full report → {fp}")
 
-    # Post per-agent summaries to Discord
+    # Post per-agent summaries to Discord (skip agents whose synthesis is None
+    # — set above for disabled agents to suppress their Discord post entirely)
     for agent in AGENTS:
+        synth = all_syntheses.get(agent)
+        if synth is None:
+            print(f"[weekly_synthesis] {agent}: disabled — no Discord post")
+            continue
         agg = all_agg[agent]
-        synth = all_syntheses.get(agent) or ""
         msg = _summarize_for_discord(agent, week_start, agg, synth)
         ok = _post_discord(msg, dry_run)
         if not ok and not dry_run:
