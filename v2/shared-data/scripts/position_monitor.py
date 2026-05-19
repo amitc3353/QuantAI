@@ -518,7 +518,7 @@ def check_gamma_exit(trade, pnl, now, broker=None):
     Returns (should_close, reason, close_fraction, partial_flag) or None
     if the trade is not Gamma.
     """
-    if trade.get("source") != "agent_gamma":
+    if not (trade.get("source") or "").startswith("agent_gamma"):
         return None
     rules = trade.get("exit_rules") or {}
     if not rules:
@@ -1190,7 +1190,7 @@ def post_close_alert(trade, exit_reason, pnl, is_partial=False, close_qty=None):
     basis = abs(trade.get("net_debit") or trade.get("net_credit") or 0)
     pnl_pct = round(pnl / (basis * 100) * 100, 1) if basis > 0 else 0.0
 
-    if trade.get("source") == "agent_gamma":
+    if (trade.get("source") or "").startswith("agent_gamma"):
         entry_rsi = trade.get("rsi_at_entry")
         # Pull live RSI from indicator cache for context
         sym = trade.get("symbol") or trade.get("instrument") or ""
