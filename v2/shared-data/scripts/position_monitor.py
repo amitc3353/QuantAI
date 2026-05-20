@@ -237,6 +237,11 @@ def _leg_occ(trade, leg):
 def compute_trade_pnl(trade, alpaca_pos):
     """Sum unrealized_pl across all legs present in Alpaca.
     Returns (total_pnl, legs_found). Missing legs contribute 0 — not an error.
+
+    NOTE: This function returns the RAW broker-reported P&L without any
+    structural cap. Callers that need a bounded value should compose with
+    derive_max_loss() and clamp: pnl = max(raw_pnl, -derive_max_loss(trade)).
+    See main loop (~line 1337) for the canonical clamp pattern.
     """
     total, found = 0.0, 0
     for leg in trade.get("legs", []):
@@ -248,6 +253,117 @@ def compute_trade_pnl(trade, alpaca_pos):
         except Exception as e:
             log(f"  OCC build error for {trade.get('id','?')} leg: {e}")
     return total, found
+
+
+def _max_wing_width(trade):
+    """Compute max wing width (in strike-distance units, NOT dollars) from legs.
+
+    Returns None if not derivable:
+    - <2 legs (single-leg / naked / missing legs array)
+    - All legs at the same strike (calendar / same-strike diagonal — no width)
+    - Any leg missing a parseable 'strike' field
+
+    Geometry:
+    - 2 legs, different strikes → vertical: |strike_high - strike_low|
+    - 4 legs → iron condor / butterfly: max(put_wing_width, call_wing_width)
+      where each wing width is computed across legs of that type only
+    - Other leg counts (3, 5+) → conservative fallback: total strike range
+    """
+    legs = trade.get("legs", []) or []
+    if len(legs) < 2:
+        return None
+
+    try:
+        strikes = [float(l["strike"]) for l in legs]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    unique_strikes = set(strikes)
+    if len(unique_strikes) < 2:
+        # All same strike — calendar/diagonal, no width to derive
+        return None
+
+    if len(legs) == 2:
+        return abs(strikes[0] - strikes[1])
+
+    if len(legs) == 4:
+        # Iron condor / butterfly: separate puts and calls, take max wing
+        puts = [float(l["strike"]) for l in legs
+                if str(l.get("type", "")).lower().startswith("p")]
+        calls = [float(l["strike"]) for l in legs
+                 if str(l.get("type", "")).lower().startswith("c")]
+        put_wing = (max(puts) - min(puts)) if len(puts) >= 2 else 0.0
+        call_wing = (max(calls) - min(calls)) if len(calls) >= 2 else 0.0
+        max_wing = max(put_wing, call_wing)
+        return max_wing if max_wing > 0 else None
+
+    # 3 legs or 5+: conservative fallback — full strike span
+    return max(strikes) - min(strikes)
+
+
+def derive_max_loss(trade):
+    """Returns an UPPER BOUND on structural max loss (positive float, in
+    total dollars), OR None when no bound can be derived from available data.
+
+    IMPORTANT: This is an UPPER BOUND, not the exact max loss. The clamp
+    prevents catastrophic mis-booking from impossible P&L (D1); it does NOT
+    guarantee that booked losses equal max_risk. For credit-collecting
+    strategies the bound overstates true max loss by the credit amount.
+
+    Example: a $1-wide iron condor with $0.75/share net credit has a true
+    max loss of $25 (per-side wing × 100 - credit × 100). This function
+    returns $100 (wing × 100, credit ignored). A raw P&L of -$80 will pass
+    through unclamped because $80 ≤ $100 — even though $80 > true max risk
+    of $25. The clamp's job is to stop -$300 from being booked on a $25-max
+    trade, not to enforce the exact max_risk.
+
+    Three tiers (first match wins):
+
+      Tier 1: max_risk in journal → use it as bound (Beta, Gamma).
+              This trusts the entry agent's risk calculation over geometry.
+              If max_risk disagrees with wing × 100, a discrepancy warning
+              is logged but max_risk is still used. (See Tier-1 trust note
+              below.)
+
+      Tier 2: leg geometry yields a wing width → return wing × 100.
+              Applies to Alpha iron condors, vertical spreads, butterflies.
+              Sidesteps D4 (paper-sim impossible fills with credit > wing)
+              by using wing width alone, ignoring credit.
+
+      Tier 3: no max_risk and no wing width → return None.
+              Same-strike diagonals (A026-class), single-leg trades, trades
+              with malformed legs. Caller should NOT clamp and SHOULD log
+              that no bound is available.
+
+    Tier-1 trust note: max_risk is treated as canonical when present. This
+    is correct today — Gamma populates max_risk from a well-defined formula
+    and Beta populates it from explicit pre-trade calculation. Revisit if
+    entry agents become less reliable, or if max_risk semantics drift away
+    from "structural worst-case dollar loss."
+    """
+    max_risk = trade.get("max_risk")
+    if max_risk is not None:
+        try:
+            mr = float(max_risk)
+        except (TypeError, ValueError):
+            mr = 0.0
+        if mr > 0:
+            # Tier 1 crosscheck: warn (but don't override) if journal max_risk
+            # disagrees with geometry-derived wing × 100.
+            wing = _max_wing_width(trade)
+            if wing is not None and mr > wing * 100 * 1.01:  # 1% tolerance for rounding
+                log(f"  ⚠ derive_max_loss crosscheck for {trade.get('id','?')}: "
+                    f"max_risk=${mr:.2f} > wing×100=${wing*100:.2f} "
+                    f"— using max_risk (Tier-1 trusts journal over geometry)")
+            return mr
+
+    # Tier 2: geometry
+    wing = _max_wing_width(trade)
+    if wing is not None and wing > 0:
+        return wing * 100.0
+
+    # Tier 3: no bound available
+    return None
 
 
 def build_closing_legs(trade, alpaca_pos):
@@ -1331,13 +1447,25 @@ def main():
     # all_trades passed so journal-lie detection works (compares against CLOSED entries).
     reconcile_ghost_positions(alpaca_pos, open_trades, all_trades=all_trades)
 
-    # Build P&L map
+    # Build P&L map — raw broker P&L is clamped to a structural upper bound
+    # (max_risk if present, else wing_width×100, else no clamp). Prevents
+    # impossible per-leg unrealizedPNL values from being booked or fed into
+    # exit decisions. See derive_max_loss() for tier semantics and the
+    # explicit overstatement trade-off for Alpha trades (no max_risk in journal).
     pnl_map = {}
     for t in open_trades:
-        pnl, found = compute_trade_pnl(t, alpaca_pos)
+        raw_pnl, found = compute_trade_pnl(t, alpaca_pos)
+        bound = derive_max_loss(t)
+        if bound is not None:
+            pnl = max(raw_pnl, -bound)
+            clamp_note = (f" [CLAMPED from ${raw_pnl:+.2f}, bound=${bound:.2f}]"
+                          if pnl != raw_pnl else "")
+        else:
+            pnl = raw_pnl
+            clamp_note = " [no structural bound — Tier 3]"
         pnl_map[t["id"]] = pnl
         log(f"  {t['id']} {t.get('symbol','?')} {(t.get('strategy') or '').replace('_',' ')} "
-            f"| P&L: ${pnl:+.2f} ({found}/{len(t.get('legs',[]))} legs matched)")
+            f"| P&L: ${pnl:+.2f} ({found}/{len(t.get('legs',[]))} legs matched){clamp_note}")
 
     # Always write dashboard with fresh P&L
     write_dashboard(open_trades, pnl_map)

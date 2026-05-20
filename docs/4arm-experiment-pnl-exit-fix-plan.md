@@ -14,11 +14,13 @@ uncovered 6 interacting defects in position_monitor.py's P&L computation and exi
 These affect ALL agents (Alpha, Beta, Gamma), not just per-arm Gamma trades. The defects
 must be fixed as a coordinated set before the experiment restart can proceed.
 
-**Commit 1 (exit routing)** shipped 2026-05-18. The remaining fixes require careful
-sequencing because they interact: the P&L clamp (Commit 3) depends on geometry
-derivation which must handle paper-sim impossible fills (D4), and the Alpha unit
-mismatch fix (Commit 2) is the highest operational urgency because A026 (OXY diagonal)
-is live with no working stop-loss.
+**Commit 1 (exit routing)** shipped 2026-05-18. Commit 2 was **intentionally skipped
+per the Path 3 decision (2026-05-20)** — see "Path Decision" section below.
+**Commit 3 absorbs the exit threshold responsibility via geometry-based P&L
+clamping**, and the remaining fixes (Commits 4 and 5) address phantom escalation
+and entry-fill confirmation. The clamp design handles paper-sim impossible fills
+(D4 majority case) by deliberately ignoring credit in the wing-based bound — see
+Commit 3 design for the explicit overstatement trade-off.
 
 ---
 
