@@ -137,11 +137,7 @@ Gc001/Gd001 with zero resolution.
 **Tests:** `test_gamma_exit_routing.py` (18 tests, 5 classes)
 **Change:** `source == "agent_gamma"` → `source.startswith("agent_gamma")`
 
-### Commit 2 — Alpha exit threshold fix (D2)
-**Priority:** HIGHEST — A026 (OXY diagonal) is live with no working stop
-**Scope:** Upstream unit inconsistency in scan_options.py reflected downstream
-in position_monitor.py. The position_monitor change is downstream of the actual
-bug (scan_options.py line 395 applying ×100 while lines 268/513-518 do not).
+### Commit 2 — Alpha exit threshold fix (D2) — ⊘ NOT IMPLEMENTED (intentionally skipped)
 
 **Verification completed 2026-05-20:**
 - ×100 hypothesis **confirmed** for iron condors (per-share → total-dollar)
@@ -152,69 +148,110 @@ bug (scan_options.py line 395 applying ×100 while lines 268/513-518 do not).
 - A026 (diagonal, credit=0): LLM omission, not convention — no fix to
   estimated_credit produces a working stop for this trade
 
-**Implementation approach:** Open decision — see Part B analysis below.
-**Dependency:** See "Risk coupling with Commit 3" below.
+### Path Decision (2026-05-20)
+
+**Selected: Path 3 — skip Commit 2 entirely, proceed to Commit 3.**
+
+Commit 2 is intentionally skipped. The unit mismatch in position_monitor.py
+lines 848-863 is NOT fixed as a standalone change. Commit 3 (geometry-based
+P&L clamp) absorbs the exit threshold responsibility.
+
+**Reasoning:**
+1. **A026 is unprotected under ALL paths.** estimated_credit=0 and net_debit
+   absent mean no fix to the credit-based threshold produces a working stop.
+   A026 rides accept(a) backstop to natural close Wed/Thu May 22 regardless
+   of which path is chosen. This collapses Commit 2's primary urgency argument.
+2. **A020 is broker-frozen.** IBKR refuses to fill close orders. Whether the
+   stop fires at 5% (current mismatch) or 200% (fixed), the result is the
+   same: close order submitted, IBKR rejects it. Fixing the threshold is
+   theoretically correct but operationally inert for this position.
+3. **Alpha is paused.** ALPHA_ENABLED=0. No new Alpha trades enter. The only
+   affected positions (A020, A026) are approaching natural close this week.
+4. **Path 1 (standalone fix) creates throwaway code.** Strategy-branching
+   logic in position_monitor.py would likely be superseded by Commit 3's
+   geometry approach — writing, testing, reviewing, and then removing code
+   is negative-value work.
+5. **D4 majority (56% of iron condors)** changes the strategic picture.
+   Commit 3's D4 degradation strategy is the real design challenge, not
+   the unit mismatch. Engineering time is better spent there.
+
+**Risk accepted:** The unit mismatch persists in position_monitor.py lines
+848-863 until Commit 3 lands. If Commit 3 slips, the bug remains in an
+active code path.
+
+**Mitigation gate: Re-enabling Alpha (ALPHA_ENABLED=1) is explicitly gated
+on Commit 3 landing.** Alpha must not be re-enabled while the unit mismatch
+is live. This gate must be operationalized (see below).
+
+**Commit numbering preserved:** Commit 3 stays "Commit 3" for traceability
+across plan documents and conversation history. There is no Commit 2.
 
 ### Commit 3 — Geometry-based P&L clamp (D1 + D3 + D4)
 **Priority:** HIGH — protects all agents from impossible P&L booking
-**File:** `position_monitor.py` — new function + integration into compute_trade_pnl
-**Design:** Derive structural max-loss from position geometry (legs array):
+**File:** `position_monitor.py` — new function `derive_max_loss()` + clamp integration
+**Decision (2026-05-20):** Option A for exit thresholds — leave lines 848-863 as-is.
+Clamp caps P&L input; existing thresholds run on clamped value. Threshold fix deferred
+to Alpha redesign.
 
-1. **Identify spread type** from legs: vertical (same expiry, different strikes),
-   diagonal (different expiry), calendar, iron condor (4 legs), naked.
-2. **Compute structural max loss:**
-   - Credit vertical: `(wing_width - net_credit) × 100`
-   - Debit vertical: `net_debit × 100`
-   - Iron condor: `(max_wing_width - net_credit) × 100`
-   - Diagonal: `net_debit × 100` (approximate — true max loss is path-dependent)
-3. **Clamp:** `pnl = max(pnl, -structural_max_loss)` after compute_trade_pnl returns.
-4. **D4 degradation:** If derived geometry is nonsensical (credit > wing width,
-   negative max loss), log warning and fall through WITHOUT clamping. Better to
-   let the unclamped P&L flow (existing behavior) than to clamp to a wrong bound.
-5. **Alpha (D3):** No `max_risk` in journal — geometry derivation from legs is the
-   ONLY path. For Gamma/Beta trades that DO have `max_risk`, use it as a crosscheck
-   against geometry-derived bound. If they disagree, use the more conservative (larger)
-   bound and log the discrepancy.
+**Design — 3-tier clamp using wing_width, ignoring credit:**
 
-**D4 coverage limitation (2026-05-20):** 56% of Alpha iron condors have impossible
-geometry (credit > wing width). For those trades, the geometry clamp degrades to
-no-op (no clamping). Commit 3's effective coverage for Alpha iron condors is
-limited to the 44% with valid geometry. Diagonal spreads (same-strike, no wing
-width concept) derive max loss from net debit and are fully covered when the
-debit is known.
+```
+compute_trade_pnl(trade, alpaca_pos) → raw P&L
+  ↓
+derive_max_loss(trade) → Optional[float]
+  Tier 1: max_risk in journal?      → return max_risk          (Beta, Gamma)
+  Tier 2: wing_width from geometry? → return wing_width × 100  (Alpha iron condors, verticals)
+  Tier 3: neither available?        → return None               (Alpha diagonals, single-leg)
+  ↓
+if derived is not None:
+    pnl = max(pnl, -derived)   # clamp floor
+else:
+    log warning, pass through unclamped
+```
 
-**Tests:** Unit tests for each spread type, geometry derivation, D4 degradation path,
-crosscheck between max_risk and geometry-derived bound.
-**Dependency:** See "Risk coupling with Commit 2" below.
+**Key design choice: wing_width alone, credit ignored.**
+- Sidesteps D4 entirely — wing_width is always positive, no degradation path needed
+- 100% of iron condors get a clamp (including the 56% with D4 impossible fills)
+- Trade-off: clamp is coarser than true max loss by the credit amount
+  - $1-wide, $0.75 credit: true max $25, clamp $100 (4× overstatement)
+  - $2.50-wide, $0.65 credit: true max $185, clamp $250 (1.35× overstatement)
+  - Still dramatically better than unbounded (current: -248% observed)
+
+**Tier 1 crosscheck:** When `max_risk` AND wing_width are both available, compare.
+If `max_risk > wing_width × 100`, log discrepancy (suggests data issue). Use
+`max_risk` as clamp regardless (canonical field from entry agent).
+
+**Tier 3 (no clamp):** Same-strike diagonals (Alpha A026-class), single legs,
+missing/empty legs. These trades get NO clamp. Logged with trade ID for
+operator visibility. Acceptable because:
+- Alpha diagonals are rare (9/25 Alpha entries, all closed except A026)
+- A026 is riding accept(a) backstop to natural close
+- Future Alpha trades are gated on Commit 3 + Alpha redesign
+
+**Exit thresholds (lines 848-863): UNCHANGED.** The buggy estimated_credit-based
+thresholds persist. The clamp makes booked P&L safe (bounded) even when premature
+stops fire. Alpha re-enablement is safe (no unbounded P&L) but not correct
+(premature stops). Threshold correctness deferred to Alpha redesign with proper
+journal field normalization.
+
+**Tests:** 14 cases covering all tiers, D4, crosscheck, edge cases (see plan).
+**Single commit.** ~200-250 lines (function + integration + tests).
+**Estimate:** ~2-3 hours implementation + testing.
 
 ---
 
-### ⚠ Risk Coupling: Commits 2 and 3
+### ⚠ Risk Coupling: Commits 2 and 3 — RESOLVED
 
-Commit 2 (D2 unit fix) raises Alpha's effective stop threshold ~40×. Before
-Commit 2, the unit mismatch causes stops to fire at ~2-5% of actual risk —
-premature, but it accidentally limits loss booking to small amounts. After
-Commit 2 corrects the threshold, Alpha trades can now lose up to the INTENDED
-200% of credit before stopping — but `compute_trade_pnl()` is still unbounded
-(D1). If IBKR paper sim produces impossible P&L between Commit 2 and Commit 3,
-the correctly-thresholded stop will fire on the inflated P&L and book a loss
-larger than structural max risk.
+**Decision (2026-05-20):** Risk coupling is moot. Commit 2 was skipped (Path 3).
+The unit mismatch in position_monitor.py lines 848-863 persists at its current
+(premature-stop) behavior until Commit 3 replaces or supersedes the
+estimated_credit-based exit logic. No window exists where thresholds are correct
+but P&L is uncapped, because the threshold is never corrected independently.
 
-**In short:** Commit 2 alone WIDENS the D1 damage window on Alpha.
-
-**OPEN DECISION:** Choose one:
-- **(a) Bundle Commits 2+3** into a single session/commit — no window where
-  the threshold is correct but P&L is unclamped. More complex, higher test
-  burden, but eliminates the risk window entirely.
-- **(b) Land 2 then 3 back-to-back with NO live trading window between** —
-  ship both in the same session, pause position_monitor between the two
-  commits (or ship during market-closed hours). Simpler per-commit but
-  requires operational coordination.
-- **(c) Accept the risk window** — if the probability of impossible P&L on
-  Alpha positions is low enough (A020/A026 are the only open positions and
-  may close naturally before Commit 2 ships), land them in separate sessions.
-
-This decision depends on whether A020/A026 are still open when session S2 begins.
+**Residual risk:** The buggy estimated_credit thresholds remain live. For Alpha
+trades, this means premature stops at ~2-5% of actual risk — but IBKR refuses
+to fill the resulting close orders, making the bug operationally inert for
+current positions. Alpha re-enablement is gated on Commit 3.
 
 ### Commit 4 — Phantom escalation (D6)
 **Priority:** MEDIUM — prevents alert fatigue and cash lockup
@@ -280,38 +317,39 @@ exist.
 - **Files:** Known set, pre-existing before any changes in this session.
 - **Status:** Documented as known tech debt. Tests pass on VPS via pre-push hook.
 
+### Plan-file divergence (2026-05-20)
+- **What happened:** This plan lives in two locations: `.claude/plans/` (plan-mode
+  working copy) and `docs/4arm-experiment-pnl-exit-fix-plan.md` (committed, git-tracked).
+  During the 2026-05-20 session, plan-mode edits (Path 3 decision, Option A, Commit 3
+  redesign) were applied to `.claude/plans/` but not synced to `docs/` until this commit.
+  The files diverged for the duration of the session.
+- **This commit consolidates them.** After this commit, both files are identical.
+- **Structural fix needed:** Before the next plan-mode edit session, establish a single
+  source of truth — either symlink `docs/` → `.claude/plans/`, auto-sync at session end,
+  or stop using `.claude/plans/` and edit `docs/` directly. The current two-copy pattern
+  will diverge again.
+
 ---
 
 ## Session Calendar
 
-**Depends on open decision re: Commits 2+3 coupling (see above).**
-
-If bundled (option a):
+**Commit 2 skipped (Path 3). Commit 3 is the next implementation work.**
 
 | Session | Commits | Estimated effort | Prerequisite |
 |---------|---------|-----------------|--------------|
-| S2 | 2+3 (unit fix + geometry clamp) | ~3-4 hours | None |
-| S3 | 4+5 (phantom + entry gate) | ~2 hours | Commits 2+3 shipped |
+| S2 (current) | 3 (geometry clamp + exit threshold) | ~3-4 hours | Plan approval |
+| S3 | 4+5 (phantom + entry gate) | ~2 hours | Commit 3 shipped |
 | S4 | Experiment restart | ~1 hour | All commits + phantoms resolved |
 
-If back-to-back (option b) or separate (option c):
-
-| Session | Commits | Estimated effort | Prerequisite |
-|---------|---------|-----------------|--------------|
-| S2 | 2 (unit fix) | ~1.5 hours | None |
-| S2 cont. or S3 | 3 (geometry clamp) | ~2-3 hours | Commit 2 shipped, no trading window between |
-| S3 or S4 | 4+5 (phantom + entry gate) | ~2 hours | Commit 3 shipped |
-| S4 or S5 | Experiment restart | ~1 hour | All commits + phantoms resolved |
-
-**Estimated total:** 3-4 sessions over ~1 week.
+**Estimated total:** 3 sessions remaining, ~1 week.
 
 ---
 
 ## Restart Prerequisites (all must be true)
 
 - [x] Commit 1: Exit routing fix (22379bf)
-- [ ] Commit 2: Alpha exit threshold fix
-- [ ] Commit 3: Geometry-based P&L clamp
+- [⊘] Commit 2: Skipped (Path 3, 2026-05-20) — unit mismatch absorbed by Commit 3
+- [ ] Commit 3: Geometry-based P&L clamp + exit threshold replacement
 - [ ] Commit 4: Phantom escalation
 - [ ] Commit 5: Entry fill confirmation gate
 - [ ] USB phantom trades (Gc001/Gd001) resolved
