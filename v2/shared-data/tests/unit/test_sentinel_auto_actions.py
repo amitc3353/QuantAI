@@ -1,4 +1,4 @@
-"""Unit tests: Sentinel built-in safe_auto actions (pytest + graphify).
+"""Unit tests: Sentinel built-in safe_auto actions (pytest + graphify + criticals + dedup).
 
 Tests cover:
   1. pytest blocked during market hours / trading window / cooldown
@@ -9,6 +9,9 @@ Tests cover:
   6. graphify timeout handled gracefully
   7. Context enrichment: top_criticals in errors.db summary
   8. flush_expired_pending removes old proposals
+  9. auto_resolve_stale_criticals resolves known-benign patterns
+  10. auto_resolve_stale_criticals resolves stale single-fire criticals
+  11. auto_dedup_catalog merges duplicate entries
 """
 from __future__ import annotations
 
@@ -362,3 +365,302 @@ class TestFlushExpiredPending:
         assert removed == 1
         # File should still exist in dry-run
         assert (pending / "old123.json").exists()
+
+
+def _create_errors_db(db_path, entries=None):
+    """Helper: create a minimal errors.db at db_path with given entries."""
+    import sqlite3
+    con = sqlite3.connect(db_path)
+    con.execute("""
+        CREATE TABLE events (
+            id INTEGER PRIMARY KEY,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            source TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            message TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            signature_hash TEXT NOT NULL DEFAULT '',
+            count INTEGER NOT NULL DEFAULT 1,
+            catalog_id TEXT,
+            runbook TEXT,
+            resolved_at TEXT,
+            resolved_by TEXT
+        )
+    """)
+    for e in (entries or []):
+        con.execute(
+            "INSERT INTO events (severity, count, signature, message, "
+            "first_seen, last_seen, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (e.get("severity", "info"),
+             e.get("count", 1),
+             e.get("signature", ""),
+             e.get("message", ""),
+             e.get("first_seen", "2026-05-01T00:00:00+00:00"),
+             e.get("last_seen", "2026-05-01T00:00:00+00:00"),
+             e.get("source", "test")),
+        )
+    con.commit()
+    con.close()
+
+
+class TestAutoResolveStale:
+    """Verify auto_resolve_stale_criticals resolves known-benign patterns."""
+
+    def test_benign_pattern_resolved(self, tmp_path):
+        """credit-balance-low critical should be auto-resolved."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 4,
+             "signature": "ClawRoute 400: credit balance is too low",
+             "message": "Sonnet call failed: ClawRoute 400: credit balance is too low"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 1
+        assert "credit balance is too low" in result["by_pattern"]
+
+        # Verify in DB
+        import sqlite3
+        con = sqlite3.connect(db)
+        row = con.execute("SELECT severity, resolved_at, resolved_by FROM events WHERE id=1").fetchone()
+        con.close()
+        assert row[0] == "info"
+        assert row[1] is not None  # resolved_at set
+        assert "auto-resolve" in row[2]
+
+    def test_embedded_agent_resolved(self, tmp_path):
+        """OpenClaw embedded agent errors should be auto-resolved."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 1,
+             "signature": "[agent/embedded] embedded run agent end: runId=abc isError=true",
+             "message": "[agent/embedded] embedded run agent end: runId=abc isError=true"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 1
+
+    def test_stale_single_fire_resolved(self, tmp_path):
+        """Critical with count=1 and last_seen > 7 days ago -> resolved."""
+        db = tmp_path / "errors.db"
+        old_date = (SA.now_utc() - timedelta(days=10)).isoformat()
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 1,
+             "signature": "pipeline beat=stale age=3945.0m market=True",
+             "message": "[09:30 ET] pipeline beat=stale age=3945.0m market=True",
+             "last_seen": old_date, "first_seen": old_date},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 1
+        assert result["stale_resolved"] == 1
+
+    def test_recent_critical_not_resolved(self, tmp_path):
+        """Critical with count=1 but last_seen today -> NOT resolved."""
+        db = tmp_path / "errors.db"
+        recent = SA.now_utc().isoformat()
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 1,
+             "signature": "something genuinely broken",
+             "message": "real problem",
+             "last_seen": recent, "first_seen": recent},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 0
+
+    def test_active_critical_not_resolved(self, tmp_path):
+        """Critical with count > 1 and recent -> NOT resolved (still active)."""
+        db = tmp_path / "errors.db"
+        recent = SA.now_utc().isoformat()
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 10,
+             "signature": "recurring production issue",
+             "message": "something bad happening repeatedly",
+             "last_seen": recent, "first_seen": recent},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 0
+
+    def test_dry_run_no_mutation(self, tmp_path):
+        """Dry run should count but not modify."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "critical", "count": 4,
+             "signature": "credit balance is too low",
+             "message": "credit balance is too low"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=True)
+        assert result["resolved"] == 0
+        assert result["would_resolve_pattern"] == 1
+
+        # Verify NOT resolved in DB
+        import sqlite3
+        con = sqlite3.connect(db)
+        row = con.execute("SELECT resolved_at FROM events WHERE id=1").fetchone()
+        con.close()
+        assert row[0] is None
+
+    def test_info_severity_not_touched(self, tmp_path):
+        """Info-level entries should not be resolved (only criticals)."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "info", "count": 100,
+             "signature": "credit balance is too low",
+             "message": "credit balance is too low"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 0
+
+    def test_missing_db_returns_zero(self, tmp_path):
+        """No errors.db -> resolved=0."""
+        with patch.object(SA, "ERRORS_DB", tmp_path / "nope.db"):
+            result = SA.auto_resolve_stale_criticals(dry_run=False)
+        assert result["resolved"] == 0
+
+
+class TestAutoDedupCatalog:
+    """Verify auto_dedup_catalog merges duplicate entries."""
+
+    def test_duplicate_entries_merged(self, tmp_path):
+        """Two entries with same signature -> merged into one."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "info", "count": 5,
+             "signature": "Entry phantom detected: A020",
+             "message": "Entry phantom detected: A020 — journal OPEN"},
+            {"severity": "info", "count": 3,
+             "signature": "Entry phantom detected: A020",
+             "message": "Entry phantom detected: A020 — journal OPEN"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_dedup_catalog(dry_run=False)
+        assert result["deduped"] == 1
+
+        # Verify: primary has merged count, duplicate is resolved
+        import sqlite3
+        con = sqlite3.connect(db)
+        primary = con.execute("SELECT count, resolved_at FROM events WHERE id=1").fetchone()
+        dup = con.execute("SELECT resolved_at, resolved_by FROM events WHERE id=2").fetchone()
+        con.close()
+        assert primary[0] == 8  # 5 + 3
+        assert primary[1] is None  # primary NOT resolved
+        assert dup[0] is not None  # duplicate IS resolved
+        assert "auto-dedup" in dup[1]
+
+    def test_three_duplicates_merged(self, tmp_path):
+        """Three entries with same signature -> 2 resolved, 1 kept."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "warning", "count": 2,
+             "signature": "same-error",
+             "message": "same error message"},
+            {"severity": "warning", "count": 7,
+             "signature": "same-error",
+             "message": "same error message"},
+            {"severity": "warning", "count": 1,
+             "signature": "same-error",
+             "message": "same error message"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_dedup_catalog(dry_run=False)
+        assert result["deduped"] == 2
+
+        # Primary (highest count=7 = id=2) should have total count 10
+        import sqlite3
+        con = sqlite3.connect(db)
+        primary = con.execute("SELECT count, resolved_at FROM events WHERE id=2").fetchone()
+        con.close()
+        assert primary[0] == 10  # 2 + 7 + 1
+        assert primary[1] is None  # NOT resolved
+
+    def test_no_duplicates_returns_zero(self, tmp_path):
+        """All unique signatures -> deduped=0."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "info", "count": 5,
+             "signature": "unique-error-A",
+             "message": "error A"},
+            {"severity": "info", "count": 3,
+             "signature": "unique-error-B",
+             "message": "error B"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_dedup_catalog(dry_run=False)
+        assert result["deduped"] == 0
+
+    def test_dry_run_no_mutation(self, tmp_path):
+        """Dry run counts but doesn't merge."""
+        db = tmp_path / "errors.db"
+        _create_errors_db(db, [
+            {"severity": "info", "count": 5,
+             "signature": "dup-sig",
+             "message": "dup msg"},
+            {"severity": "info", "count": 3,
+             "signature": "dup-sig",
+             "message": "dup msg"},
+        ])
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_dedup_catalog(dry_run=True)
+        assert result["deduped"] == 0
+        assert result["would_dedup_groups"] == 1
+        assert result["would_resolve_dupes"] == 1
+
+        # Verify NOT modified
+        import sqlite3
+        con = sqlite3.connect(db)
+        rows = con.execute("SELECT resolved_at FROM events").fetchall()
+        con.close()
+        assert all(r[0] is None for r in rows)
+
+    def test_resolved_duplicates_not_touched(self, tmp_path):
+        """Already-resolved entries should not be part of dedup."""
+        db = tmp_path / "errors.db"
+        import sqlite3
+        con = sqlite3.connect(db)
+        con.execute("""
+            CREATE TABLE events (
+                id INTEGER PRIMARY KEY,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                source TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                message TEXT NOT NULL,
+                signature TEXT NOT NULL,
+                signature_hash TEXT NOT NULL DEFAULT '',
+                count INTEGER NOT NULL DEFAULT 1,
+                catalog_id TEXT,
+                runbook TEXT,
+                resolved_at TEXT,
+                resolved_by TEXT
+            )
+        """)
+        # One unresolved, one resolved with same signature
+        con.execute(
+            "INSERT INTO events (severity, count, signature, message, "
+            "first_seen, last_seen, source) "
+            "VALUES ('info', 5, 'same-sig', 'msg', '2026-01-01', '2026-01-01', 'test')"
+        )
+        con.execute(
+            "INSERT INTO events (severity, count, signature, message, "
+            "first_seen, last_seen, source, resolved_at, resolved_by) "
+            "VALUES ('info', 3, 'same-sig', 'msg', '2026-01-01', '2026-01-01', 'test', "
+            "'2026-05-01', 'manual')"
+        )
+        con.commit()
+        con.close()
+
+        with patch.object(SA, "ERRORS_DB", db):
+            result = SA.auto_dedup_catalog(dry_run=False)
+        assert result["deduped"] == 0
+
+    def test_missing_db_returns_zero(self, tmp_path):
+        """No errors.db -> deduped=0."""
+        with patch.object(SA, "ERRORS_DB", tmp_path / "nope.db"):
+            result = SA.auto_dedup_catalog(dry_run=False)
+        assert result["deduped"] == 0

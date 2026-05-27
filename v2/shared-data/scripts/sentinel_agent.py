@@ -559,6 +559,201 @@ def reclassify_catalog_noise(dry_run: bool) -> dict:
     return counts
 
 
+# ── Built-in safe_auto: critical auto-resolve ──────────────────────────────
+
+# Known-benign critical patterns that can be auto-resolved.
+# These are operational noise that got classified as critical by error_detector
+# but have no trading impact. Each tuple: (signature_substring, resolved_by_note)
+BENIGN_CRITICAL_PATTERNS = [
+    ("credit balance is too low",
+     "auto-resolve: Anthropic billing issue — no trading impact, ClawRoute/KARNA only"),
+    ("embedded run agent end",
+     "auto-resolve: OpenClaw embedded agent failure — KARNA operational, not trading"),
+    ("IBKRBroker: gave up after",
+     "auto-resolve: transient IBKR connection failure — auto-recovers on next cycle"),
+]
+
+# Criticals older than this many days with count=1 are considered stale/recovered.
+STALE_CRITICAL_DAYS = 7
+
+
+def auto_resolve_stale_criticals(dry_run: bool) -> dict:
+    """Auto-resolve known-benign and stale critical entries in errors.db.
+
+    Two strategies:
+    1. Pattern-match: resolve criticals matching BENIGN_CRITICAL_PATTERNS
+    2. Stale single-fire: resolve criticals with count=1 that are older than
+       STALE_CRITICAL_DAYS — if the issue was still active, error_detector
+       would have incremented the count.
+
+    Returns dict with counts of resolved entries.
+    """
+    if not ERRORS_DB.exists():
+        return {"resolved": 0, "skipped_db_missing": True}
+
+    if dry_run:
+        try:
+            con = sqlite3.connect(f"file:{ERRORS_DB}?mode=ro", uri=True)
+            cur = con.cursor()
+            pattern_count = 0
+            for sig, _note in BENIGN_CRITICAL_PATTERNS:
+                cur.execute(
+                    "SELECT COUNT(*) FROM events "
+                    "WHERE resolved_at IS NULL AND severity='critical' "
+                    "AND (signature LIKE ? OR message LIKE ?)",
+                    (f"%{sig}%", f"%{sig}%"),
+                )
+                pattern_count += cur.fetchone()[0] or 0
+
+            cur.execute(
+                "SELECT COUNT(*) FROM events "
+                "WHERE resolved_at IS NULL AND severity='critical' "
+                "AND count = 1 "
+                "AND last_seen < datetime('now', ?)",
+                (f"-{STALE_CRITICAL_DAYS} days",),
+            )
+            stale_count = cur.fetchone()[0] or 0
+            con.close()
+            return {"resolved": 0, "would_resolve_pattern": pattern_count,
+                    "would_resolve_stale": stale_count, "dry_run": True}
+        except Exception as e:
+            return {"resolved": 0, "error": str(e)}
+
+    counts = {"resolved": 0, "by_pattern": {}, "stale_resolved": 0}
+    try:
+        con = sqlite3.connect(ERRORS_DB)
+        cur = con.cursor()
+
+        # Strategy 1: pattern-based resolve
+        for sig, note in BENIGN_CRITICAL_PATTERNS:
+            cur.execute(
+                "UPDATE events SET severity='info', "
+                "resolved_at=datetime('now'), resolved_by=? "
+                "WHERE resolved_at IS NULL AND severity='critical' "
+                "AND (signature LIKE ? OR message LIKE ?)",
+                (note, f"%{sig}%", f"%{sig}%"),
+            )
+            n = cur.rowcount or 0
+            if n:
+                counts["by_pattern"][sig[:40]] = n
+                counts["resolved"] += n
+
+        # Strategy 2: stale single-fire criticals
+        cur.execute(
+            "UPDATE events SET severity='info', "
+            "resolved_at=datetime('now'), "
+            "resolved_by='auto-resolve: stale single-fire critical (>7d, count=1)' "
+            "WHERE resolved_at IS NULL AND severity='critical' "
+            "AND count = 1 "
+            "AND last_seen < datetime('now', ?)",
+            (f"-{STALE_CRITICAL_DAYS} days",),
+        )
+        stale_n = cur.rowcount or 0
+        counts["stale_resolved"] = stale_n
+        counts["resolved"] += stale_n
+
+        con.commit()
+        con.close()
+    except Exception as e:
+        return {"resolved": counts["resolved"], "error": str(e)}
+    return counts
+
+
+# ── Built-in safe_auto: catalog dedup ──────────────────────────────────────
+
+def auto_dedup_catalog(dry_run: bool) -> dict:
+    """Merge duplicate catalog entries sharing the same signature.
+
+    For each group of entries with identical signatures:
+    - Keep the entry with the highest count (primary)
+    - Sum counts from all duplicates into the primary
+    - Resolve all non-primary entries with resolved_by='auto-dedup'
+
+    This is a pure DB operation with no trading impact.
+    Returns dict with number of duplicates resolved.
+    """
+    if not ERRORS_DB.exists():
+        return {"deduped": 0, "skipped_db_missing": True}
+
+    if dry_run:
+        try:
+            con = sqlite3.connect(f"file:{ERRORS_DB}?mode=ro", uri=True)
+            cur = con.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM ("
+                "  SELECT signature FROM events "
+                "  WHERE resolved_at IS NULL "
+                "  GROUP BY signature HAVING COUNT(*) > 1"
+                ")"
+            )
+            groups = cur.fetchone()[0] or 0
+            cur.execute(
+                "SELECT SUM(cnt - 1) FROM ("
+                "  SELECT signature, COUNT(*) as cnt FROM events "
+                "  WHERE resolved_at IS NULL "
+                "  GROUP BY signature HAVING COUNT(*) > 1"
+                ")"
+            )
+            dupes = cur.fetchone()[0] or 0
+            con.close()
+            return {"deduped": 0, "would_dedup_groups": groups,
+                    "would_resolve_dupes": dupes, "dry_run": True}
+        except Exception as e:
+            return {"deduped": 0, "error": str(e)}
+
+    deduped = 0
+    try:
+        con = sqlite3.connect(ERRORS_DB)
+        cur = con.cursor()
+
+        # Find all duplicate groups
+        cur.execute(
+            "SELECT signature, COUNT(*) as cnt FROM events "
+            "WHERE resolved_at IS NULL "
+            "GROUP BY signature HAVING COUNT(*) > 1 "
+            "ORDER BY cnt DESC"
+        )
+        dup_groups = cur.fetchall()
+
+        for sig, cnt in dup_groups:
+            # Get all entries for this signature, ordered by count desc
+            cur.execute(
+                "SELECT id, count FROM events "
+                "WHERE resolved_at IS NULL AND signature = ? "
+                "ORDER BY count DESC",
+                (sig,),
+            )
+            rows = cur.fetchall()
+            if len(rows) < 2:
+                continue
+
+            primary_id = rows[0][0]
+            total_count = sum(r[1] for r in rows)
+            dup_ids = [r[0] for r in rows[1:]]
+
+            # Update primary with merged count
+            cur.execute(
+                "UPDATE events SET count = ? WHERE id = ?",
+                (total_count, primary_id),
+            )
+
+            # Resolve duplicates
+            placeholders = ",".join("?" * len(dup_ids))
+            cur.execute(
+                f"UPDATE events SET resolved_at=datetime('now'), "
+                f"resolved_by='auto-dedup: merged into id={primary_id}' "
+                f"WHERE id IN ({placeholders})",
+                dup_ids,
+            )
+            deduped += len(dup_ids)
+
+        con.commit()
+        con.close()
+    except Exception as e:
+        return {"deduped": deduped, "error": str(e)}
+    return {"deduped": deduped}
+
+
 # ── Proposal dedup: semantic fingerprinting + suppression window ──────────
 
 # Coarse categories that group semantically-equivalent proposals.
@@ -811,8 +1006,11 @@ Already-automated actions (do NOT re-propose these):
 - pytest/test suite runs — Sentinel runs pytest automatically when stale + off-hours
 - graphify/knowledge graph refresh — Sentinel refreshes automatically when stale + off-hours
 - Catalog reclassification — Sentinel reclassifies known-noise errors.db entries automatically
-- If top_criticals shows the actual critical errors, analyze them specifically instead of
-  flagging "N criticals hidden" generically.
+- Critical errors triage — Sentinel auto-resolves known-benign criticals (credit balance,
+  embedded agent failures, transient IBKR connection errors) and stale single-fire criticals
+  older than 7 days. Do NOT flag "N criticals are hidden" — check top_criticals instead.
+- Catalog dedup — Sentinel auto-merges duplicate entries sharing the same signature.
+  Do NOT propose dedup actions for entries with identical signatures.
 """
 
 
@@ -1481,6 +1679,21 @@ def run_apply(dry_run: bool, state: dict) -> tuple[str, dict]:
     if reclassify.get("reclassified", 0) > 0 and not dry_run:
         post(CH_LOGS, f"🧹 Sentinel reclassified {reclassify['reclassified']} "
                       f"errors.db events as info: {list(reclassify.get('by_pattern', {}).keys())}",
+             dry_run)
+
+    # Built-in safe_auto: resolve known-benign and stale criticals
+    crit_resolve = auto_resolve_stale_criticals(dry_run)
+    if crit_resolve.get("resolved", 0) > 0 and not dry_run:
+        post(CH_LOGS, f"🔕 Sentinel auto-resolved {crit_resolve['resolved']} "
+                      f"known-benign criticals: {crit_resolve.get('by_pattern', {})} "
+                      f"stale={crit_resolve.get('stale_resolved', 0)}",
+             dry_run)
+
+    # Built-in safe_auto: merge duplicate catalog entries
+    dedup = auto_dedup_catalog(dry_run)
+    if dedup.get("deduped", 0) > 0 and not dry_run:
+        post(CH_LOGS, f"🔗 Sentinel auto-deduped {dedup['deduped']} "
+                      f"duplicate catalog entries",
              dry_run)
 
     # Built-in safe_auto: run pytest if stale and off-hours
