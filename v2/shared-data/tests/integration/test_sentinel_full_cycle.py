@@ -87,6 +87,7 @@ def sentinel_env(tmp_path, monkeypatch):
     monkeypatch.setattr(SA, "ERRORS_DB", db_path)
     monkeypatch.setattr(SA, "TEST_RESULTS_PATH", state_dir / "quantai-test-results.json")
     # Sandbox runtime paths so tests don't touch root-owned production dirs
+    monkeypatch.setattr(SA, "SUPPRESSION_DIR", data_dir / "suppressed_patterns")
     monkeypatch.setattr(SA, "WEEKLY_REPORTS_DIR", tmp_path / "weekly_reports")
     monkeypatch.setattr(SA, "JOURNAL_PATH", tmp_path / "trades.jsonl")
     monkeypatch.setattr(SA, "CATALOG_PATH", tmp_path / "missing-catalog.json")

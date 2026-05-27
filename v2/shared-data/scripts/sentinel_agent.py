@@ -618,16 +618,19 @@ def record_suppression(fingerprint: str, fix_id: str, description: str,
     """Record that a proposal with this fingerprint was written."""
     if dry_run:
         return
-    SUPPRESSION_DIR.mkdir(parents=True, exist_ok=True)
-    rec = {
-        "fingerprint": fingerprint,
-        "fix_id": fix_id,
-        "proposed_at": now_utc().isoformat(),
-        "description": description[:200],
-    }
-    tmp = SUPPRESSION_DIR / f"{fingerprint}.json.tmp"
-    tmp.write_text(json.dumps(rec, indent=2))
-    os.replace(tmp, SUPPRESSION_DIR / f"{fingerprint}.json")
+    try:
+        SUPPRESSION_DIR.mkdir(parents=True, exist_ok=True)
+        rec = {
+            "fingerprint": fingerprint,
+            "fix_id": fix_id,
+            "proposed_at": now_utc().isoformat(),
+            "description": description[:200],
+        }
+        tmp = SUPPRESSION_DIR / f"{fingerprint}.json.tmp"
+        tmp.write_text(json.dumps(rec, indent=2))
+        os.replace(tmp, SUPPRESSION_DIR / f"{fingerprint}.json")
+    except Exception as e:
+        log_line(f"WARN: could not record suppression for {fingerprint}: {e}")
 
 
 def clean_stale_suppressions() -> int:

@@ -39,6 +39,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(SA, "ERRORS_DB", state_dir / "missing.db")  # ensures no DB read
     monkeypatch.setattr(SA, "TEST_RESULTS_PATH", state_dir / "tests.json")
     monkeypatch.setattr(SA, "LOG_PATH", tmp_path / "sentinel.log")
+    monkeypatch.setattr(SA, "SUPPRESSION_DIR", data_dir / "suppressed_patterns")
     monkeypatch.setattr(SA, "WEEKLY_REPORTS_DIR", tmp_path / "weekly_reports")
     monkeypatch.setattr(SA, "JOURNAL_PATH", tmp_path / "trades.jsonl")
     monkeypatch.setattr(SA, "CATALOG_PATH", tmp_path / "missing-catalog.json")
