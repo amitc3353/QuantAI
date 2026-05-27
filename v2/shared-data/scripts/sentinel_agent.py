@@ -75,6 +75,7 @@ PENDING_DIR = DATA_DIR / "pending_fixes"
 APPLIED_DIR = DATA_DIR / "applied"
 DIGEST_DIR = DATA_DIR / "digest_buffer"
 FIX_HISTORY_DIR = DATA_DIR / "fix_history"
+SUPPRESSION_DIR = DATA_DIR / "suppressed_patterns"
 STATE_FILE = DATA_DIR / "state.json"
 LOCK_FILE = Path("/tmp/sentinel_agent.lock")
 LOG_PATH = Path("/root/quantai-v2/shared-data/logs/sentinel.log")
@@ -144,6 +145,16 @@ MAX_SERVICE_RESTARTS_PER_RUN = 2
 MAX_DIFF_LINES = 80
 ATTEMPT_BUDGET = 3
 APPROVAL_EXPIRY_HOURS = 48
+SUPPRESSION_WINDOW_HOURS = 72  # 3 days — longer than 48h expiry to prevent re-propose on expiry
+
+# Built-in safe_auto constants for pytest and graphify
+PYTEST_STALE_DAYS = 7
+PYTEST_COOLDOWN_HOURS = 24
+PYTEST_TIMEOUT = 300
+GRAPHIFY_STALE_DAYS = 5
+GRAPHIFY_COOLDOWN_HOURS = 24
+GRAPHIFY_TIMEOUT = 120
+GRAPHIFY_GRAPH_PATH = REPO / "graphify-out" / "graph.json"
 
 
 # ── Schedule table (ET-local; wrapper exits silently outside slots) ──────────
@@ -548,6 +559,95 @@ def reclassify_catalog_noise(dry_run: bool) -> dict:
     return counts
 
 
+# ── Proposal dedup: semantic fingerprinting + suppression window ──────────
+
+# Coarse categories that group semantically-equivalent proposals.
+# Key = substring found in proposal description/id (lowercased).
+# Value = canonical category name for fingerprinting.
+# Order matters: longer/more-specific substrings first.
+PATTERN_CATEGORIES = [
+    ("unresolved critical", "errors-db-criticals"),
+    ("hidden critical", "errors-db-criticals"),
+    ("critical error", "errors-db-criticals"),
+    ("critical entries", "errors-db-criticals"),
+    ("critical-severity", "errors-db-criticals"),
+    ("test suite", "stale-test-suite"),
+    ("test run", "stale-test-suite"),
+    ("pytest", "stale-test-suite"),
+    ("test_results", "stale-test-suite"),
+    ("graphify", "graphify-stale"),
+    ("knowledge graph", "graphify-stale"),
+    ("identical signature", "catalog-dedup"),
+    ("duplicate", "catalog-dedup"),
+    ("dedup", "catalog-dedup"),
+]
+
+
+def pattern_fingerprint(p: dict) -> str:
+    """Semantic fingerprint for dedup. Groups equivalent proposals into one bucket.
+
+    Different LLM wordings for the same observation (e.g. "402 criticals hidden"
+    vs "critical errors not visible") map to the same fingerprint so they don't
+    create duplicate pending fixes.
+    """
+    desc = ((p.get("description") or "") + " " + (p.get("id") or "")).lower()
+    for substr, category in PATTERN_CATEGORIES:
+        if substr in desc:
+            return hashlib.sha1(category.encode()).hexdigest()[:12]
+    # Fallback: hash just the proposal id slug
+    return hashlib.sha1((p.get("id") or "unknown").encode()).hexdigest()[:12]
+
+
+def is_suppressed(fingerprint: str) -> bool:
+    """Check if this pattern was already proposed within the suppression window."""
+    sup_file = SUPPRESSION_DIR / f"{fingerprint}.json"
+    if not sup_file.exists():
+        return False
+    try:
+        rec = json.loads(sup_file.read_text())
+        proposed_at = datetime.fromisoformat(rec["proposed_at"])
+        if now_utc() - proposed_at < timedelta(hours=SUPPRESSION_WINDOW_HOURS):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def record_suppression(fingerprint: str, fix_id: str, description: str,
+                       dry_run: bool) -> None:
+    """Record that a proposal with this fingerprint was written."""
+    if dry_run:
+        return
+    SUPPRESSION_DIR.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "fingerprint": fingerprint,
+        "fix_id": fix_id,
+        "proposed_at": now_utc().isoformat(),
+        "description": description[:200],
+    }
+    tmp = SUPPRESSION_DIR / f"{fingerprint}.json.tmp"
+    tmp.write_text(json.dumps(rec, indent=2))
+    os.replace(tmp, SUPPRESSION_DIR / f"{fingerprint}.json")
+
+
+def clean_stale_suppressions() -> int:
+    """Remove suppression records older than SUPPRESSION_WINDOW_HOURS. Returns count."""
+    if not SUPPRESSION_DIR.exists():
+        return 0
+    removed = 0
+    cutoff = now_utc() - timedelta(hours=SUPPRESSION_WINDOW_HOURS)
+    for p in SUPPRESSION_DIR.glob("*.json"):
+        try:
+            rec = json.loads(p.read_text())
+            proposed_at = datetime.fromisoformat(rec["proposed_at"])
+            if proposed_at < cutoff:
+                p.unlink()
+                removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 # ── Context bundle ──────────────────────────────────────────────────────
 
 def query_errors_db_summary() -> dict:
@@ -574,8 +674,21 @@ def query_errors_db_summary() -> dict:
              "signature": r[3], "sample": r[4]}
             for r in cur.fetchall()
         ]
+        # Critical breakdown — so the LLM can see WHAT the criticals are,
+        # not just a count. Eliminates "N hidden criticals" re-proposals.
+        cur.execute(
+            "SELECT id, severity, count, substr(signature,1,80), substr(message,1,150) "
+            "FROM events WHERE resolved_at IS NULL AND severity='critical' "
+            "ORDER BY count DESC LIMIT 5"
+        )
+        top_criticals = [
+            {"id": r[0], "severity": r[1], "count": r[2],
+             "signature": r[3], "sample": r[4]}
+            for r in cur.fetchall()
+        ]
         con.close()
-        return {"by_severity": by_severity, "top_unresolved": top_unresolved}
+        return {"by_severity": by_severity, "top_unresolved": top_unresolved,
+                "top_criticals": top_criticals}
     except Exception as e:
         return {"error": str(e)}
 
@@ -690,6 +803,13 @@ Conservatism rules:
   curl|sh, eval, or any pipe to a shell.
 - If health is fine, return empty findings and proposals — silence is correct.
 - Be silent unless acting. No "all clear" findings.
+
+Already-automated actions (do NOT re-propose these):
+- pytest/test suite runs — Sentinel runs pytest automatically when stale + off-hours
+- graphify/knowledge graph refresh — Sentinel refreshes automatically when stale + off-hours
+- Catalog reclassification — Sentinel reclassifies known-noise errors.db entries automatically
+- If top_criticals shows the actual critical errors, analyze them specifically instead of
+  flagging "N criticals hidden" generically.
 """
 
 
@@ -1101,6 +1221,187 @@ def drain_digest(dry_run: bool) -> dict:
     return summary
 
 
+# ── Built-in safe_auto: pytest + graphify ──────────────────────────────
+
+def run_pytest_if_stale(dry_run: bool, state: dict) -> dict:
+    """Built-in safe_auto: run pytest if results are stale and off-hours.
+
+    Guards (all code-enforced, not LLM-overrideable):
+    - Off market hours AND off trading window
+    - Test results older than PYTEST_STALE_DAYS
+    - Cooldown: at most once per PYTEST_COOLDOWN_HOURS
+    - Timeout: PYTEST_TIMEOUT seconds
+    """
+    result = {"ran": False, "reason": ""}
+
+    if is_market_hours() or is_trading_window():
+        result["reason"] = "skipped: market hours or trading window"
+        return result
+
+    # Cooldown check
+    last_run = state.get("last_pytest_run")
+    if last_run:
+        try:
+            elapsed = now_utc() - datetime.fromisoformat(last_run)
+            if elapsed < timedelta(hours=PYTEST_COOLDOWN_HOURS):
+                result["reason"] = (
+                    f"skipped: cooldown ({elapsed.total_seconds()/3600:.1f}h "
+                    f"< {PYTEST_COOLDOWN_HOURS}h)")
+                return result
+        except Exception:
+            pass
+
+    # Staleness check
+    if TEST_RESULTS_PATH.exists():
+        try:
+            age_hours = (time.time() - TEST_RESULTS_PATH.stat().st_mtime) / 3600
+            if age_hours < PYTEST_STALE_DAYS * 24:
+                result["reason"] = f"skipped: tests fresh ({age_hours:.0f}h old)"
+                return result
+        except Exception:
+            pass
+
+    if dry_run:
+        result["reason"] = "would run pytest (dry-run)"
+        log_line("[DRY] would run pytest (stale + off-hours)")
+        return result
+
+    # Run pytest
+    log_line("running built-in safe_auto: pytest (stale + off-hours)")
+    try:
+        test_dir = str(REPO / "v2" / "shared-data" / "tests")
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", test_dir, "--tb=short", "-q"],
+            capture_output=True, text=True, timeout=PYTEST_TIMEOUT,
+            cwd=str(REPO),
+        )
+        result["ran"] = True
+        result["returncode"] = proc.returncode
+        result["output_tail"] = (proc.stdout or "")[-500:]
+        state["last_pytest_run"] = now_utc().isoformat()
+
+        # Write results to dashboard
+        lines = (proc.stdout or "").strip().splitlines()
+        summary_line = lines[-1] if lines else ""
+        test_data = {
+            "last_run": now_utc().isoformat(),
+            "returncode": proc.returncode,
+            "summary": summary_line,
+            "passed": "passed" in summary_line,
+            "runner": "sentinel-safe-auto",
+        }
+        try:
+            DASHBOARD_STATE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = TEST_RESULTS_PATH.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(test_data, indent=2))
+            os.replace(tmp, TEST_RESULTS_PATH)
+        except Exception as e:
+            log_line(f"WARN: failed to write test results: {e}")
+
+        log_line(f"pytest done: rc={proc.returncode} — {summary_line}")
+    except subprocess.TimeoutExpired:
+        result["reason"] = f"pytest timed out after {PYTEST_TIMEOUT}s"
+        log_line(f"WARN: pytest timed out after {PYTEST_TIMEOUT}s")
+    except Exception as e:
+        result["reason"] = f"pytest exception: {e}"
+        log_line(f"WARN: pytest exception: {e}")
+
+    return result
+
+
+def run_graphify_if_stale(dry_run: bool, state: dict) -> dict:
+    """Built-in safe_auto: refresh graphify if graph.json is stale and off-hours.
+
+    Graphify is a non-trading AST scan + graph rebuild — pure read/write
+    of graphify-out/ files, no effect on trading.
+
+    Guards (all code-enforced):
+    - Off market hours AND off trading window
+    - graph.json older than GRAPHIFY_STALE_DAYS
+    - Cooldown: at most once per GRAPHIFY_COOLDOWN_HOURS
+    - Timeout: GRAPHIFY_TIMEOUT seconds
+    """
+    result = {"ran": False, "reason": ""}
+
+    if is_market_hours() or is_trading_window():
+        result["reason"] = "skipped: market hours or trading window"
+        return result
+
+    # Cooldown check
+    last_run = state.get("last_graphify_run")
+    if last_run:
+        try:
+            elapsed = now_utc() - datetime.fromisoformat(last_run)
+            if elapsed < timedelta(hours=GRAPHIFY_COOLDOWN_HOURS):
+                result["reason"] = (
+                    f"skipped: cooldown ({elapsed.total_seconds()/3600:.1f}h "
+                    f"< {GRAPHIFY_COOLDOWN_HOURS}h)")
+                return result
+        except Exception:
+            pass
+
+    # Staleness check
+    if GRAPHIFY_GRAPH_PATH.exists():
+        try:
+            age_hours = (time.time() - GRAPHIFY_GRAPH_PATH.stat().st_mtime) / 3600
+            if age_hours < GRAPHIFY_STALE_DAYS * 24:
+                result["reason"] = f"skipped: graph fresh ({age_hours:.0f}h old)"
+                return result
+        except Exception:
+            pass
+    else:
+        result["reason"] = "skipped: graph.json does not exist"
+        return result
+
+    if dry_run:
+        result["reason"] = "would run graphify (dry-run)"
+        log_line("[DRY] would run graphify (stale + off-hours)")
+        return result
+
+    # Run graphify
+    log_line("running built-in safe_auto: graphify update (stale + off-hours)")
+    try:
+        proc = subprocess.run(
+            ["graphify", "update", "."],
+            capture_output=True, text=True, timeout=GRAPHIFY_TIMEOUT,
+            cwd=str(REPO),
+        )
+        result["ran"] = True
+        result["returncode"] = proc.returncode
+        result["output_tail"] = (proc.stdout or "")[-300:]
+        state["last_graphify_run"] = now_utc().isoformat()
+        log_line(f"graphify done: rc={proc.returncode}")
+    except subprocess.TimeoutExpired:
+        result["reason"] = f"graphify timed out after {GRAPHIFY_TIMEOUT}s"
+        log_line(f"WARN: graphify timed out after {GRAPHIFY_TIMEOUT}s")
+    except FileNotFoundError:
+        result["reason"] = "graphify command not found"
+        log_line("WARN: graphify command not found in PATH")
+    except Exception as e:
+        result["reason"] = f"graphify exception: {e}"
+        log_line(f"WARN: graphify exception: {e}")
+
+    return result
+
+
+def flush_expired_pending(dry_run: bool) -> int:
+    """Delete pending fixes older than APPROVAL_EXPIRY_HOURS. Returns count."""
+    if not PENDING_DIR.exists():
+        return 0
+    removed = 0
+    for path in PENDING_DIR.glob("*.json"):
+        try:
+            rec = json.loads(path.read_text())
+            expires_at = rec.get("expires_at", "")
+            if expires_at and now_utc() > datetime.fromisoformat(expires_at):
+                if not dry_run:
+                    path.unlink()
+                removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 # ── Mode runners ──────────────────────────────────────────────────────
 
 def next_scheduled_et() -> str:
@@ -1128,6 +1429,7 @@ def run_observe(dry_run: bool, state: dict) -> tuple[str, dict]:
     market_open = bundle["market_hours"]
     queued = []
     blocked = 0
+    suppressed = 0
     for p in plan.get("proposals", []):
         ok, why = validate_proposal(p, open_positions=open_pos, market_open=market_open)
         if not ok:
@@ -1135,6 +1437,13 @@ def run_observe(dry_run: bool, state: dict) -> tuple[str, dict]:
             blocked += 1
             continue
         if p["fix_class"] == "never_touch":
+            continue
+        # Dedup: check if a semantically-equivalent proposal was already
+        # written within SUPPRESSION_WINDOW_HOURS
+        fp = pattern_fingerprint(p)
+        if is_suppressed(fp):
+            log_line(f"suppressed re-proposal (fp={fp}): {(p.get('id') or '')[:40]}")
+            suppressed += 1
             continue
         out = write_proposal(p, None, None, dry_run)
         if out is None and not dry_run:
@@ -1145,13 +1454,17 @@ def run_observe(dry_run: bool, state: dict) -> tuple[str, dict]:
                 post_proposal_card(out, rec, dry_run)
             except Exception:
                 pass
-        queued.append(fix_id_for(p))
+        fid = fix_id_for(p)
+        record_suppression(fp, fid, p.get("description", ""), dry_run)
+        queued.append(fid)
     append_digest(plan, queued, dry_run)
     summary = plan.get("summary", "(no summary)")
     log_line(f"observe done: {len(plan.get('findings', []))} findings, "
-             f"{len(queued)} queued, {blocked} safety-blocked")
+             f"{len(queued)} queued, {blocked} safety-blocked, "
+             f"{suppressed} suppressed")
     counts = {"findings": len(plan.get("findings", [])),
-              "queued": len(queued), "safety_blocked": blocked}
+              "queued": len(queued), "safety_blocked": blocked,
+              "suppressed": suppressed}
     return summary, counts
 
 
@@ -1166,6 +1479,31 @@ def run_apply(dry_run: bool, state: dict) -> tuple[str, dict]:
         post(CH_LOGS, f"🧹 Sentinel reclassified {reclassify['reclassified']} "
                       f"errors.db events as info: {list(reclassify.get('by_pattern', {}).keys())}",
              dry_run)
+
+    # Built-in safe_auto: run pytest if stale and off-hours
+    pytest_result = run_pytest_if_stale(dry_run, state)
+    if pytest_result.get("ran"):
+        rc = pytest_result.get("returncode", -1)
+        emoji = "✅" if rc == 0 else "⚠️"
+        post(CH_LOGS,
+             f"🧪 Sentinel auto-ran pytest: {emoji} rc={rc}\n"
+             f"{pytest_result.get('output_tail', '')[-200:]}",
+             dry_run)
+
+    # Built-in safe_auto: refresh graphify if stale and off-hours
+    graphify_result = run_graphify_if_stale(dry_run, state)
+    if graphify_result.get("ran"):
+        post(CH_LOGS,
+             f"📊 Sentinel auto-ran graphify refresh: rc={graphify_result.get('returncode', -1)}",
+             dry_run)
+
+    # Flush expired pending fixes and stale suppression records
+    flushed = flush_expired_pending(dry_run)
+    if flushed:
+        log_line(f"flushed {flushed} expired pending fixes")
+    cleaned = clean_stale_suppressions()
+    if cleaned:
+        log_line(f"cleaned {cleaned} stale suppression records")
 
     # Fresh observe to generate proposals
     fresh_summary, observe_counts = run_observe(dry_run, state)
@@ -1338,6 +1676,7 @@ def main() -> int:
     APPLIED_DIR.mkdir(exist_ok=True)
     DIGEST_DIR.mkdir(exist_ok=True)
     FIX_HISTORY_DIR.mkdir(exist_ok=True)
+    SUPPRESSION_DIR.mkdir(exist_ok=True)
 
     log_line(f"sentinel start mode={args.mode} dry_run={args.dry_run}")
     state = load_state()
