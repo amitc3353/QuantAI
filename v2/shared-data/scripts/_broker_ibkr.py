@@ -27,7 +27,16 @@ import logging
 import os
 import sys
 import time
+import warnings
 from datetime import datetime, timedelta
+
+# ib_insync in synchronous mode creates (but never awaits) qualifyContractsAsync
+# coroutines as a side effect. This is a known no-op — suppress the noise.
+warnings.filterwarnings(
+    "ignore",
+    message="coroutine.*qualifyContractsAsync.*never awaited",
+    category=RuntimeWarning,
+)
 from typing import Optional
 from zoneinfo import ZoneInfo
 

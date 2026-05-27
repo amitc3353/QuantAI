@@ -587,7 +587,11 @@ def run_execute() -> int:
         entry["id"] = _next_gamma_id(journal + placed)  # reflect this batch's appends
         entry["timestamp"] = datetime.now(ET).isoformat()
         entry["mode"] = "paper"
-        entry["status"] = "OPEN"
+        # Two-phase journal: PENDING until fill confirmed (prevents phantom entries)
+        _fill_status = (fill or {}).get("status", "").lower()
+        _filled_qty = (fill or {}).get("filled_qty", 0)
+        _is_filled = _fill_status == "filled" and _filled_qty > 0
+        entry["status"] = "OPEN" if _is_filled else "PENDING"
         entry["order_id"] = fill.get("order_id", "") or fill.get("id", "")
         entry["fill_status"] = fill.get("status", "")
         entry["filled_qty"] = fill.get("filled_qty", 0)
@@ -1137,7 +1141,11 @@ def run_execute_4arm() -> int:
             entry["arm_id"] = aid
             entry["timestamp"] = datetime.now(ET).isoformat()
             entry["mode"] = "paper"
-            entry["status"] = "OPEN"
+            # Two-phase journal: PENDING until fill confirmed (prevents phantom entries)
+            _fill_st = (fill or {}).get("status", "").lower()
+            _filled_q = (fill or {}).get("filled_qty", 0)
+            _is_filled = _fill_st == "filled" and _filled_q > 0
+            entry["status"] = "OPEN" if _is_filled else "PENDING"
             entry["source"] = f"agent_gamma_arm_{aid}"
             entry["ranker_used"] = (
                 "rsi_only" if aid == "a" else
@@ -1156,10 +1164,11 @@ def run_execute_4arm() -> int:
 
             if not DRY_RUN:
                 append_arm_trade(aid, entry)
-                # Update arm state: cash decreases by max_risk
-                state = load_arm_state(aid)
-                state["cash"] = float(state["cash"]) - float(entry["max_risk"])
-                save_arm_state(aid, state)
+                # Only decrement cash when fill is confirmed (two-phase journal)
+                if _is_filled:
+                    state = load_arm_state(aid)
+                    state["cash"] = float(state["cash"]) - float(entry["max_risk"])
+                    save_arm_state(aid, state)
                 print(f"[gamma_agent] arm {aid.upper()} {entry['id']} {symbol} "
                        f"max_risk=${entry['max_risk']:.0f}")
             placed_per_arm[aid].append(entry)

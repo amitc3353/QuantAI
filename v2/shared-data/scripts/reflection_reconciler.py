@@ -19,10 +19,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _paths import _ROOT
+from _paths import _ROOT, JOURNAL
 
 MEMORY_DIR = _ROOT / "memory"
 MAX_RETRY_DAYS = 3
+
+from _journal_update import update_trade_entry
 
 logging.basicConfig(
     level=logging.INFO,
@@ -148,6 +150,89 @@ def reconcile_file(jsonl_path: Path) -> tuple[int, int, int]:
     return retried, completed, escalated
 
 
+def sweep_expired_entries() -> tuple[int, int]:
+    """Scan OPEN/PENDING journal entries for expired option legs.
+
+    If ALL legs have expiry < today, mark the entry as EXPIRED (for OPEN)
+    or PHANTOM_NEVER_FILLED (for PENDING).
+
+    Returns (scanned, expired_count).
+    """
+    from datetime import date
+
+    today = date.today()
+    scanned = 0
+    expired = 0
+
+    # Read all OPEN/PENDING entries from journal
+    entries = []
+    try:
+        with open(JOURNAL) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    t = json.loads(line)
+                    if t.get("status") in ("OPEN", "PENDING"):
+                        entries.append(t)
+                except Exception:
+                    continue
+    except FileNotFoundError:
+        return 0, 0
+
+    for t in entries:
+        scanned += 1
+        tid = t.get("trade_id") or t.get("id")
+        legs = t.get("legs", [])
+        if not legs:
+            continue
+
+        # Check if ALL legs have expired
+        all_expired = True
+        latest_expiry = None
+        for leg in legs:
+            expiry_str = leg.get("expiry", "")
+            if not expiry_str:
+                all_expired = False
+                break
+            try:
+                exp_date = datetime.strptime(expiry_str, "%Y-%m-%d").date()
+                if latest_expiry is None or exp_date > latest_expiry:
+                    latest_expiry = exp_date
+                if exp_date >= today:
+                    all_expired = False
+                    break
+            except ValueError:
+                all_expired = False
+                break
+
+        if all_expired and latest_expiry is not None:
+            days_past = (today - latest_expiry).days
+            # PENDING + expired = phantom; OPEN + expired = expired
+            if t.get("status") == "PENDING":
+                new_status = "PHANTOM_NEVER_FILLED"
+                close_reason = f"pending_and_all_legs_expired_{days_past}d_ago"
+            else:
+                new_status = "EXPIRED"
+                close_reason = f"all_legs_expired_{days_past}d_ago"
+
+            ok = update_trade_entry(tid, {
+                "status": new_status,
+                "close_reason": close_reason,
+                "close_timestamp": datetime.now(timezone.utc).isoformat(),
+                "expired_detected_at": datetime.now(timezone.utc).isoformat(),
+            }, journal_path=str(JOURNAL))
+            if ok:
+                expired += 1
+                logging.info(
+                    "Expired: %s -> %s (latest=%s, %dd ago)",
+                    tid, new_status, latest_expiry, days_past,
+                )
+
+    return scanned, expired
+
+
 def main():
     total_retried = 0
     total_completed = 0
@@ -169,6 +254,15 @@ def main():
         _discord_alert(
             f"⚠️ Reflection reconciler: {total_escalated} trade(s) escalated to manual_review "
             f"(failed after {MAX_RETRY_DAYS} days of retries). Check memory/ JSONL files."
+        )
+
+    # Nightly expired-options sweep
+    scanned, expired_count = sweep_expired_entries()
+    logging.info("Expiry sweep: scanned=%d expired=%d", scanned, expired_count)
+    if expired_count > 0:
+        _discord_alert(
+            f"📅 Nightly expiry sweep: {expired_count} trade(s) auto-marked EXPIRED "
+            f"(all option legs past expiry date). Check journal."
         )
 
 

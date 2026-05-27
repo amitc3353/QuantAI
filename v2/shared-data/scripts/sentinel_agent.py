@@ -1211,10 +1211,17 @@ def run_apply(dry_run: bool, state: dict) -> tuple[str, dict]:
 # ── Dashboard tile ──────────────────────────────────────────────────
 
 def write_dashboard(state: dict, last_summary: str, last_mode: str,
-                    last_actions: int, dry_run: bool) -> None:
+                    last_actions: int, dry_run: bool,
+                    llm_failed: bool = False) -> None:
     pending = list(PENDING_DIR.glob("*.json"))
     quarantined = state.get("quarantined", [])
-    overall = "warning" if quarantined else "ok"
+    # Status reflects actual health — LLM failure is the most severe
+    if llm_failed:
+        overall = "error"
+    elif quarantined:
+        overall = "warning"
+    else:
+        overall = "ok"
     payload = {
         "last_updated": now_utc().isoformat(),
         "status": overall,
@@ -1228,6 +1235,7 @@ def write_dashboard(state: dict, last_summary: str, last_mode: str,
             "quarantined": quarantined[-20:],
             "next_scheduled_run_et": next_scheduled_et(),
             "last_run": state.get("last_run", {}),
+            "llm_healthy": not llm_failed,
         },
     }
     if dry_run:
@@ -1343,9 +1351,15 @@ def main() -> int:
             summary, counts = run_apply(args.dry_run, state)
             actions = counts.get("applied", 0)
 
+        # Detect LLM failures so dashboard reflects true health
+        llm_failed = ("LLM call failed" in summary
+                      or "429" in summary
+                      or "react failed" in summary)
+
         state["last_run"][args.mode] = now_utc().isoformat()
         save_state(state, args.dry_run)
-        write_dashboard(state, summary, args.mode, actions, args.dry_run)
+        write_dashboard(state, summary, args.mode, actions, args.dry_run,
+                       llm_failed=llm_failed)
 
     log_line(f"sentinel done mode={args.mode} actions={actions}")
     return 0

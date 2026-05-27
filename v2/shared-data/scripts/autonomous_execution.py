@@ -653,7 +653,11 @@ def log_trade(trade, agent_name, fill, intel):
         "thesis": trade.get("thesis", ""),
         "invalidation": trade.get("invalidation", ""),
         "order_id": fill.get("id", "") if fill else "",
-        "status": "OPEN",
+        # Two-phase journal: PENDING until fill confirmed (prevents phantom entries)
+        "status": "OPEN" if (fill and str(fill.get("status", "")).lower() == "filled"
+                             and fill.get("filled_qty", 0) > 0) else "PENDING",
+        "fill_status": fill.get("status", "") if fill else "",
+        "filled_qty": fill.get("filled_qty", 0) if fill else 0,
         "notes": f"Auto-executed by {agent_name}",
         "decision": {
             "conviction_score": alpha_conviction_from_judge(trade.get("judge_score")),

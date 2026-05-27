@@ -1404,6 +1404,120 @@ def write_dashboard(open_trades, pnl_map):
         log(f"Dashboard write failed: {e}")
 
 
+# ── PENDING promotion (two-phase journal) ─────────────────────────────────────
+
+# Statuses that mean the order definitively failed (no position exists).
+_ENTRY_TERMINAL_FAIL_STATUSES = {
+    "cancelled", "canceled", "rejected", "inactive",
+    "apicancelled", "apicanceled",
+}
+
+_PENDING_TIMEOUT_HOURS = 3
+
+
+def _promote_pending_entries(broker, all_trades):
+    """Check PENDING journal entries — promote to OPEN if filled,
+    mark PHANTOM_NEVER_FILLED if dead or timed out.
+
+    This closes the gap where agents write 'PENDING' at submission time
+    and the fill confirmation happens asynchronously.
+    """
+    pending = [t for t in all_trades
+               if t.get("status") == "PENDING"
+               and t.get("source", "").startswith("agent")]
+    if not pending:
+        return
+
+    updates = {}
+    now = datetime.now(ET)
+
+    for t in pending:
+        tid = t.get("trade_id") or t.get("id")
+        if not tid:
+            continue
+        oid = t.get("order_id", "")
+
+        if not oid:
+            # No order_id — was never actually submitted
+            updates[tid] = {
+                "status": "PHANTOM_NEVER_FILLED",
+                "close_reason": "no_order_id_on_pending",
+                "close_timestamp": now.isoformat(),
+            }
+            log(f"PENDING promotion: {tid} → PHANTOM_NEVER_FILLED (no order_id)")
+            continue
+
+        # Poll broker for current order status
+        try:
+            order_status = broker.get_order_status(oid)
+        except Exception as e:
+            logging.debug("promote_pending: broker poll failed for %s oid=%s: %s", tid, oid, e)
+            # Fall through to timeout check below
+            order_status = None
+
+        if order_status:
+            status_norm = (order_status.get("status") or "").lower()
+            filled = order_status.get("filled_qty", 0)
+
+            if status_norm == "filled" and filled > 0:
+                updates[tid] = {
+                    "status": "OPEN",
+                    "fill_status": "Filled",
+                    "filled_qty": filled,
+                    "avg_fill_price": order_status.get("avg_fill_price", 0),
+                    "fill_confirmed_at": now.isoformat(),
+                }
+                log(f"PENDING promotion: {tid} → OPEN (filled qty={filled})")
+                # Cash decrement for gamma arm trades
+                arm_id = t.get("arm_id")
+                if arm_id:
+                    try:
+                        from gamma_agent import load_arm_state, save_arm_state
+                        state = load_arm_state(arm_id)
+                        state["cash"] = float(state["cash"]) - float(t.get("max_risk", 0))
+                        save_arm_state(arm_id, state)
+                    except Exception as e:
+                        logging.warning("promote_pending: arm cash update failed for %s: %s", tid, e)
+                continue
+
+            if status_norm in _ENTRY_TERMINAL_FAIL_STATUSES:
+                updates[tid] = {
+                    "status": "PHANTOM_NEVER_FILLED",
+                    "fill_status": status_norm,
+                    "close_reason": f"order_{status_norm}_during_pending_promotion",
+                    "close_timestamp": now.isoformat(),
+                }
+                log(f"PENDING promotion: {tid} → PHANTOM_NEVER_FILLED (order {status_norm})")
+                continue
+
+        # Timeout check — if entry is older than _PENDING_TIMEOUT_HOURS, auto-phantom
+        entry_ts = t.get("timestamp", "")
+        if entry_ts:
+            try:
+                entry_dt = datetime.fromisoformat(entry_ts)
+                hours_since = (now - entry_dt).total_seconds() / 3600
+                if hours_since > _PENDING_TIMEOUT_HOURS:
+                    updates[tid] = {
+                        "status": "PHANTOM_NEVER_FILLED",
+                        "fill_status": (order_status or {}).get("status", "unknown"),
+                        "close_reason": f"pending_timeout_{_PENDING_TIMEOUT_HOURS}h",
+                        "close_timestamp": now.isoformat(),
+                    }
+                    log(f"PENDING promotion: {tid} → PHANTOM_NEVER_FILLED "
+                        f"(timeout {hours_since:.1f}h > {_PENDING_TIMEOUT_HOURS}h)")
+            except (ValueError, TypeError):
+                pass
+
+    if updates and not DRY_RUN:
+        rewrite_journal_atomic(updates)
+        for tid, fields in updates.items():
+            if fields["status"] == "PHANTOM_NEVER_FILLED":
+                post_discord(
+                    f"🟡 **PENDING auto-resolved** — `{tid}` → PHANTOM_NEVER_FILLED "
+                    f"({fields.get('close_reason', 'unknown')})"
+                )
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1411,6 +1525,13 @@ def main():
     log(f"Position monitor starting {'[DRY RUN] ' if DRY_RUN else ''}— {now.strftime('%H:%M ET %a')}")
 
     all_trades  = load_journal()
+
+    # Promote PENDING → OPEN (or PHANTOM_NEVER_FILLED) before main evaluation
+    broker_for_promotion = get_broker()
+    _promote_pending_entries(broker_for_promotion, all_trades)
+    # Reload after potential promotions
+    all_trades = load_journal()
+
     open_trades = [t for t in all_trades
                    if t.get("status") == "OPEN"
                    and t.get("source", "").startswith("agent")]

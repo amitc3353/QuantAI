@@ -74,8 +74,6 @@ COLLECTOR_SKIP_FILES = {
     "system-health-report.json",       # written by us, would create reflexive warning
     "quantai-test-results.json",       # checked separately by check_test_results
     "quantai-auto-heal.json",          # auto_heal retired 2026-05-03
-    "quantai-sentinel.json",           # Sentinel runs ~5×/day (8:30, 4:15, 9 PM ET + weekend 10 AM)
-                                       # — write cadence < collector threshold by design
 }
 
 # Files that ONLY update during market hours by design — skip when market closed
@@ -83,6 +81,7 @@ COLLECTOR_MARKET_HOURS_ONLY = {
     "quantai-positions.json",          # position_monitor cron is 13-20 UTC weekday only
     "agent-beta-state.json",           # collect_beta runs every minute but state may not change
     "agent-gamma-state.json",          # same
+    "quantai-sentinel.json",           # Sentinel runs ~5x/day during market hours; stale overnight is expected
 }
 
 STATUS_RANK = {"ok": 0, "info": 1, "warning": 2, "error": 3}
@@ -474,6 +473,32 @@ def check_dashboard_html_size() -> dict:
     return {"status": "ok", "size_bytes": size}
 
 
+def check_sentinel_liveness() -> dict:
+    """Verify Sentinel's LLM calls are succeeding, not just that it runs.
+
+    Reads the Sentinel dashboard tile and checks the llm_healthy flag.
+    Port-is-open checks only verify connectivity — this verifies that
+    the calls through ClawRoute/LiteLLM are actually succeeding.
+    """
+    tile_path = DASHBOARD_STATE_DIR / "quantai-sentinel.json"
+    if not tile_path.exists():
+        return {"status": "warning", "error": "Sentinel tile missing — may not have run yet"}
+    try:
+        data = json.loads(tile_path.read_text())
+        status = data.get("status", "unknown")
+        llm_healthy = data.get("data", {}).get("llm_healthy", True)
+        if status == "error" or not llm_healthy:
+            return {
+                "status": "error",
+                "sentinel_status": status,
+                "llm_healthy": llm_healthy,
+                "hint": "Sentinel LLM calls failing — check ClawRoute/API rate limits",
+            }
+        return {"status": "ok", "sentinel_status": status, "llm_healthy": llm_healthy}
+    except Exception as e:
+        return {"status": "error", "error": f"Sentinel tile unreadable: {e}"}
+
+
 # ── Aggregator ──────────────────────────────────────────────────
 
 CHECKS = [
@@ -491,6 +516,7 @@ CHECKS = [
     ("dashboard_html_size", check_dashboard_html_size),
     ("graphify", check_graphify),
     ("open_positions", check_open_positions),
+    ("sentinel_liveness", check_sentinel_liveness),
 ]
 
 
