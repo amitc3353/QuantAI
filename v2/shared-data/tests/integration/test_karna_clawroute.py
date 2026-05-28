@@ -22,6 +22,7 @@ import pytest
 
 OPENCLAW_JSON = Path("/root/.openclaw/openclaw.json")
 KARNA_MODELS_JSON = Path("/root/.openclaw/agents/karna/agent/models.json")
+KARNA_AUTH_PROFILES = Path("/root/.openclaw/agents/karna/agent/auth-profiles.json")
 CLAWROUTE_MODELS_TS = Path("/home/openclaw/.openclaw/workspace/router/src/models.ts")
 COLLECTOR_SCRIPT = Path("/home/trader/dashboard/collect_llm_cost.py")
 
@@ -162,6 +163,43 @@ class TestOpenClawConfig:
         assert model_id in available_ids, (
             f"Model '{model_id}' not in provider '{provider_name}' models: {available_ids}"
         )
+
+
+# ── KARNA auth profiles ──────────────────────────────────────────────
+
+class TestKarnaAuthProfiles:
+    @pytest.fixture(autouse=True)
+    def load_config(self):
+        self.config = _read_json_sudo(KARNA_AUTH_PROFILES)
+
+    def test_has_clawroute_profile(self):
+        """auth-profiles.json must have a clawroute auth entry."""
+        profiles = self.config.get("profiles", {})
+        clawroute_profiles = [k for k in profiles if "clawroute" in k.lower()]
+        assert clawroute_profiles, (
+            f"No clawroute auth profile found. Keys: {list(profiles.keys())}. "
+            "Without this, OpenClaw falls back to LiteLLM+Sonnet on every call."
+        )
+
+    def test_clawroute_profile_has_provider(self):
+        """ClawRoute auth profile must specify provider."""
+        profiles = self.config.get("profiles", {})
+        for name, profile in profiles.items():
+            if "clawroute" in name.lower():
+                assert profile.get("provider") == "clawroute", (
+                    f"Profile '{name}' provider should be 'clawroute', got: {profile.get('provider')}"
+                )
+                return
+        pytest.fail("No clawroute auth profile found")
+
+    def test_clawroute_profile_has_type(self):
+        """ClawRoute auth profile must have a type field."""
+        profiles = self.config.get("profiles", {})
+        for name, profile in profiles.items():
+            if "clawroute" in name.lower():
+                assert "type" in profile, f"Profile '{name}' missing 'type' field"
+                return
+        pytest.fail("No clawroute auth profile found")
 
 
 # ── ClawRoute model registry ─────────────────────────────────────────
