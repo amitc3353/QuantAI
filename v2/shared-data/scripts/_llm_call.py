@@ -25,7 +25,63 @@ from pathlib import Path
 import httpx
 
 FAILURE_LOG = Path("/root/quantai-v2/shared-data/logs/llm_failures.jsonl")
+USAGE_LOG = Path("/root/quantai-v2/shared-data/logs/llm_usage.jsonl")
 DISCORD_ALERT_COOLDOWN_SECONDS = 3600
+
+# Pricing per 1M tokens (USD). Updated when Anthropic changes pricing.
+_PRICING: dict[str, dict[str, float]] = {
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+    "claude-haiku-4-5":          {"input": 0.80, "output": 4.00},
+    "claude-sonnet-4-6":         {"input": 3.00, "output": 15.00},
+    "claude-sonnet-4-20250514":  {"input": 3.00, "output": 15.00},
+    "claude-opus-4-20250514":    {"input": 15.00, "output": 75.00},
+}
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate USD cost from token counts. Falls back to Sonnet pricing for unknown models."""
+    p = _PRICING.get(model)
+    if p is None:
+        # Try prefix match: "claude-sonnet-4-6-20260101" → "claude-sonnet-4-6"
+        for key in _PRICING:
+            if model.startswith(key):
+                p = _PRICING[key]
+                break
+    if p is None:
+        p = {"input": 3.0, "output": 15.0}  # default to Sonnet pricing
+    return (input_tokens * p["input"] + output_tokens * p["output"]) / 1_000_000
+
+
+def _log_usage(caller: str, model_requested: str, resp, latency_ms: int, tier: str) -> None:
+    """Append one usage record to llm_usage.jsonl. Never raises."""
+    try:
+        usage = getattr(resp, "usage", None) or {}
+        if isinstance(usage, dict):
+            # ClawRoute returns OpenAI keys; bypass returns Anthropic keys
+            inp = usage.get("input_tokens") or usage.get("prompt_tokens", 0)
+            out = usage.get("output_tokens") or usage.get("completion_tokens", 0)
+        else:
+            # Usage might be an object with attributes
+            inp = getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0) or 0
+            out = getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0) or 0
+        actual_model = getattr(resp, "model", model_requested) or model_requested
+        cost = _estimate_cost(actual_model, inp, out)
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "caller": caller,
+            "model_requested": model_requested,
+            "model_actual": actual_model,
+            "input_tokens": inp,
+            "output_tokens": out,
+            "cost_usd": round(cost, 8),
+            "latency_ms": latency_ms,
+            "tier": tier or "",
+        }
+        USAGE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(USAGE_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass  # Never break the caller
 
 _RETRY_DELAYS = [2, 4]
 _RATE_LIMIT_STATE = Path("/root/quantai-v2/shared-data/cache/llm_rate_limit_state.json")
@@ -204,6 +260,7 @@ def call_llm_json(
 
     for attempt in range(max_retries):
         try:
+            _t0 = time.time()
             resp = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -212,6 +269,7 @@ def call_llm_json(
                 timeout=timeout,
                 **({"tier": tier} if tier else {}),
             )
+            _latency = int((time.time() - _t0) * 1000)
             text = resp.content[0].text
             if not text:
                 last_error = "LLM returned empty text"
@@ -223,6 +281,7 @@ def call_llm_json(
 
             last_raw = text
             result = _parse_json(text)
+            _log_usage(caller, model, resp, _latency, tier or "")
             return result
 
         except ValueError as e:
@@ -281,6 +340,7 @@ def call_llm_text(
 
     for attempt in range(max_retries):
         try:
+            _t0 = time.time()
             resp = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -289,6 +349,7 @@ def call_llm_text(
                 timeout=timeout,
                 **({"tier": tier} if tier else {}),
             )
+            _latency = int((time.time() - _t0) * 1000)
             text = resp.content[0].text
             if not text:
                 last_error = "LLM returned empty text"
@@ -296,6 +357,7 @@ def call_llm_text(
                 delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
                 time.sleep(delay)
                 continue
+            _log_usage(caller, model, resp, _latency, tier or "")
             return text
 
         except Exception as e:
