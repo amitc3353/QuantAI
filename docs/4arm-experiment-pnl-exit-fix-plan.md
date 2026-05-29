@@ -341,11 +341,17 @@ retry, and the `qualifyContractsAsync` RuntimeWarning filter.
   via journal edit + arm-state cash restoration (same workflow used for the
   May 26 WMT batch).
 
-### 8 Dark Test Files
-- **Issue:** 8 test files use `from conftest import ...` as module-level import,
-  works on VPS but not from workstation. 104 tests only run via VPS pre-push hook.
-- **Files:** Known set, pre-existing before any changes in this session.
-- **Status:** Documented as known tech debt. Tests pass on VPS via pre-push hook.
+### 8 Dark Test Files — ✅ RESOLVED (2026-05-29)
+- **Was:** 8 test files used `from conftest import ...` as a module-level import.
+  Worked when pytest was invoked from `tests/` (default Python cwd-in-sys.path)
+  but failed with `ModuleNotFoundError: No module named 'conftest'` when invoked
+  from the repo root, causing 108 tests to silently skip on the workstation.
+- **Fix:** Added `pythonpath = .` to `v2/shared-data/tests/pytest.ini` (commit
+  `af60824`). The pytest 7+ `pythonpath` directive resolves to the pytest.ini
+  rootdir (`tests/`) and is placed on sys.path before test collection, so
+  conftest is importable regardless of cwd.
+- **Verification:** From repo root, previously 1861 tests + 8 errors → now 1976
+  tests, 0 errors. All 108 previously-dark tests pass.
 
 ### KARNA Operational Issues (2026-05-29)
 
@@ -381,6 +387,13 @@ sequence.** Queued here for follow-up.
   Discord visibility.
 - **Priority:** Low — the actual backup is succeeding. The Discord alert is
   noise. No urgency unless the operator wants the false alarms silenced.
+- **Partial fix shipped (2026-05-29):** Added `check_karna_backup_freshness()`
+  to `system_monitor.py`. This deterministic verifier reads `/root/logs/backup.log`
+  (root-only readable, system_monitor runs as root via root crontab) and reports
+  ok/warning/error based on the most recent `Backup pushed: ... verified=OK`
+  line. Wired into `CHECKS` so Sentinel picks it up via the regular health
+  report. **KARNA's own false-alarm routine still needs operator-side fix** to
+  stop the misleading Discord post — that change is outside this repo.
 
 #### Issue 2: Gemini embedding API key invalid → memory search broken
 - **Symptom:** KARNA reports "Memory search unavailable — Gemini embedding API
@@ -404,6 +417,79 @@ sequence.** Queued here for follow-up.
 - The KARNA-side fix (changing what its routine does, or updating its API key)
   lives outside the QuantAI repo. This entry is a placeholder for the operator
   to pick up in a separate work stream.
+
+### Sentinel 429 + Hallucinated-Unit Noise (2026-05-29)
+
+Observed in the 2026-05-28 health sweep:
+- `WARN: reaction-poll failed: HTTP Error 429: Too Many Requests` repeating
+  ~12× per apply cycle, against Discord's reaction API
+- `hallucinated — skipped <fix_id>: hallucinated systemd unit: <name>` for
+  service names that don't exist on the host (e.g.,
+  `collect_quantai-sentinel.service`, `collect_clawroute.service`)
+
+Investigation:
+- **The safety rails are working as designed.** `sentinel_agent.py` line 1180+
+  has `_check_safe_path()` and `_check_systemd_unit_exists()` which correctly
+  catch hallucinated service names and refuse to execute the proposed fix.
+- **The noise is from the LLM re-proposing the same hallucinations** each
+  cycle. The proposal file is deleted (`path.unlink()` at line 1315) after
+  being skipped, so the same proposal won't re-fire — but a fresh LLM
+  generation produces a similar-but-not-identical proposal next cycle, which
+  isn't caught by the existing fingerprint-dedup cache.
+- **429s on reaction-poll** are Discord rate-limit responses while polling
+  for emoji reactions on pending-approval messages. Each apply cycle polls
+  multiple Discord messages in rapid succession; Discord throttles. Existing
+  log line is a `WARN`, not an error — the poll already handles failure
+  gracefully (skips the reaction check for that cycle).
+
+Why no code change this session:
+- The hallucination dedup would need a new persistence layer: cache the
+  service-name strings that were rejected as hallucinated, then short-circuit
+  any future proposal whose target matches. This is non-trivial — touches
+  Sentinel's proposal lifecycle, requires care around staleness (what if a
+  service genuinely starts existing later?), and ideally needs a test harness
+  for the LLM's typical output patterns.
+- The 429 backoff could be improved with exponential backoff on the
+  reaction-poll loop, but the current behavior is operationally fine: the
+  warnings flood logs but don't degrade behavior. Adding backoff slows
+  approval-message polling, which has its own UX cost.
+- **Recommendation:** Both items belong in a focused Sentinel session with
+  the operator (test for the dedup cache, decision on the backoff trade-off).
+  Not something to bolt on alongside infrastructure cleanup.
+- **Priority:** Low — system is functioning correctly; this is log hygiene.
+
+### Legacy error_detector.py (2026-05-29)
+
+Observed from the 2026-05-28 health sweep: `error_detector.log` appeared to
+contain recurring entries every 5 minutes (`catalog=32 events=8`), but the
+actual catalog file pointed at by `legacy/error_detector.py`
+(`docs/error-catalog.json`) has 46 entries — a stated mismatch.
+
+Investigation:
+- `error_detector.py` is in `scripts/legacy/` — it was retired in favor of
+  Sentinel and `error_learner.py` (weekly Friday cron).
+- `error_detector.log` mtime is **2026-04-26 15:45 UTC** — over a month old.
+  The "recurring" entries every 5 min are from when error_detector was last
+  active. The log file just hasn't been rotated.
+- No active cron entry runs `error_detector.py`. The CLAUDE.md cron schedule
+  section still lists `*/5 * * * * error_detector.py` but that's documentation
+  drift — the actual cron does not include it.
+- The catalog mismatch (`catalog=32` vs live 46) is a snapshot of state from
+  April 26, frozen in the stale log.
+
+Why no code change this session:
+- `legacy/error_detector.py` already does the right thing (it lives in legacy/
+  with no active cron). Deleting it would be a minor cleanup but risks
+  removing reference material for `error_learner.py` which may share logic.
+- `CLAUDE.md` cron-schedule documentation could be corrected, but that file
+  is operator-owned and edits should be coordinated.
+- `error_detector.log` could be rotated/archived to stop misleading future
+  health sweeps, but it lives in `/root/quantai-v2/shared-data/logs/` and
+  the operator may have retention policies for it.
+- **Recommendation:** Pure docs/cleanup item — log rotation, CLAUDE.md edit,
+  optional legacy/ folder cleanup. Not actionable without operator decision
+  on those side effects.
+- **Priority:** Very low — no functional impact; cosmetic only.
 
 ### Plan-file divergence (2026-05-20)
 - **What happened:** This plan lives in two locations: `.claude/plans/` (plan-mode
