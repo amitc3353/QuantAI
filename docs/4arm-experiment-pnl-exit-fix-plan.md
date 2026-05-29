@@ -319,6 +319,64 @@ exist.
 - **Files:** Known set, pre-existing before any changes in this session.
 - **Status:** Documented as known tech debt. Tests pass on VPS via pre-push hook.
 
+### KARNA Operational Issues (2026-05-29)
+
+Captured from Discord error report posted by KARNA at 2026-05-29 02:00 UTC.
+**These are KARNA-infrastructure issues, separate from the 4-arm QuantAI fix
+sequence.** Queued here for follow-up.
+
+#### Issue 1: False-positive backup failure alert
+- **Discord said:** "KARNA Daily Backup FAILED — exec blocked by allowlist policy"
+- **Reality:** The backup actually succeeded. `/root/logs/backup.log` shows
+  `[Fri May 29 02:00:04 AM UTC 2026] Backup pushed: karna-backup-2026-05-29.tar.gz.age | files=48 | verified=OK`
+  pushed to `github.com/amitc3353/karna-backups`. **No data loss.**
+- **Root cause:** Two processes try to do the backup at the same time:
+  1. System cron (`0 2 * * * /root/scripts/karna-backup.sh`) — runs as root,
+     no allowlist applies, succeeds in ~3 seconds
+  2. KARNA's own scheduled routine — tries to exec the same script through
+     its sandboxed shell, hits the allowlist deny, reports "FAILED" to Discord
+- **Recommended fix (any of):**
+  - **(a)** Move KARNA's routine from "execute the backup" to "verify the backup
+    ran by tailing `/root/logs/backup.log` and checking the most recent
+    `Backup pushed` line within the last 2 hours". Adds `/root/logs/backup.log`
+    to the read-only allowlist. KARNA reports OK/STALE based on log content.
+    Cleanest separation: cron does the work, KARNA does the verification.
+  - **(b)** Move `/root/scripts/karna-backup.sh` to `/home/openclaw/scripts/`
+    and add the new path to KARNA's exec allowlist. Replaces the system cron
+    with a KARNA-driven cron. More moving parts; reintroduces dependency on
+    KARNA being healthy at 02:00 UTC.
+  - **(c)** Disable KARNA's daily backup routine entirely and rely on the
+    system cron alone. Trade-off: loses Discord visibility into successful
+    backups.
+- **Recommendation:** Option (a). Keeps the system cron as the producer
+  (already proven reliable), adds KARNA as a read-only verifier with
+  Discord visibility.
+- **Priority:** Low — the actual backup is succeeding. The Discord alert is
+  noise. No urgency unless the operator wants the false alarms silenced.
+
+#### Issue 2: Gemini embedding API key invalid → memory search broken
+- **Symptom:** KARNA reports "Memory search unavailable — Gemini embedding API
+  key invalid" during the same 02:00 UTC routine.
+- **Impact:** KARNA cannot semantically search prior memory entries. Functional
+  effect depends on how often memory search is used by routines. Likely
+  degrades context-aware responses but doesn't break trading or backups.
+- **Recommended fix:** Rotate the Gemini API key in OpenClaw config. If the
+  key is rate-limited rather than invalid, switch to a different embedding
+  provider (OpenAI text-embedding-3-small is a common fallback, or a local
+  model via litellm if cost is a concern).
+- **Priority:** Low-to-medium — depends on how much KARNA's intelligence
+  depends on memory search. Worth checking what fraction of KARNA's recent
+  responses are degraded by this.
+
+#### Investigation notes
+- Verified backup success at 02:00:04 UTC via `/root/logs/backup.log` (sudo read).
+- `/root/scripts/karna-backup.sh` and `/home/openclaw/scripts/` are
+  permission-denied from the workstation account — investigation requires
+  root or operator review of OpenClaw's allowlist config.
+- The KARNA-side fix (changing what its routine does, or updating its API key)
+  lives outside the QuantAI repo. This entry is a placeholder for the operator
+  to pick up in a separate work stream.
+
 ### Plan-file divergence (2026-05-20)
 - **What happened:** This plan lives in two locations: `.claude/plans/` (plan-mode
   working copy) and `docs/4arm-experiment-pnl-exit-fix-plan.md` (committed, git-tracked).
