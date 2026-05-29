@@ -1006,6 +1006,201 @@ def _ghost_alert_ok(symbol: str) -> bool:
         return True  # fail-open: never silently suppress an alert
 
 
+# ── Phantom escalation (D6, Commit 4) ─────────────────────────────────────────
+#
+# The existing entry-phantom detection in reconcile_ghost_positions posts hourly
+# Discord alerts but has no terminal state. Phantoms have accumulated for days
+# (1,466 alerts over 5 days for Gc001/Gd001) with no auto-resolution, permanently
+# locking arm cash. Commit 4 adds the missing escalation step: after N hours of
+# sustained phantom condition, auto-mark the journal entry as PHANTOM_NEVER_FILLED
+# and restore the arm's cash.
+
+_PHANTOM_ESCALATION_HOURS = 3
+_PHANTOM_TRACKING_FILE = Path("/root/quantai-v2/shared-data/cache/phantom_tracking.json")
+
+
+def _load_phantom_tracking() -> dict:
+    """Load {trade_id: first_seen_phantom_iso} from disk.
+
+    Returns empty dict on any read/parse error. Trades will be re-tracked
+    from scratch — no escalation happens until they re-age the threshold.
+    """
+    try:
+        if _PHANTOM_TRACKING_FILE.exists():
+            return json.loads(_PHANTOM_TRACKING_FILE.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_phantom_tracking(tracking: dict) -> None:
+    """Save phantom tracking to disk. Best-effort, no crash on failure."""
+    try:
+        _PHANTOM_TRACKING_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = str(_PHANTOM_TRACKING_FILE) + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(tracking, f, indent=2)
+        os.replace(tmp, _PHANTOM_TRACKING_FILE)
+    except Exception as e:
+        log(f"  phantom tracking save failed: {e}")
+
+
+def _escalate_stale_phantoms(open_trades, current_phantom_ids,
+                              now=None, tracking=None):
+    """Auto-resolve phantom trades that have persisted for ≥ _PHANTOM_ESCALATION_HOURS.
+
+    Process per cycle:
+      1. Load tracking file (trade_id → first_seen_phantom_iso)
+      2. For each currently-phantom trade:
+         - Not yet tracked → record now as first_seen, no escalation this cycle
+         - Tracked & age ≥ threshold → ESCALATE
+         - Tracked & still within grace window → no-op
+      3. For each tracked-but-no-longer-phantom trade → drop from tracking (recovered)
+      4. ESCALATE = atomic journal status update (OPEN → PHANTOM_NEVER_FILLED) +
+         per-arm cash restoration (for Gamma 4-arm) + single Discord alert.
+      5. Persist tracking back to disk.
+
+    Args:
+        open_trades: list of OPEN journal entries (typically from load_journal()
+            filtered to status==OPEN).
+        current_phantom_ids: set of trade IDs detected as phantom this cycle
+            (typically from reconcile_ghost_positions() return value).
+        now: optional datetime for testing. Defaults to datetime.now(ET).
+        tracking: optional pre-loaded tracking dict for tests. When provided,
+            the function does NOT load from or save to disk — the caller owns
+            the dict's lifecycle. When None, disk IO happens.
+
+    Returns:
+        set of trade IDs escalated in THIS cycle (not the running total).
+        Caller should filter these from open_trades for the rest of the cycle.
+
+    Side effects (when not in DRY_RUN and tracking is None):
+        - Writes _PHANTOM_TRACKING_FILE
+        - Calls rewrite_journal_atomic() to mark trades PHANTOM_NEVER_FILLED
+        - Calls gamma.arm_state.save_arm_state() to restore arm cash
+        - Posts to Discord
+
+    Idempotency: after escalation, the trade is removed from tracking and its
+    journal status changes from OPEN → PHANTOM_NEVER_FILLED. Subsequent cycles
+    will not see it in open_trades (load_journal filters by status), so it
+    cannot be double-escalated.
+    """
+    if now is None:
+        now = datetime.now(ET)
+    persist = tracking is None
+    if tracking is None:
+        tracking = _load_phantom_tracking()
+
+    now_iso = now.isoformat()
+    escalated: set = set()
+    journal_updates: dict = {}
+
+    trade_by_id = {}
+    for t in open_trades:
+        tid = t.get("trade_id") or t.get("id")
+        if tid:
+            trade_by_id[tid] = t
+
+    for tid in sorted(current_phantom_ids):
+        first_seen_iso = tracking.get(tid)
+        if first_seen_iso is None:
+            tracking[tid] = now_iso
+            log(f"  PHANTOM tracking started: {tid} at {now_iso}")
+            continue
+
+        try:
+            first_seen_dt = datetime.fromisoformat(first_seen_iso)
+            hours_elapsed = (now - first_seen_dt).total_seconds() / 3600
+        except Exception:
+            # Corrupt tracking entry — reset the clock and skip this cycle
+            tracking[tid] = now_iso
+            log(f"  PHANTOM tracking reset (corrupt entry): {tid}")
+            continue
+
+        if hours_elapsed < _PHANTOM_ESCALATION_HOURS:
+            continue  # Still within grace window — keep alerting via existing path
+
+        trade = trade_by_id.get(tid)
+        if not trade:
+            # Trade isn't in open_trades anymore — drop tracking and skip
+            tracking.pop(tid, None)
+            continue
+
+        # ─── ESCALATE ─────────────────────────────────────────────────────────
+        max_risk = float(trade.get("max_risk") or 0)
+        arm_id = trade.get("arm_id")
+        cash_restored_note = ""
+
+        # Per-arm cash restoration (Gamma 4-arm experiment).
+        # For non-arm trades (legacy Gamma, Alpha, Beta, manual) there is no
+        # arm cash to restore — the journal status change alone is sufficient.
+        if arm_id in ("a", "b", "c", "d"):
+            try:
+                from gamma.arm_state import (
+                    load_arm_state,
+                    save_arm_state,
+                    update_arm_journal_entry,
+                )
+                state = load_arm_state(arm_id)
+                state["cash"] = float(state["cash"]) + max_risk
+                save_arm_state(arm_id, state)
+                update_arm_journal_entry(arm_id, tid, {
+                    "status": "PHANTOM_NEVER_FILLED",
+                    "close_timestamp": now_iso,
+                    "close_reason": f"auto_phantom_escalation_{_PHANTOM_ESCALATION_HOURS}h",
+                })
+                cash_restored_note = (
+                    f" Arm {arm_id.upper()} cash restored +${max_risk:.2f} "
+                    f"(now ${state['cash']:.2f})."
+                )
+                log(f"  PHANTOM escalation: {tid} arm {arm_id.upper()} cash "
+                    f"+${max_risk:.2f} → ${state['cash']:.2f}")
+            except Exception as e:
+                log(f"  PHANTOM escalation arm-state update FAILED for {tid}: {e}")
+                cash_restored_note = (
+                    f" ⚠ Arm cash restoration FAILED — operator must manually "
+                    f"add ${max_risk:.2f} to arm {arm_id.upper()}."
+                )
+        else:
+            log(f"  PHANTOM escalation: {tid} (non-arm — no cash restoration needed)")
+
+        # Main trades.jsonl journal update
+        journal_updates[tid] = {
+            "status": "PHANTOM_NEVER_FILLED",
+            "close_timestamp": now_iso,
+            "close_reason": f"auto_phantom_escalation_{_PHANTOM_ESCALATION_HOURS}h",
+        }
+
+        # Single Discord alert (after this, tracking is cleared so no repeat)
+        post_discord(
+            f"🟡 **Phantom auto-resolved** — `{tid}` had zero broker legs for "
+            f"{hours_elapsed:.1f}h (≥{_PHANTOM_ESCALATION_HOURS}h threshold), "
+            f"marked `PHANTOM_NEVER_FILLED`.{cash_restored_note}"
+        )
+        log(f"PHANTOM AUTO-RESOLVED: {tid} ({hours_elapsed:.1f}h phantom) "
+            f"— Discord alerted, journal + arm state updated")
+
+        escalated.add(tid)
+        tracking.pop(tid, None)
+
+    # Clean up tracking for trades that are no longer phantom (recovered or
+    # closed via the normal exit path)
+    for tid in list(tracking.keys()):
+        if tid not in current_phantom_ids:
+            log(f"  PHANTOM tracking cleared: {tid} (recovered or closed)")
+            tracking.pop(tid, None)
+
+    # Apply main journal updates atomically
+    if journal_updates and not DRY_RUN:
+        rewrite_journal_atomic(journal_updates)
+
+    # Persist tracking when we loaded from disk (caller-managed dicts are left alone)
+    if persist and not DRY_RUN:
+        _save_phantom_tracking(tracking)
+
+    return escalated
+
+
 def _record_ghost_alert(symbol: str):
     try:
         from datetime import timezone as _tz
@@ -1566,7 +1761,20 @@ def main():
     #   - True ghost: broker has position, no journal reference at all
     #   - Journal lie: broker has position, journal says CLOSED for that contract
     # all_trades passed so journal-lie detection works (compares against CLOSED entries).
-    reconcile_ghost_positions(alpaca_pos, open_trades, all_trades=all_trades)
+    recon_result = reconcile_ghost_positions(alpaca_pos, open_trades,
+                                              all_trades=all_trades)
+    entry_phantoms = (recon_result or {}).get("entry_phantoms", set())
+
+    # D6 (Commit 4): Phantom escalation. After _PHANTOM_ESCALATION_HOURS of
+    # sustained phantom condition, auto-mark the trade PHANTOM_NEVER_FILLED and
+    # restore arm cash. Escalated trades are filtered from open_trades for the
+    # rest of this cycle so they don't appear in P&L, exit checks, or dashboard.
+    escalated_phantoms = _escalate_stale_phantoms(open_trades, entry_phantoms)
+    if escalated_phantoms:
+        open_trades = [t for t in open_trades
+                       if (t.get("trade_id") or t.get("id")) not in escalated_phantoms]
+        log(f"  Filtered {len(escalated_phantoms)} escalated phantom(s) from active set: "
+            f"{sorted(escalated_phantoms)}")
 
     # Build P&L map — raw broker P&L is clamped to a structural upper bound
     # (max_risk if present, else wing_width×100, else no clamp). Prevents
