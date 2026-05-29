@@ -491,6 +491,96 @@ Why no code change this session:
   on those side effects.
 - **Priority:** Very low — no functional impact; cosmetic only.
 
+### 🔴 CRITICAL — OOM Cascade / Pytest Fork Loop (2026-05-29)
+
+**Symptom (from Discord):** 60+ kernel OOM kills in 12 hours (02:00 → 14:00 UTC).
+Dominant victim: `litellm` container (killed 30+ times, each ~500-800MB RSS).
+Other victims: `java` (IBKR Gateway, 93-110 GB virtual-size), `systemd` (user 1000),
+`dbus-daemon`. litellm is in a kill/restart loop driven by external memory pressure.
+
+**Investigation (2026-05-29 evening session, before plan mode exit):**
+
+**System sizing:** VPS has only **3.7 GB RAM + 2.0 GB swap** — far smaller than the
+workload assumes.
+
+**Root cause:** `sentinel_agent.run_pytest_if_stale()` (lines 1427-1509) spawns
+pytest subprocesses that survive sentinel's own lifetime, accumulating under
+load. Live observation at 02:00 UTC showed **28 concurrent pytest processes**
+chained via PPID, each consuming ~120 MB RSS = **~3.4 GB combined**. That alone
+is enough to push the VPS into OOM cascade. litellm is the largest non-essential
+process, so the kernel picks it every time.
+
+**Why the cooldown doesn't help:**
+1. `PYTEST_COOLDOWN_HOURS = 24` IS set, but enforced by reading
+   `state["last_pytest_run"]` — which is **only updated AFTER `subprocess.run`
+   returns successfully** (line 1482).
+2. `PYTEST_TIMEOUT = 300s` (5 minutes), but the actual suite takes **~480s under
+   load** (~8 minutes observed yesterday). Pytest times out → `TimeoutExpired`
+   is raised → exception handler runs → **`last_pytest_run` is never written**.
+3. Next Sentinel cron (15 min later) reads the stale `last_run`, sees cooldown
+   hasn't elapsed since the last *successful* run (which may be hours ago) → if
+   the cooldown is also stale, skip is bypassed → another pytest invocation
+   piles on.
+4. The chained PPIDs observed (each new pytest spawned by an older pytest still
+   running) suggest test-internal subprocess.run that creates more pytests in
+   some assertion path — needs verification but pattern matches
+   `test_sentinel_auto_actions.py:138` which patches `subprocess.run` to raise
+   `TimeoutExpired("pytest", 300)` and could be exercising real pytest.
+
+**Compounding factors:**
+- litellm Docker container has **no memory limit** (`Memory: 0` in
+  `docker inspect`) — it's allowed to grow until the OOM killer picks it.
+- Pre-push hook (.git/hooks/pre-push) also runs pytest via sudo. During
+  development pushes (8 min each), that adds to concurrent pytest pressure.
+- IBKR Gateway Java process has 93-110 GB virtual size — when it tries to
+  commit memory, it can trip OOM even at modest RSS.
+
+**Proposed multi-part fix (next session, after operator approval):**
+
+1. **Sentinel pytest race fix** (`sentinel_agent.py` lines 1427-1509):
+   - Increase `PYTEST_TIMEOUT` from 300 to 900 (15 min) to match real runtime
+   - Write `state["last_pytest_run"]` BEFORE running pytest, not after, so
+     timeouts still consume the cooldown
+   - Add file-lock at `/tmp/sentinel_pytest.lock` (separate from existing
+     `/tmp/sentinel_agent.lock`) that uses `fcntl.LOCK_EX | LOCK_NB`. If lock
+     can't be acquired, treat as cooldown skip
+   - Optional defense-in-depth: scan `/proc` for any process whose argv starts
+     with `python3 -m pytest`; if found, skip
+
+2. **litellm memory limit** (Docker compose / run command):
+   - Add `--memory=1g --memory-swap=1g` to limit container at 1 GB
+   - Prevents litellm from being the prime OOM target while still allowing
+     normal operation (typical use is ~50 MB)
+
+3. **Audit test-internal pytest spawners**:
+   - Find what test (or fixture) spawns pytest as a subprocess and chain-spawns
+     successors. `test_sentinel_auto_actions.py:138` is the prime suspect via
+     its `subprocess.run` patch pattern
+   - Either mock the subprocess fully or guard against recursion
+
+4. **Operational triage (immediate, no code change):**
+   - Kill the 28 orphaned pytest processes:
+     `pkill -f 'python3 -m pytest /home/trader/QuantAI'`
+   - Restart litellm container: `docker restart litellm`
+   - Verify memory frees up before next sentinel cycle
+
+**Why this is queued, not fixed in-line:**
+- The fix touches Sentinel's safe_auto loop, which is actively running and
+  affects multiple production code paths. Bolting on changes during a memory
+  crisis risks making it worse before it gets better.
+- The Docker memory limit is a system-side change (operator + sudo) outside
+  the QuantAI repo's normal patch path.
+- The recursive-pytest-spawner audit needs careful test-by-test review; can't
+  be rushed.
+- **Recommendation:** Operator runs the operational-triage commands now to
+  stabilize. Then a focused session lands all four code/config fixes together
+  with verification.
+
+**Priority:** CRITICAL — production memory exhaustion, litellm restart loop,
+secondary risk of trading-path Java process getting killed at the wrong moment.
+
+---
+
 ### Plan-file divergence (2026-05-20)
 - **What happened:** This plan lives in two locations: `.claude/plans/` (plan-mode
   working copy) and `docs/4arm-experiment-pnl-exit-fix-plan.md` (committed, git-tracked).
