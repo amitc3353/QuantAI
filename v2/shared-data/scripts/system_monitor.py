@@ -5,21 +5,23 @@ Runs every 2 min via cron. No LLM. No Discord. Writes a single JSON report
 to /var/dashboard/state/system-health-report.json that sentinel_agent.py
 reads as its primary input.
 
-13 checks, each returning {status: ok|warning|error|info, ...details}:
+15 checks, each returning {status: ok|warning|error|info, ...details}:
 
-  1. ibkr_port           — port 4002 connectivity (consecutive-fail counter)
-  2. litellm_4000        — LiteLLM port 4000 connectivity
-  3. clawroute_18790     — ClawRoute port 18790 connectivity
-  4. cron_freshness      — every cron in cron-status.json ran within 2x interval
-  5. disk                — root partition fill % (warn 85, error 92)
-  6. memory              — virtual memory % (warn 85, error 92)
-  7. self_learning_sla   — diagnosis + review files appear within 10 min of CLOSED journal entry
-  8. weekly_synthesis    — Friday weekly_reports/<date>.md present by Fri 22:00 UTC
-  9. collector_staleness — every /var/dashboard/state/*.json updated within 10 min
- 10. journal_schema      — last trades.jsonl line parses + has decision object
- 11. test_results        — quantai-test-results.json fresh < 24h
- 12. graphify            — graphify-out/graph.json mtime < 7 days
- 13. open_positions      — count from quantai-positions.json (informational)
+  1. ibkr_port             — port 4002 connectivity (consecutive-fail counter)
+  2. litellm_4000          — LiteLLM port 4000 connectivity
+  3. clawroute_18790       — ClawRoute port 18790 connectivity
+  4. cron_freshness        — every cron in cron-status.json ran within 2x interval
+  5. disk                  — root partition fill % (warn 85, error 92)
+  6. memory                — virtual memory % (warn 85, error 92)
+  7. self_learning_sla     — diagnosis + review files appear within 10 min of CLOSED journal entry
+  8. weekly_synthesis      — Friday weekly_reports/<date>.md present by Fri 22:00 UTC
+  9. collector_staleness   — every /var/dashboard/state/*.json updated within 10 min
+ 10. journal_schema        — last trades.jsonl line parses + has decision object
+ 11. test_results          — quantai-test-results.json fresh < 24h
+ 12. graphify              — graphify-out/graph.json mtime < 7 days
+ 13. open_positions        — count from quantai-positions.json (informational)
+ 14. sentinel_liveness     — Sentinel LLM calls succeeding (llm_healthy flag)
+ 15. karna_backup_freshness— daily KARNA backup pushed within last 26h
 
 Top-level status = highest severity seen across checks (error > warning > info > ok).
 """
@@ -67,6 +69,9 @@ COLLECTOR_STALE_MIN_MARKET = 10        # during 9:30–16:00 ET weekday
 COLLECTOR_STALE_MIN_OFFHOURS = 60      # off-market: more lenient (some collectors only update on change)
 TEST_RESULTS_STALE_HOURS = 24
 GRAPHIFY_STALE_DAYS = 7
+KARNA_BACKUP_WARN_HOURS = 26   # daily 02:00 UTC cron, +2h slack for cron jitter
+KARNA_BACKUP_ERROR_HOURS = 48  # 2 missed cycles in a row → cron likely broken
+KARNA_BACKUP_LOG = Path("/root/logs/backup.log")
 
 # Files explicitly NOT tracked for staleness (retired / unused / event-driven / scheduled-sparse)
 COLLECTOR_SKIP_FILES = {
@@ -473,6 +478,113 @@ def check_dashboard_html_size() -> dict:
     return {"status": "ok", "size_bytes": size}
 
 
+_KARNA_BACKUP_PUSHED_RE = re.compile(
+    # Format from /root/scripts/karna-backup.sh log lines:
+    #   [Fri May 29 02:00:04 AM UTC 2026] Backup pushed: karna-backup-...age | files=N | verified=OK
+    # Day-of-month may be space-padded for single digits (e.g. " 5" instead of "05"),
+    # so allow one or more spaces between month name and day.
+    r"\[(\w+ \w+ +\d+ \d+:\d+:\d+ [AP]M UTC \d+)\] Backup pushed:.*verified=(\w+)"
+)
+
+
+def _parse_karna_backup_ts(ts_str: str) -> datetime | None:
+    """Parse 'Fri May 29 02:00:04 AM UTC 2026' to a UTC datetime.
+
+    Returns None if the format doesn't match. Space-padded days (' 5') are
+    normalized to single-space ('5') before parsing so strptime can handle them.
+    """
+    # Collapse any internal multi-space gaps (single-digit day padding)
+    normalized = " ".join(ts_str.split())
+    try:
+        dt = datetime.strptime(normalized, "%a %b %d %I:%M:%S %p UTC %Y")
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=UTC)
+
+
+def check_karna_backup_freshness() -> dict:
+    """Verify the daily KARNA backup actually ran via the system cron.
+
+    Why this check exists: the KARNA agent has its own daily routine that
+    reports backup status to Discord, but its OpenClaw shell is allowlist-
+    restricted and cannot exec /root/scripts/karna-backup.sh. KARNA reports
+    'FAILED' even when the backup succeeded. The actual backup is the
+    independent system cron entry running as root that calls the same
+    script and writes to /root/logs/backup.log.
+
+    This check reads that log as the trusted source of truth. Looking for
+    the most recent successful 'Backup pushed: ... verified=OK' line and
+    returning ok/warn/error based on its age.
+
+    Permissions: /root/ is mode 0700, so this check only works when
+    system_monitor.py runs as root (which it does — its cron entry is in
+    root's crontab). When run as any other user, the log read fails and
+    the check returns 'warning' (not 'error') so non-root development runs
+    don't trigger false alarms.
+    """
+    if not KARNA_BACKUP_LOG.exists():
+        return {
+            "status": "warning",
+            "error": f"backup log not found at {KARNA_BACKUP_LOG}",
+            "hint": "Either the system cron has not run yet, or KARNA_BACKUP_LOG path changed",
+        }
+
+    try:
+        text = KARNA_BACKUP_LOG.read_text(errors="replace")
+    except PermissionError:
+        return {
+            "status": "warning",
+            "error": f"backup log not readable as current user",
+            "hint": "system_monitor expects to run as root to read /root/logs/",
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"backup log unreadable: {type(e).__name__}: {e}",
+        }
+
+    matches = _KARNA_BACKUP_PUSHED_RE.findall(text)
+    if not matches:
+        return {
+            "status": "error",
+            "error": "no 'Backup pushed: ... verified=' line found in log",
+            "hint": "Inspect /root/logs/backup.log directly — script may be failing before the push step",
+        }
+
+    last_ts_str, verified = matches[-1]
+    last_dt = _parse_karna_backup_ts(last_ts_str)
+    if last_dt is None:
+        return {
+            "status": "warning",
+            "error": f"could not parse backup timestamp: {last_ts_str!r}",
+            "hint": "Log format may have changed; update _KARNA_BACKUP_PUSHED_RE",
+        }
+
+    age_hours = (datetime.now(UTC) - last_dt).total_seconds() / 3600
+    base = {
+        "last_backup_at": last_dt.isoformat(),
+        "age_hours": round(age_hours, 1),
+        "verified": verified,
+    }
+
+    if verified.upper() != "OK":
+        return {
+            **base, "status": "error",
+            "hint": f"Most recent backup did not verify (verified={verified!r})",
+        }
+    if age_hours >= KARNA_BACKUP_ERROR_HOURS:
+        return {
+            **base, "status": "error",
+            "hint": f"Backup is {age_hours:.1f}h stale (≥{KARNA_BACKUP_ERROR_HOURS}h) — cron likely broken",
+        }
+    if age_hours >= KARNA_BACKUP_WARN_HOURS:
+        return {
+            **base, "status": "warning",
+            "hint": f"Backup is {age_hours:.1f}h stale (≥{KARNA_BACKUP_WARN_HOURS}h) — verify next cron cycle",
+        }
+    return {**base, "status": "ok"}
+
+
 def check_sentinel_liveness() -> dict:
     """Verify Sentinel's LLM calls are succeeding, not just that it runs.
 
@@ -517,6 +629,7 @@ CHECKS = [
     ("graphify", check_graphify),
     ("open_positions", check_open_positions),
     ("sentinel_liveness", check_sentinel_liveness),
+    ("karna_backup_freshness", check_karna_backup_freshness),
 ]
 
 
