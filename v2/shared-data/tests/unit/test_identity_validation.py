@@ -119,19 +119,63 @@ EXPECTED_CRON_PATTERNS = [
 ]
 
 
+_CRON_SCHEDULE_RE = re.compile(
+    # 5-field cron schedule prefix: minute hour day-of-month month day-of-week.
+    # Each field can be a number, *, range (1-5), step (*/2), or list (1,3,5).
+    r"^\s*[\d*/,\-]+\s+[\d*/,\-]+\s+[\d*/,\-]+\s+[\d*/,\-]+\s+[\d*/,\-]+\s"
+)
+
+
+def _looks_like_root_crontab(content: str) -> bool:
+    """Heuristic: does this crontab look like the production root crontab?
+
+    The QuantAI VPS's root crontab has dozens of 5-field schedule entries
+    (position_monitor, sentinel, collectors, etc.). The trader user's
+    crontab on this VPS contains only @reboot, which has no 5-field
+    schedule. If we can't find at least a few scheduled entries we are
+    looking at the wrong crontab and should signal "unavailable" rather
+    than fail the assertion.
+    """
+    scheduled = sum(1 for line in content.splitlines()
+                    if _CRON_SCHEDULE_RE.match(line))
+    return scheduled >= 3
+
+
 def _get_crontab() -> str | None:
     """Return the root crontab as a string, or None if unavailable.
 
     The pipeline crons run under root on this VPS. Tests run as trader, so we
-    try `sudo crontab -l` first, then fall back to the trader crontab.
+    try `sudo crontab -l` first (works when sudo has a cached credential or
+    NOPASSWD entry), then fall back to the trader crontab — but only if the
+    fallback looks like a production crontab. Otherwise we return None so
+    the test skips rather than failing on a user-crontab that doesn't
+    contain the expected entries (the hook context loses the sudo cache).
     """
-    for cmd in (["sudo", "-n", "crontab", "-l"], ["crontab", "-l"]):
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout
-        except Exception:
-            continue
+    # Prefer sudo to get root's crontab
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "crontab", "-l"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout
+    except Exception:
+        pass
+
+    # Fallback: only accept the trader crontab if it has real schedule entries.
+    # On this VPS, trader's crontab is @reboot-only, so this branch returns None
+    # and the test skips. On a workstation or differently-configured VPS where
+    # the calling user owns the production crontab, this branch returns it.
+    try:
+        result = subprocess.run(
+            ["crontab", "-l"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and _looks_like_root_crontab(result.stdout):
+            return result.stdout
+    except Exception:
+        pass
+
     return None
 
 
