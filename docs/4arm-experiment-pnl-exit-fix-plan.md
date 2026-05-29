@@ -1,9 +1,18 @@
 # 4-Arm Experiment — P&L/Exit Subsystem Fix Plan
 
-## Status: RESTART SUSPENDED — Fix sequence in progress
+## Status: FIX SEQUENCE COMPLETE — Restart unblocked pending DE phantom cleanup
 
-**Commit 1 shipped** (22379bf, 2026-05-18): exit routing `startswith` fix + 18 tests.
-Commits 2-5 pending. Restart blocked until all fixes land + USB phantoms resolved.
+**All 5 commits landed** (4 shipped, 1 intentionally skipped per Path 3):
+- Commit 1 — Exit routing fix: 22379bf (2026-05-18)
+- Commit 2 — Skipped per Path 3 decision (2026-05-20)
+- Commit 3 — Geometry-based P&L clamp: ba2b22e (2026-05-20)
+- Commit 5 — Two-phase journal: de7d230 (2026-05-27, shipped by operator)
+- Commit 4 — Phantom escalation: 21edf18 (2026-05-29)
+
+**Remaining gate to restart:** the 4 active DE phantoms (Ga002/Gb002/Gc003/Gd003)
+will auto-resolve via Commit 4 within ~3 hours of the next position_monitor
+market-hours cycle, restoring $2,066 of arm cash. After that runs cleanly, the
+experiment restart is unblocked.
 
 ---
 
@@ -255,33 +264,39 @@ trades, this means premature stops at ~2-5% of actual risk — but IBKR refuses
 to fill the resulting close orders, making the bug operationally inert for
 current positions. Alpha re-enablement is gated on Commit 3.
 
-### Commit 4 — Phantom escalation (D6)
-**Priority:** MEDIUM — prevents alert fatigue and cash lockup
-**File:** `position_monitor.py` lines 1044-1063
-**Change:** After N consecutive phantom alerts (N=3 → 3 hours):
+### Commit 4 — Phantom escalation (D6) ✅ SHIPPED
+**Commit:** 21edf18 (pushed to origin/main 2026-05-29)
+**File:** `position_monitor.py` — new `_escalate_stale_phantoms()` + helpers
+**Tests:** `test_phantom_escalation.py` (21 tests, 5 classes)
+**Behavior:** After `_PHANTOM_ESCALATION_HOURS` (3) of sustained phantom condition:
 1. Auto-mark journal entry as `PHANTOM_NEVER_FILLED`
-2. Restore arm cash: `state["cash"] += max_risk`
-3. Post single Discord alert: "🔴 Trade {id} auto-closed as phantom after {N}h"
-4. Stop further alerts for this trade
-**Tests:** Unit tests for phantom counter, auto-resolution, cash restoration.
-**Dependency:** None — independent of Commits 2-3.
+2. Restore arm cash: `state["cash"] += max_risk` (Gamma 4-arm trades)
+3. Post single Discord alert with elapsed time and cash restoration amount
+4. Tracking entry cleared so no repeat alerts
+Tracking file: `/root/quantai-v2/shared-data/cache/phantom_tracking.json`
 
-### Commit 5 — Entry fill confirmation gate (D5)
-**Priority:** MEDIUM — prevents phantom creation at source
-**File:** `gamma_agent.py` lines 1157-1162
-**Change:** Two-phase journal write:
-1. On submission: write journal with `status: "PENDING"` (not OPEN), do NOT
-   decrement arm cash
-2. On fill confirmation: update to `status: "OPEN"`, decrement cash
-3. If order never fills (detected by position_monitor or by gamma_agent on
-   next run): update to `status: "CANCELLED"`, no cash change
-**Position_monitor change:** Skip PENDING trades in exit evaluation (they have
-no broker position to evaluate).
-**Tests:** Unit tests for PENDING→OPEN, PENDING→CANCELLED, position_monitor
-skipping PENDING trades.
-**Dependency:** Commit 4 (phantom escalation) should ship first as a safety net
-for the transition period where some existing OPEN-but-phantom trades may still
-exist.
+### Commit 5 — Entry fill confirmation gate (D5) ✅ SHIPPED
+**Commit:** de7d230 (2026-05-27, shipped by operator in a separate session)
+**Files:** `gamma_agent.py`, `autonomous_execution.py`, `position_monitor.py`
+**Tests:** `test_pending_journal.py` (14 tests, part of de7d230's 48-test addition)
+
+**Two-phase journal verified in production:**
+1. `gamma_agent.py` lines 1144-1148: writes `status="PENDING"` when fill is
+   not confirmed at submission. Cash decrement gated on `_is_filled` at
+   lines 1167-1171.
+2. `autonomous_execution.py` line 656: same pattern for Alpha — `status="OPEN"`
+   only if `fill.status == "filled"` and `filled_qty > 0`, else `"PENDING"`.
+3. `position_monitor.py._promote_pending_entries` (lines 1620-1707): polls
+   broker for PENDING entries every cycle:
+   - Filled → promote to OPEN AND decrement arm cash (lines 1666-1675)
+   - Cancelled/Rejected → mark PHANTOM_NEVER_FILLED (no cash change)
+   - Timeout >3h → mark PHANTOM_NEVER_FILLED (no cash change)
+4. `position_monitor.py` line 1731: main loop filters `status=="OPEN"` only —
+   PENDING trades excluded from P&L, exit checks, and dashboard rendering.
+
+**Bonus fixes also shipped in de7d230:** nightly expiry sweep
+(`reflection_reconciler`), Sentinel dashboard truth flag, 429-aware LLM
+retry, and the `qualifyContractsAsync` RuntimeWarning filter.
 
 ---
 
@@ -307,11 +322,24 @@ exist.
   been refusing to fill close orders → effectively no exit is executing
 - **Natural close:** Same expiry_proximity mechanism
 
-### USB Phantom Trades (Gc001, Gd001)
-- **Status:** OPEN in journal, 0 legs at broker, `PHANTOM_NEVER_FILLED` manual
-  override pending
-- **Resolution:** Will be auto-resolved by Commit 4 (phantom escalation), or
-  can be manually resolved by editing journal before then
+### USB Phantom Trades (Gc001, Gd001) — RESOLVED
+- **Status:** Both CLOSED on 2026-05-21 09:30 via natural option-expiry
+  `closed_outside_pipeline` path. `exit_pnl=$0.00`. Arm books recovered.
+- **Outcome:** Predicted by the original plan — the natural close path absorbed
+  the phantoms when their option legs expired.
+
+### DE Phantom Trades (Ga002, Gb002, Gc003, Gd003) — auto-resolution pending
+- **Status:** Created 2026-05-26 09:34, all `status: OPEN`, `fill_status: Submitted`,
+  `filled_qty: 0`. Per-arm Gamma trades on DE. Predate Commit 5 (de7d230 shipped
+  the next day) so they were written the old way.
+- **Cash locked:** $2,066 across arms A/B/C/D (508+508+525+525)
+- **Resolution:** Commit 4 (`_escalate_stale_phantoms`) will auto-resolve these
+  within ~3 hours of the next position_monitor market-hours cycle (next cycle
+  starts fresh tracking; escalation fires after 3h). Cash restored, single
+  Discord alert per trade, journal status updated to `PHANTOM_NEVER_FILLED`.
+- **Manual alternative:** Operator can directly mark them PHANTOM_NEVER_FILLED
+  via journal edit + arm-state cash restoration (same workflow used for the
+  May 26 WMT batch).
 
 ### 8 Dark Test Files
 - **Issue:** 8 test files use `from conftest import ...` as module-level import,
@@ -391,30 +419,30 @@ sequence.** Queued here for follow-up.
 
 ---
 
-## Session Calendar
+## Session Calendar — COMPLETE
 
-**Commit 2 skipped (Path 3). Commit 3 is the next implementation work.**
-
-| Session | Commits | Estimated effort | Prerequisite |
-|---------|---------|-----------------|--------------|
-| S2 (current) | 3 (geometry clamp + exit threshold) | ~3-4 hours | Plan approval |
-| S3 | 4+5 (phantom + entry gate) | ~2 hours | Commit 3 shipped |
-| S4 | Experiment restart | ~1 hour | All commits + phantoms resolved |
-
-**Estimated total:** 3 sessions remaining, ~1 week.
+| Session | Commits | Status |
+|---------|---------|--------|
+| S1 (2026-05-18) | 1 (exit routing) | ✅ Shipped 22379bf |
+| S2 (2026-05-20) | 3 (P&L clamp) | ✅ Shipped ba2b22e |
+| Operator-side (2026-05-27) | 5 (two-phase journal) | ✅ Shipped de7d230 |
+| S3 (2026-05-29) | 4 (phantom escalation) | ✅ Shipped 21edf18 |
+| **S4 (next)** | **Experiment restart** | **Pending DE phantom auto-resolution** |
 
 ---
 
-## Restart Prerequisites (all must be true)
+## Restart Prerequisites
 
-- [x] Commit 1: Exit routing fix (22379bf)
+- [x] Commit 1: Exit routing fix (22379bf, 2026-05-18)
 - [⊘] Commit 2: Skipped (Path 3, 2026-05-20) — unit mismatch absorbed by Commit 3
-- [ ] Commit 3: Geometry-based P&L clamp + exit threshold replacement
-- [ ] Commit 4: Phantom escalation
-- [ ] Commit 5: Entry fill confirmation gate
-- [ ] USB phantom trades (Gc001/Gd001) resolved
-- [ ] A020/A026 naturally closed or manually resolved
-- [ ] All tests green (VPS pre-push hook)
+- [x] Commit 3: Geometry-based P&L clamp (ba2b22e, 2026-05-20)
+- [x] Commit 4: Phantom escalation (21edf18, 2026-05-29)
+- [x] Commit 5: Two-phase journal / entry-fill gate (de7d230, 2026-05-27)
+- [x] USB phantom trades (Gc001/Gd001) resolved — CLOSED 2026-05-21
+- [x] A020 / A026 naturally closed — A020 EXPIRED 2026-05-27, A026 CLOSED 2026-05-21
+- [ ] DE phantom trades (Ga002/Gb002/Gc003/Gd003) auto-resolved by Commit 4
+      (~3h after next position_monitor market-hours cycle)
+- [x] All tests green — 1965/1965 unit + integration via pre-push hook (post-21edf18)
 
 ## Abort Rule
 If any step fails during restart: restore GAMMA_ENABLED=1, leave existing experiment
