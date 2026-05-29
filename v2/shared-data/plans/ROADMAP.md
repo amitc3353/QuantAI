@@ -2,7 +2,7 @@
 
 ## Status
 
-**Last updated:** 2026-05-11
+**Last updated:** 2026-05-29
 
 Shipped 2026-05-11:
 - **Gamma universe expansion** (PR #4) — 27 → 155 symbols, scanner F0 filter + parallelism. Live since 2026-05-09.
@@ -23,6 +23,65 @@ Shipped 2026-05-09: Phase 2 Item #1 (reflection memory + multi-symbol retrieval 
   - Friday weekly digest: `30 20 * * 5` cron → Discord
   - Operator commands: `gamma_agent.py --evaluate-promotion | --promote-arm <a|b|c|d> --confirm | --reset-experiment --reason "..." --confirm`
   - Emergency stop: `GAMMA_AB_TEST_ENABLED=0` in `.env`
+
+## Critical Infrastructure Backlog (added 2026-05-29)
+
+These items are queued separately from the phase plan because they are
+operational/infrastructure fixes rather than product features. Full design
+notes for each item are in `docs/4arm-experiment-pnl-exit-fix-plan.md`
+under "Operational Flags". The IDs here are stable references for cross-doc
+linking.
+
+- [ ] **INFRA-1 — OOM cascade / pytest fork loop fix** 🔴 CRITICAL
+  - **Symptom:** 60+ kernel OOM kills on 2026-05-29 (mostly litellm container),
+    triggered by ~28 concurrent pytest processes consuming ~3.4 GB on a 3.7 GB VPS.
+  - **Root cause:** `sentinel_agent.run_pytest_if_stale()` has three compounding
+    bugs — PYTEST_TIMEOUT (300s) < real suite runtime (~480s), `last_pytest_run`
+    state written only after success (timeouts leave cooldown stale), no
+    file-lock specific to pytest. litellm container has no Docker memory limit.
+  - **4-part fix** (single focused session):
+    1. Sentinel: bump `PYTEST_TIMEOUT` to 900s, write `last_pytest_run` BEFORE
+       `subprocess.run`, add `fcntl.LOCK_EX | LOCK_NB` on `/tmp/sentinel_pytest.lock`
+    2. Docker: add `--memory=1g --memory-swap=1g` to litellm container
+    3. Audit test-internal pytest spawners (suspect:
+       `test_sentinel_auto_actions.py:138`)
+    4. Operational triage now: `pkill -f 'python3 -m pytest'` + `docker restart litellm`
+  - **Files:** `v2/shared-data/scripts/sentinel_agent.py` (lines 1427-1509),
+    Docker compose / run script for litellm container.
+
+- [ ] **INFRA-2 — Sentinel hallucination dedup + 429 backoff** 🟡 MEDIUM
+  - **Symptom:** Sentinel log floods with "hallucinated — skipped <name>" entries
+    (correctly caught by safety rails) and "WARN: reaction-poll failed: HTTP 429"
+    on each apply cycle. System functions correctly; this is log hygiene.
+  - **Fix:** Add a fingerprint suppression cache that catches fuzzy matches
+    (not just exact strings) so repeatedly-hallucinated systemd unit names get
+    suppressed at proposal time. Add exponential backoff on reaction-poll loop.
+  - **Files:** `v2/shared-data/scripts/sentinel_agent.py` (lines 349, 1180+, 1315).
+
+- [ ] **INFRA-3 — KARNA-side false backup alert silence** 🟢 LOW
+  - **Symptom:** KARNA posts "Daily Backup FAILED" to Discord every morning at
+    02:00 UTC even though the system cron backup succeeds.
+  - **Status:** QuantAI-side verifier already shipped (`check_karna_backup_freshness`
+    in `system_monitor.py`, commit `4fa551f`). Remaining work is OpenClaw-side
+    — change KARNA's routine from "exec the backup" to "verify the log".
+  - **Files:** Outside this repo (OpenClaw config / KARNA scripts).
+
+- [ ] **INFRA-4 — Gemini embedding API key rotation** 🟢 LOW
+  - **Symptom:** "Memory search unavailable — Gemini embedding API key invalid"
+    in KARNA's 02:00 UTC routine.
+  - **Fix:** Rotate Gemini key in OpenClaw config, or switch to OpenAI
+    text-embedding-3-small / local model via litellm.
+  - **Files:** Outside this repo.
+
+- [ ] **INFRA-5 — Verify Commit 4 auto-resolved DE phantoms** 🟡 MEDIUM
+  - **Context:** Commit 4 (`21edf18`, phantom escalation) shipped 2026-05-29.
+    The 4 live DE phantoms (Ga002/Gb002/Gc003/Gd003) should have auto-resolved
+    within ~3h of the next position_monitor market-hours cycle, restoring
+    $2,066 of arm cash. If the OOM cascade starved the cron cycles, this may
+    still be pending.
+  - **Action:** Read `journal/paper/trades.jsonl` for the 4 trade IDs; if any
+    still show `status: OPEN`, investigate why escalation didn't fire and either
+    manually mark PHANTOM_NEVER_FILLED or fix the underlying cause.
 
 ## Current Phase
 
