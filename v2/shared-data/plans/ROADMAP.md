@@ -73,15 +73,18 @@ linking.
     text-embedding-3-small / local model via litellm.
   - **Files:** Outside this repo.
 
-- [ ] **INFRA-5 — Verify Commit 4 auto-resolved DE phantoms** 🟡 MEDIUM
-  - **Context:** Commit 4 (`21edf18`, phantom escalation) shipped 2026-05-29.
-    The 4 live DE phantoms (Ga002/Gb002/Gc003/Gd003) should have auto-resolved
-    within ~3h of the next position_monitor market-hours cycle, restoring
-    $2,066 of arm cash. If the OOM cascade starved the cron cycles, this may
-    still be pending.
-  - **Action:** Read `journal/paper/trades.jsonl` for the 4 trade IDs; if any
-    still show `status: OPEN`, investigate why escalation didn't fire and either
-    manually mark PHANTOM_NEVER_FILLED or fix the underlying cause.
+- [x] **INFRA-5 — Verify Commit 4 auto-resolved DE phantoms** ✅ SUPERSEDED 2026-05-30
+  - **Outcome:** Phase 0 diagnostic (`diagnostics/classify_phantoms.py`)
+    confirmed the 4 DE phantoms (Ga002/Gb002/Gc003/Gd003) did **NOT**
+    auto-resolve. They sit at 96h old with `status=PHANTOM_NEVER_FILLED`
+    but `working_close_order_id` still set — the escalator marked status
+    but didn't clean up the close-side field. Plus 3 more
+    O5_CLOSE_FAILURE cases (Gb003/Gc004/Gd004) and 14 O3_STUCK_INDETERMINATE
+    cases now visible.
+  - **Superseded by:** `docs/2026-05-30-trade-lifecycle-fsm-plan.md` —
+    foundational `TradeLifecycle` FSM refactor. Phase 4 (close-path enforce)
+    is the actual fix; it will include a `broker.cancel_order` call on
+    deadline, not just a journal mark.
 
 ## Current Phase
 
