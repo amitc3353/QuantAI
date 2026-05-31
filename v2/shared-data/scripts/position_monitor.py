@@ -1974,7 +1974,14 @@ def main():
             working_id = order.get("id") or ""
             log(f"  Close order WORKING for {tid}: order_id={working_id[:12]} — "
                 f"persisting working_close_order_id; next cycle will poll, not resubmit")
-            journal_updates[tid] = {"working_close_order_id": working_id}
+            upd = {"working_close_order_id": working_id}
+            # FSM enforce: stamp EXIT_SUBMITTED state on working close
+            if _LIFECYCLE_MODE in ("enforce_exit_only", "enforce"):
+                from datetime import timezone as _tz
+                upd["state"] = "EXIT_SUBMITTED"
+                upd["last_transition_at"] = now.astimezone(_tz.utc).isoformat()
+                upd["transitions_count"] = (t.get("transitions_count") or 0) + 1
+            journal_updates[tid] = upd
             attempts.pop(tid, None)  # don't count working state as a failed attempt
             continue
 
@@ -2054,6 +2061,12 @@ def main():
                 # Phase 5b: clear working_close_order_id on successful close
                 "working_close_order_id": None,
             }
+            # FSM enforce: stamp CLOSED state on successful close
+            if _LIFECYCLE_MODE in ("enforce_exit_only", "enforce"):
+                from datetime import timezone as _tz
+                upd["state"] = "CLOSED"
+                upd["last_transition_at"] = now.astimezone(_tz.utc).isoformat()
+                upd["transitions_count"] = (t.get("transitions_count") or 0) + 1
             if holding_days is not None:
                 upd["holding_days"] = holding_days
             if partial_flag:
