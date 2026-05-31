@@ -60,6 +60,79 @@ SCRIPTS   = "/home/trader/QuantAI/v2/shared-data/scripts"
 DASH_FILE = Path("/var/dashboard/state/quantai-positions.json")
 
 
+# ── Lifecycle FSM shadow/enforce integration ──────────────────────────────────
+# Gated by LIFECYCLE_FSM_MODE env var: off | shadow | enforce_exit_only | enforce
+# Default: off.  Shadow: runs FSM in parallel, logs divergences, acts on LEGACY.
+_LIFECYCLE_MODE = os.environ.get("LIFECYCLE_FSM_MODE", "off").lower()
+_SHADOW_LOG = "/root/quantai-v2/shared-data/logs/lifecycle_shadow.log"
+
+SCRIPTS_DIR_PATH = Path("/home/trader/QuantAI/v2/shared-data/scripts")
+if str(SCRIPTS_DIR_PATH) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR_PATH))
+
+
+def _fsm_shadow_run(all_trades: list, broker_positions: dict, now: datetime) -> None:
+    """Run FSM advance() for every non-terminal trade, log divergences.
+
+    Shadow mode: FSM result is logged but NOT acted on. Legacy code path governs.
+    A divergence is when FSM computes a state transition that the legacy code
+    would not (or vice versa).
+    """
+    if _LIFECYCLE_MODE == "off":
+        return
+    try:
+        from lifecycle.trade_lifecycle import TradeLifecycle
+        from lifecycle.journal_io import get_state, is_terminal
+        from lifecycle.transition_log import record as _tlog_record
+        import json as _json
+        from datetime import timezone as _tz
+    except ImportError as e:
+        log(f"[lifecycle] import error in shadow mode: {e}")
+        return
+
+    now_utc = now.astimezone(_tz.utc) if now.tzinfo else now.replace(tzinfo=_tz.utc)
+
+    divergences = []
+    for trade in all_trades:
+        tid = trade.get("id", "?")
+        try:
+            if is_terminal(trade):
+                continue
+            fsm_state, fsm_updates = TradeLifecycle.advance(
+                trade, now=now_utc, broker_positions=broker_positions
+            )
+            legacy_status = trade.get("status", "")
+            if fsm_state is not None:
+                entry = {
+                    "ts": now_utc.isoformat(),
+                    "trade_id": tid,
+                    "fsm_proposed": fsm_state.value,
+                    "legacy_status": legacy_status,
+                    "fsm_updates": fsm_updates,
+                    "mode": _LIFECYCLE_MODE,
+                }
+                divergences.append(entry)
+                _tlog_record(
+                    tid,
+                    from_state=trade.get("state", legacy_status),
+                    to_state=fsm_state.value,
+                    extra={"shadow": True},
+                )
+        except Exception as e:
+            log(f"[lifecycle] shadow error for {tid}: {e}")
+
+    if divergences:
+        try:
+            with open(_SHADOW_LOG, "a") as f:
+                for d in divergences:
+                    f.write(_json.dumps(d) + "\n")
+        except Exception as e:
+            log(f"[lifecycle] shadow log write error: {e}")
+        log(f"[lifecycle] shadow mode: {len(divergences)} FSM transition(s) proposed (not applied)")
+    else:
+        log(f"[lifecycle] shadow mode: 0 divergences this cycle")
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def log(msg):
@@ -1756,6 +1829,10 @@ def main():
         return
 
     log(f"Broker: {len(alpaca_pos)} option position(s) found")
+
+    # Lifecycle FSM shadow mode — runs in parallel with legacy, logs divergences.
+    if _LIFECYCLE_MODE != "off":
+        _fsm_shadow_run(all_trades, alpaca_pos, now)
 
     # Ghost-position reconciliation (Phase 5 + journal-lie detection 2026-05-04):
     #   - True ghost: broker has position, no journal reference at all
