@@ -137,17 +137,26 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 
 ```
 # Alpha pipeline
-*/15 13-20 * * 1-5   run_pipeline.py
-5 20 * * 1-5         run_pipeline.py eod
+# ⚠️ PAUSED 2026-05-31 — lifecycle FSM refactor (Phase 1). Re-enable: uncomment + remove entry_pause.flag.
+# */15 13-20 * * 1-5   run_pipeline.py
+# 5 20 * * 1-5         run_pipeline.py eod
 30 13 * * 1-5        pre_trade_check.py
 
 # Agent Beta (regime-driven, IBKR-native — added 2026-04-27)
-*/15 13-20 * * 1-5   beta_agent.py
+# ⚠️ PAUSED 2026-05-31 — lifecycle FSM refactor (Phase 1). Re-enable: uncomment + remove entry_pause.flag.
+# */15 13-20 * * 1-5   beta_agent.py
 0 6 * * 0            beta/event_moves_seeder.py     # weekly Sunday 6 AM UTC
+
+# Agent Gamma (4-arm experiment — entry PAUSED 2026-05-31, see note below)
+# ⚠️ PAUSED 2026-05-31 — lifecycle FSM refactor (Phase 1). Re-enable: uncomment + remove entry_pause.flag.
+# 30 20 * * 1-5   gamma_agent.py --scan
+# 33 13 * * 1-5   gamma_agent.py --execute
+# 30 13 * * 1     gamma_agent.py --verify-spreads
+30 20 * * 5       gamma_weekly_digest.py
 
 # Monitoring
 */2 * * * *          heartbeat_monitor.py
-*/2 13-20 * * 1-5    position_monitor.py
+*/2 13-20 * * 1-5    position_monitor.py            # EXIT PATH — must stay live during refactor
 */5 * * * *          error_detector.py
 0 22 * * 5           error_learner.py               # weekly Friday 6 PM ET
 
@@ -167,6 +176,19 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 0  18 * * 1-5        auto_heal.py --mode=observe    # 14:00 ET mid-afternoon (read-only)
 45 20 * * 1-5        auto_heal.py --mode=apply      # 16:45 ET post-close (drains digest, applies)
 ```
+
+### Entry cron pause / un-pause procedure (lifecycle FSM refactor 2026-05-31)
+
+**Paused:** run_pipeline.py, beta_agent.py, gamma_agent.py --scan/--execute/--verify-spreads.
+**Active:** position_monitor.py (exit path), market_intelligence.py, sentinel, reflection_reconciler, weekly_synthesis, heartbeat_monitor, all collectors.
+
+**Soft flag:** `/root/quantai-v2/shared-data/cache/entry_pause.flag` — if present, all 3 entry agents return early. Remove to re-enable.
+
+**To un-pause an agent (Phase 5 staggered):**
+1. `sudo rm /root/quantai-v2/shared-data/cache/entry_pause.flag` (after all 3 ready)
+2. `sudo crontab -e` — uncomment the agent's lines (remove the `#`)
+3. Verify next cron tick runs cleanly (watch the agent's log for 1 cycle)
+4. Un-pause order: Beta → Alpha → Gamma, 24h between each
 
 ## Auto-Heal
 

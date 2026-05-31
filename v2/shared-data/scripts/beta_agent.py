@@ -139,6 +139,9 @@ def _journal_write(entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+_ENTRY_PAUSE_FLAG = CACHE / "entry_pause.flag"
+
+
 def main() -> int:
     print(f"[beta_agent] start {datetime.now(ET).isoformat()}  dry_run={DRY_RUN}")
 
@@ -153,6 +156,12 @@ def main() -> int:
             return 0
     except Exception as e:
         print(f"[beta_agent] _agent_flags check failed: {e} (defaulting to enabled)")
+
+    # Lifecycle FSM refactor: soft pause flag. Removed once Phase 5 un-pause
+    # is complete. position_monitor (exit path) is unaffected and stays live.
+    if _ENTRY_PAUSE_FLAG.exists():
+        print("[beta_agent] entry_pause.flag present — skipping entry, exit path unaffected")
+        return 0
 
     if not INTEL_PATH.exists():
         logging.error("market_intelligence.json not found at %s", INTEL_PATH)

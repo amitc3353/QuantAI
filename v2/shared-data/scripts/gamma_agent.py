@@ -1497,6 +1497,13 @@ def main() -> int:
     except Exception as e:
         print(f"[gamma_agent] _agent_flags check failed: {e} (defaulting to enabled)")
 
+    # Lifecycle FSM refactor: soft pause flag. Stacks below GAMMA_ENABLED so
+    # operator subcommands (--reset-experiment, --promote-arm, etc.) still work.
+    # Removed once Phase 5 un-pause is complete. position_monitor stays live.
+    if (CACHE / "entry_pause.flag").exists():
+        print("[gamma_agent] entry_pause.flag present — skipping scan/execute/verify, exit path unaffected")
+        return 0
+
     modes = sum([SCAN, EXECUTE, VERIFY_SPREADS])
     if modes > 1:
         print("[gamma_agent] choose exactly one of --scan, --execute, --verify-spreads",

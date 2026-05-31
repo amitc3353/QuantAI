@@ -722,8 +722,17 @@ def run_monitor():
             log(f"Monitor: {a}")
 
 # ── Main ──────────────────────────────────────────────────────────────
+_ENTRY_PAUSE_FLAG = "/root/quantai-v2/shared-data/cache/entry_pause.flag"
+
+
 def run():
     log(f"Autonomous Execution Engine {'[DRY RUN] ' if DRY_RUN else ''}starting")
+
+    # Lifecycle FSM refactor: soft pause flag. Removed once Phase 5 un-pause
+    # is complete. position_monitor (exit path) is unaffected and stays live.
+    if os.path.exists(_ENTRY_PAUSE_FLAG):
+        log("[entry_pause] entry_pause.flag present — skipping entry, exit path unaffected")
+        return
 
     if MONITOR_ONLY:
         run_monitor()
