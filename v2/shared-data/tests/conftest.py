@@ -308,3 +308,78 @@ def assert_schema():
         "open_item": assert_open_item_schema,
         "learning_state": assert_learning_state_schema,
     }
+
+
+# ── Shared lifecycle FSM fixtures (added 2026-05-31) ────────────────────────
+# 42 of 61 prior unit tests each rolled their own broker MagicMock.
+# This shared fixture gives new lifecycle tests a consistent fake broker
+# without re-implementing the bootstrap every time.
+
+class _FakeBroker:
+    """Minimal fake broker for lifecycle FSM tests.
+
+    Tests configure .submit_returns and .close_returns to control
+    what place_mleg_order / place_close_order return per call.
+    """
+    def __init__(self):
+        self.submit_returns = []   # list of dicts or Nones, popped FIFO
+        self.close_returns  = []
+        self.submitted_orders = []
+        self.closed_orders    = []
+        self.positions_returns = [{}]  # default: no positions
+
+    def place_mleg_order(self, legs, qty=1, tif="day", client_order_id=None, **kw):
+        self.submitted_orders.append({"legs": legs, "coid": client_order_id})
+        if self.submit_returns:
+            return self.submit_returns.pop(0)
+        return None
+
+    def place_close_order(self, trade, legs, close_qty=1, **kw):
+        self.closed_orders.append({"trade": trade})
+        if self.close_returns:
+            return self.close_returns.pop(0)
+        return None
+
+    def get_positions(self):
+        if self.positions_returns:
+            return self.positions_returns.pop(0)
+        return {}
+
+    def get_open_orders(self, client_order_id=None):
+        return []
+
+    def connect(self):
+        return True
+
+    def disconnect(self):
+        pass
+
+
+@pytest.fixture()
+def fake_broker():
+    """Return a fresh _FakeBroker instance for lifecycle FSM tests."""
+    return _FakeBroker()
+
+
+@pytest.fixture()
+def lifecycle_journal(tmp_path, monkeypatch):
+    """Sandboxed journal path wired into lifecycle.journal_io.JOURNAL.
+
+    Returns a Path. Write fixture records to it before exercising the FSM.
+    """
+    journal = tmp_path / "trades.jsonl"
+    journal.touch()
+    monkeypatch.setenv("QUANTAI_JOURNAL", str(journal))
+    # Reload the module so JOURNAL constant picks up the new env var
+    import importlib
+    try:
+        import lifecycle.journal_io as jio
+        importlib.reload(jio)
+    except ImportError:
+        pass
+    yield journal
+    try:
+        import lifecycle.journal_io as jio
+        importlib.reload(jio)
+    except ImportError:
+        pass
