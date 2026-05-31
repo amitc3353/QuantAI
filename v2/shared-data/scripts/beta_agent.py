@@ -431,6 +431,15 @@ def main() -> int:
         "invalidation_clause": _invalidation,
         "skills_consulted": ["regime-classification", "iv-surface-reading", "greeks-management"],
     }
+    # FSM enforce: stamp initial state on journal entry
+    _fsm_mode = os.environ.get("LIFECYCLE_FSM_MODE", "off").lower()
+    if _fsm_mode in ("enforce_exit_only", "enforce"):
+        from datetime import timezone as _tz
+        _fs = (fill.get("status") or "").lower()
+        _fq = fill.get("filled_qty", 0) or 0
+        entry["state"] = "FILLED" if (_fs == "filled" and _fq > 0) else "ACKED"
+        entry["last_transition_at"] = datetime.now(ET).astimezone(_tz.utc).isoformat()
+        entry["transitions_count"] = 1
     _journal_write(entry)
     print(f"[beta_agent] journaled as {entry['id']}")
 

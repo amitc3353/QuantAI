@@ -659,6 +659,12 @@ def log_trade(trade, agent_name, fill, intel):
         "fill_status": fill.get("status", "") if fill else "",
         "filled_qty": fill.get("filled_qty", 0) if fill else 0,
         "notes": f"Auto-executed by {agent_name}",
+        # FSM enforce: stamp initial state on entry
+        **({"state": ("FILLED" if (fill and str(fill.get("status","")).lower()=="filled" and fill.get("filled_qty",0)>0) else "ACKED"),
+            "last_transition_at": datetime.now(ET).isoformat(),
+            "transitions_count": 1}
+           if os.environ.get("LIFECYCLE_FSM_MODE","off") in ("enforce_exit_only","enforce")
+           else {}),
         "decision": {
             "conviction_score": alpha_conviction_from_judge(trade.get("judge_score")),
             "thesis": trade.get("thesis", ""),

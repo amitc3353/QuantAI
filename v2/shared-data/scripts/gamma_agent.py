@@ -636,6 +636,13 @@ def run_execute() -> int:
         }
         entry["full_trajectory"] = None
 
+        # FSM enforce: stamp initial state on journal entry
+        _fsm_mode = os.environ.get("LIFECYCLE_FSM_MODE", "off").lower()
+        if _fsm_mode in ("enforce_exit_only", "enforce"):
+            import datetime as _dt
+            entry["state"] = "FILLED" if _is_filled else "ACKED"
+            entry["last_transition_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            entry["transitions_count"] = 1
         _journal_write(entry)
         print(f"[gamma_agent] journaled as {entry['id']} (order_id={entry['order_id']})")
         placed.append(entry)
@@ -1161,6 +1168,13 @@ def run_execute_4arm() -> int:
             entry["rsi_at_entry"] = setup.get("rsi_10")
             entry["sma_200_distance_pct"] = setup.get("distance_above_200ma_pct")
             entry["sector"] = setup.get("sector")
+            # FSM enforce: stamp initial state on journal entry
+            _fsm_mode = os.environ.get("LIFECYCLE_FSM_MODE", "off").lower()
+            if _fsm_mode in ("enforce_exit_only", "enforce"):
+                import datetime as _dt
+                entry["state"] = "FILLED" if _is_filled else "ACKED"
+                entry["last_transition_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+                entry["transitions_count"] = 1
 
             if not DRY_RUN:
                 append_arm_trade(aid, entry)

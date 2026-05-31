@@ -184,11 +184,20 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 
 **Soft flag:** `/root/quantai-v2/shared-data/cache/entry_pause.flag` — if present, all 3 entry agents return early. Remove to re-enable.
 
-**To un-pause an agent (Phase 5 staggered):**
-1. `sudo rm /root/quantai-v2/shared-data/cache/entry_pause.flag` (after all 3 ready)
+**Phase 5 staggered un-pause schedule (started 2026-06-01, 24h between each):**
+1. **Beta first** (~2026-06-02 Mon): un-pause `beta_agent.py`. Remove BETA_ENABLED=0 if still set, uncomment crontab line. Watch for 24h: each entry must walk FSM ACKED→FILLED→OPEN.
+2. **Alpha next** (~2026-06-03 Tue): un-pause `run_pipeline.py`. Uncomment both pipeline crontab lines. Same 24h FSM-walk verification.
+3. **Gamma last** (~2026-06-04 Wed): un-pause `gamma_agent.py` --scan/--execute/--verify-spreads. Remove entry_pause.flag only after all 3 are live.
+
+**Per-agent un-pause steps:**
+1. Set BETA_ENABLED=1 (or ALPHA_ENABLED=1, GAMMA_ENABLED=1 as applicable) in .env
 2. `sudo crontab -e` — uncomment the agent's lines (remove the `#`)
-3. Verify next cron tick runs cleanly (watch the agent's log for 1 cycle)
-4. Un-pause order: Beta → Alpha → Gamma, 24h between each
+3. Watch the agent log for 1 full cron cycle (2 min for position_monitor, 15 min for entries)
+4. Verify FSM state field on new journal entries = ACKED or FILLED (not missing)
+5. 24h later: if no FSM errors, proceed to next agent
+6. After all 3: `sudo rm /root/quantai-v2/shared-data/cache/entry_pause.flag`
+
+**Abort rule:** if any entry produces state=PHANTOM_NEVER_FILLED within 15 min, re-pause that agent and investigate.
 
 ## Auto-Heal
 
