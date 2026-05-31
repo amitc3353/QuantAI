@@ -1514,7 +1514,11 @@ def main() -> int:
     # Lifecycle FSM refactor: soft pause flag. Stacks below GAMMA_ENABLED so
     # operator subcommands (--reset-experiment, --promote-arm, etc.) still work.
     # Removed once Phase 5 un-pause is complete. position_monitor stays live.
-    if (CACHE / "entry_pause.flag").exists():
+    try:
+        _flag_present = (CACHE / "entry_pause.flag").exists()
+    except PermissionError:
+        _flag_present = False
+    if _flag_present:
         print("[gamma_agent] entry_pause.flag present — skipping scan/execute/verify, exit path unaffected")
         return 0
 

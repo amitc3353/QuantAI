@@ -159,7 +159,11 @@ def main() -> int:
 
     # Lifecycle FSM refactor: soft pause flag. Removed once Phase 5 un-pause
     # is complete. position_monitor (exit path) is unaffected and stays live.
-    if _ENTRY_PAUSE_FLAG.exists():
+    try:
+        _flag_present = _ENTRY_PAUSE_FLAG.exists()
+    except PermissionError:
+        _flag_present = False
+    if _flag_present:
         print("[beta_agent] entry_pause.flag present — skipping entry, exit path unaffected")
         return 0
 
