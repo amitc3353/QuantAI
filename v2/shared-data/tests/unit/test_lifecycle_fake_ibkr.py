@@ -1,15 +1,23 @@
-"""Six scenario tests with fake broker — lifecycle FSM integration.
+"""Fake-broker scenario tests for the lifecycle FSM.
 
-Tests the full sequence: SubmitResult.from_broker → state_after_submit
-→ advance (with time injection) → final state.
+Original six scenarios + adversarial cases for the two critical transitions
+identified by Phase 0 (ACKED→FILLED 67%, EXIT_SUBMITTED→CLOSED 33%).
 
-Phase 0 evidence shapes scenarios:
-  (i)  Submitted-never-Filled → ACKED deadline → PHANTOM_NEVER_FILLED  (67% case)
-  (ii) Filled-mid-poll → ACKED → FILLED → OPEN                         (happy path)
+Original:
+  (i)   Submitted-never-Filled → ACKED deadline → PHANTOM_NEVER_FILLED
+  (ii)  Filled-mid-poll → ACKED → FILLED → OPEN
   (iii) place_mleg_order raises post-submit → UNKNOWN → ACKED → deadline
-  (iv) Partial fill (filled_qty < ordered) → ACCEPTED, FILLED           (still counts as fill)
-  (v)  Duplicate coid → idempotent noop
-  (vi) Close Cancelled → OPEN retry → Filled → CLOSED                   (33% guard)
+  (iv)  Partial fill (filled_qty < ordered) → ACCEPTED, FILLED
+  (v)   Duplicate coid → idempotent noop
+  (vi)  Close Cancelled → OPEN retry → Filled → CLOSED
+
+Adversarial (added Gap 5):
+  (vii)  Fill arrives AFTER 15min timeout → already PHANTOM, idempotent noop
+  (viii) Broker returns corrupted data (empty dict, missing fields)
+  (ix)   Multiple consecutive indeterminate polls before fill
+  (x)    Broker refuses close repeatedly → stays EXIT_ACKED, alert fires at 30min
+  (xi)   Legs vanish from broker after close submitted
+  (xii)  Close returns Submitted-never-Filled → EXIT_ACKED → 30min alert
 """
 from __future__ import annotations
 
@@ -157,3 +165,164 @@ def test_close_cancelled_retries_then_fills(fake_broker):
     r2 = CloseResult.from_broker(raw2)
     assert r2.outcome == CloseOutcome.FILLED
     assert TradeLifecycle.state_after_close(r2) == TradeState.CLOSED
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADVERSARIAL SCENARIOS — Gap 5 additions for the two critical transitions
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── (vii) Fill arrives AFTER 15min timeout (race condition) ───────────────────
+
+def test_fill_after_timeout_is_idempotent_noop():
+    """Trade already escalated to PHANTOM. Late fill must not resurrect it."""
+    # FSM already advanced to PHANTOM_NEVER_FILLED
+    record = {
+        "id": "T007",
+        "state": "PHANTOM_NEVER_FILLED",
+        "status": "PHANTOM_NEVER_FILLED",
+        "order_id": "b200",
+        "close_reason": "fsm_acked_deadline_15min",
+    }
+    # Late fill arrives — this is the race
+    assert TradeLifecycle.is_idempotent_noop(record, TradeState.FILLED) is True
+    # advance() must also return (None, {}) for terminals
+    state, updates = TradeLifecycle.advance(record)
+    assert state is None
+    assert updates == {}
+
+
+# ── (viii) Broker returns corrupted data ──────────────────────────────────────
+
+def test_empty_dict_from_broker_is_rejected():
+    """Broker returns {} (connection drop, empty response)."""
+    r = SubmitResult.from_broker({})
+    assert r.outcome == SubmitOutcome.REJECTED
+    assert r.order_id is None
+    assert r.filled_qty == 0
+    assert TradeLifecycle.state_after_submit(r) == TradeState.REJECTED
+
+
+def test_dict_with_only_order_id_no_status_is_unknown():
+    """Broker returns partial data — order_id present, everything else missing."""
+    r = SubmitResult.from_broker({"order_id": "partial-999"})
+    assert r.outcome == SubmitOutcome.UNKNOWN
+    assert TradeLifecycle.state_after_submit(r) == TradeState.ACKED
+
+
+def test_close_result_empty_dict_is_rejected():
+    """Close broker returns {} (timeout, empty response)."""
+    r = CloseResult.from_broker({})
+    assert r.outcome == CloseOutcome.UNKNOWN  # no status → UNKNOWN, not FILLED
+    assert TradeLifecycle.state_after_close(r) == TradeState.EXIT_ACKED
+
+
+# ── (ix) Multiple consecutive indeterminate polls before fill ─────────────────
+
+def test_multiple_indeterminate_polls_stay_acked():
+    """ACKED record polled 3 times with indeterminate status, still within deadline."""
+    record = {
+        "id": "T009",
+        "state": "ACKED",
+        "order_id": "b300",
+        "last_transition_at": _now_minus(minutes=3).isoformat(),
+    }
+    # Three polls at 3 min — all within 15min deadline → no transition
+    for _ in range(3):
+        state, updates = TradeLifecycle.advance(record)
+        assert state is None
+        assert updates == {}
+
+
+def test_multiple_indeterminate_polls_then_timeout():
+    """ACKED record polled repeatedly, deadline hits on the Nth poll."""
+    record = {
+        "id": "T009b",
+        "state": "ACKED",
+        "order_id": "b301",
+        "last_transition_at": _now_minus(minutes=16).isoformat(),
+    }
+    # Still in ACKED after deadline — must escalate regardless of how many prior polls
+    state, updates = TradeLifecycle.advance(record)
+    assert state == TradeState.PHANTOM_NEVER_FILLED
+
+
+# ── (x) Broker refuses close order repeatedly (the actual zombie pattern) ─────
+
+def test_close_refused_repeatedly_stays_open_for_retry(fake_broker):
+    """Broker returns None on close (the DE zombie pattern). FSM must allow retry
+    by returning to OPEN, not deadlocking in EXIT_SUBMITTED."""
+    # Three consecutive None returns (broker refuses)
+    for attempt in range(3):
+        fake_broker.close_returns = [None]
+        raw = fake_broker.place_close_order({}, [])
+        r = CloseResult.from_broker(raw)
+        assert r.outcome == CloseOutcome.REJECTED
+        # REJECTED close → OPEN (allows retry next cycle)
+        assert TradeLifecycle.state_after_close(r) == TradeState.OPEN
+
+
+def test_exit_acked_30min_alert_fires(fake_broker):
+    """Close order stuck in Submitted for 31min → alert flag fires."""
+    record = {
+        "id": "T010",
+        "state": "EXIT_ACKED",
+        "working_close_order_id": "close-stuck",
+        "last_transition_at": _now_minus(minutes=31).isoformat(),
+    }
+    state, updates = TradeLifecycle.advance(record)
+    # EXIT_ACKED does NOT auto-terminal — operator decides
+    assert state is None
+    assert updates.get("fsm_exit_acked_alert") is True
+
+
+# ── (xi) Legs vanish from broker AFTER close submitted ────────────────────────
+
+def test_open_legs_vanish_during_close_detected():
+    """Position legs disappear from broker while trade is OPEN (pre-close).
+    FSM must detect this as PHANTOM_VANISHED, not silently ignore it."""
+    record = {
+        "id": "T011",
+        "state": "OPEN",
+        "legs": [{"symbol": "SPY261231C00450000"}, {"symbol": "SPY261231C00460000"}],
+    }
+    # Broker returns empty positions — both legs gone
+    state, updates = TradeLifecycle.advance(record, broker_positions={})
+    assert state == TradeState.PHANTOM_VANISHED
+    assert "vanished" in updates.get("close_reason", "")
+
+
+def test_open_one_leg_present_no_vanish():
+    """At least one leg still on broker → no vanish, trade remains OPEN."""
+    record = {
+        "id": "T012",
+        "state": "OPEN",
+        "legs": [{"symbol": "SPY261231C00450000"}, {"symbol": "SPY261231C00460000"}],
+    }
+    state, _ = TradeLifecycle.advance(
+        record,
+        broker_positions={"SPY261231C00450000": {"qty": 1}}
+    )
+    assert state is None  # one leg present → still OPEN
+
+
+# ── (xii) Close returns Submitted-never-Filled → EXIT_ACKED escalation ───────
+
+def test_close_submitted_never_fills_reaches_exit_acked(fake_broker):
+    """Close order stuck in Submitted → EXIT_ACKED → 30min alert.
+    This is the full close-side zombie lifecycle."""
+    # Close returns Submitted (indeterminate)
+    fake_broker.close_returns = [{"status": "Submitted", "_working": True, "order_id": "close-500"}]
+    raw = fake_broker.place_close_order({}, [])
+    r = CloseResult.from_broker(raw)
+    assert r.outcome == CloseOutcome.INDETERMINATE
+    assert TradeLifecycle.state_after_close(r) == TradeState.EXIT_ACKED
+
+    # EXIT_ACKED at 31min → alert flag
+    record = {
+        "id": "T013",
+        "state": "EXIT_ACKED",
+        "last_transition_at": _now_minus(minutes=31).isoformat(),
+    }
+    state, updates = TradeLifecycle.advance(record)
+    assert state is None  # no auto-terminal
+    assert updates.get("fsm_exit_acked_alert") is True
