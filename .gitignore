@@ -33,13 +33,14 @@ graphify-out/.graphify_python
 *.retired
 *.retired.*
 
-# Auto-heal historical state (predates the Sentinel cutover on 2026-05-03;
-# kept on disk for forensics, not for the repo).
+# Auto-heal historical state (operational, machine-local).
 v2/shared-data/scripts/auto_heal_data/dismissed_*/
 v2/shared-data/scripts/auto_heal_data/fix_history/
+v2/shared-data/scripts/auto_heal_data/suppressed_patterns/
 
 # Runtime lock + scheduling state (ephemeral, machine-local).
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
 /tmp/quantai-heartbeats/
 
 # Credentials — NEVER commit. The repo had a Google Cloud service-account
