@@ -11,6 +11,18 @@ Requirements:
   - IB Gateway running on localhost:4002
   - IBKR paper account DUP851506 active
   - Run as root (cron user) since broker paths are root-owned
+
+Safety note (2026-06-01 bug fix):
+  The earlier version called ibkr_broker.place_mleg_order, which internally
+  uses MarketOrder("BUY", qty) with NO limit price. Combined with IBKR paper
+  filling pre-market against the simulated book, this caused the smoke test
+  to leave a real filled SPY 757/758 spread on the broker that had to be
+  closed manually during the fsm_baseline_v1 reset.
+
+  This version bypasses place_mleg_order entirely and submits the combo with
+  an explicit ib_insync LimitOrder at a $0.01 net debit limit — far below
+  any plausible market price, so the order CANNOT fill. The test verifies
+  the FSM classification of the broker's PreSubmitted response, then cancels.
 """
 from __future__ import annotations
 
@@ -113,29 +125,52 @@ def test_submit_ack_cancel_state_walk(ibkr_broker):
     buy_occ = _build_occ("SPY", expiry_occ, "C", buy_strike)
     sell_occ = _build_occ("SPY", expiry_occ, "C", sell_strike)
 
-    coid = f"smoke-{int(time.time())}"
-    legs = [
-        {"symbol": buy_occ, "side": "BUY"},
-        {"symbol": sell_occ, "side": "SELL"},
+    # Build combo Bag manually and submit a LimitOrder at $0.01 net debit so
+    # it physically CANNOT fill. Bypasses place_mleg_order's MarketOrder default
+    # (which left a real position on the broker in the previous test run).
+    from ib_insync import Bag, ComboLeg, LimitOrder, Option as IB_Option
+
+    buy_contract = ib.qualifyContracts(IB_Option("SPY", expiry_yyyymmdd, buy_strike, "C", "SMART"))[0]
+    sell_contract = ib.qualifyContracts(IB_Option("SPY", expiry_yyyymmdd, sell_strike, "C", "SMART"))[0]
+    combo_legs = [
+        ComboLeg(conId=buy_contract.conId, ratio=1, action="BUY", exchange="SMART"),
+        ComboLeg(conId=sell_contract.conId, ratio=1, action="SELL", exchange="SMART"),
     ]
+    bag = Bag(symbol="SPY", exchange="SMART", currency="USD", comboLegs=combo_legs)
+    bag.secType = "BAG"
+
+    coid = f"smoke-{int(time.time())}"
+    order = LimitOrder("BUY", 1, lmtPrice=0.01)  # $0.01 net debit — non-fillable
+    order.tif = "DAY"
+    order.orderRef = coid
 
     print(f"\n  Smoke test setup:")
     print(f"    SPY price: ${price:.2f}")
-    print(f"    OTM strike: ${buy_strike}/${sell_strike} (50% OTM)")
+    print(f"    OTM strikes: ${buy_strike}/${sell_strike}")
     print(f"    Expiry: {expiry_yyyymmdd}")
-    print(f"    Buy leg: {buy_occ}")
-    print(f"    Sell leg: {sell_occ}")
+    print(f"    Net debit limit: $0.01 (non-fillable)")
     print(f"    coid: {coid}")
 
-    # 4. Submit
-    raw = ibkr_broker.place_mleg_order(legs, qty=1, tif="day", client_order_id=coid)
+    # 4. Submit and classify result via the same broker_adapter the FSM uses
+    trade = ib.placeOrder(bag, order)
+    ib.sleep(2)  # let callbacks flush
 
-    # place_mleg_order may return None if qualification fails on the far-OTM
-    # strikes (no contract at that strike/expiry). This is a REAL test failure,
-    # not something to skip — it means the test's strike selection needs fixing.
-    assert raw is not None, (
-        f"place_mleg_order returned None. Last error: {ibkr_broker._last_order_error}. "
-        f"The far-OTM strikes ({buy_strike}/{sell_strike}) may not have listed contracts."
+    raw = {
+        "order_id": str(trade.order.orderId),
+        "status": trade.orderStatus.status,
+        "filled_qty": trade.orderStatus.filled,
+        "avg_fill_price": trade.orderStatus.avgFillPrice,
+        "client_order_id": coid,
+        "_working": trade.orderStatus.status in (
+            "Submitted", "PreSubmitted", "PendingSubmit"
+        ),
+    }
+    assert raw["order_id"], "Broker did not return an order_id"
+
+    # Verify the order is NOT filled — this is the key safety check
+    assert raw["filled_qty"] == 0, (
+        f"SAFETY: smoke order filled (qty={raw['filled_qty']}) — limit price "
+        f"$0.01 was bypassed. Manually flatten before re-running."
     )
 
     result = SubmitResult.from_broker(raw)
