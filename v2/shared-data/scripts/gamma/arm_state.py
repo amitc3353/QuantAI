@@ -366,22 +366,8 @@ def update_arm_journal_entry(arm_id: str, trade_id: str, updates: dict,
 # ── Trade ID generation (per-arm counter) ─────────────────────────────
 
 
-def next_arm_trade_id(arm_id: str, journal: list[dict]) -> str:
-    """Generate next sequential per-arm trade ID: Ga001, Gb001, Gc001, Gd001.
-
-    Each arm's counter is independent. Reads the journal (typically loaded
-    by ``load_arm_journal()``) to find the max existing counter and
-    increments. Counter is 0-padded to 3 digits — a single arm hitting 999
-    trades is well beyond the 80-trade-floor / 180-day-cap of the test, so
-    the format is sufficient.
-
-    Format: ``G{arm_letter}{NNN}``. Pre-experiment trades with id ``G001``,
-    ``G002``, ``G003`` (no arm letter) are NOT counted toward the per-arm
-    counter; they exist in the legacy single-Gamma series and are handled
-    by ``test_legacy_gamma_trades_still_parseable``.
-    """
-    _validate_arm_id(arm_id)
-    prefix = f"G{arm_id}"
+def _max_counter_for_prefix(journal: list[dict], prefix: str) -> int:
+    """Return the max NNN counter for ``{prefix}NNN`` ids in a journal list."""
     max_n = 0
     for t in journal:
         tid = (t.get("id") or "")
@@ -392,6 +378,55 @@ def next_arm_trade_id(arm_id: str, journal: list[dict]) -> str:
                     max_n = max(max_n, int(suffix))
                 except ValueError:
                     continue
+    return max_n
+
+
+def next_arm_trade_id(arm_id: str, journal: list[dict],
+                      union_journal_path: Path | None = None) -> str:
+    """Generate next sequential per-arm trade ID: Ga001, Gb001, Gc001, Gd001.
+
+    Each arm's counter is independent. Counter is 0-padded to 3 digits.
+    Format: ``G{arm_letter}{NNN}``.
+
+    **Collision safety (added 2026-06-02 after the duplicate-ID incident):**
+    ``reset_arm()`` truncates the per-arm journal but does NOT touch the
+    union ``trades.jsonl``. If the counter were derived only from the
+    (now-empty) per-arm journal, the next id would restart at ``Ga001`` and
+    collide with the pre-reset ``Ga001`` still present in the union journal.
+    Two OPEN entries with the same id caused position_monitor to fire
+    duplicate close orders, inverting the broker position.
+
+    Fix (option b — counter never reuses an id): take the max counter across
+    BOTH the passed-in per-arm ``journal`` AND the union journal on disk.
+    Chosen over option a (archive the union journal on reset) because it is
+    defensive regardless of what reset does — even a manual journal edit that
+    reintroduces old ids can't cause a collision. ``union_journal_path``
+    defaults to the production union journal; tests pass an explicit path (or
+    a nonexistent one) to isolate.
+    """
+    _validate_arm_id(arm_id)
+    prefix = f"G{arm_id}"
+    max_n = _max_counter_for_prefix(journal, prefix)
+
+    # Also scan the union journal so a per-arm reset can never cause an id
+    # collision with surviving union-journal entries.
+    path = union_journal_path if union_journal_path is not None else UNION_JOURNAL_PATH
+    try:
+        if path.exists():
+            union_records = []
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        union_records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            max_n = max(max_n, _max_counter_for_prefix(union_records, prefix))
+    except OSError:
+        pass  # union journal unreadable — fall back to per-arm counter only
+
     return f"{prefix}{max_n + 1:03d}"
 
 

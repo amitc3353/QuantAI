@@ -1683,6 +1683,61 @@ _ENTRY_TERMINAL_FAIL_STATUSES = {
 _PENDING_TIMEOUT_HOURS = 3
 
 
+def _detect_resurrected_pending(broker, all_trades):
+    """FSM resurrection guard (added 2026-06-02 after the incident).
+
+    The known gap: ``broker.get_order_status(oid)`` returns None for orders
+    that have already FILLED (it only sees working orders). So a PENDING
+    entry whose order filled asynchronously never gets promoted to OPEN by
+    the status poll — it sits PENDING until the 3h timeout marks it
+    PHANTOM_NEVER_FILLED, even though the position is live at the broker.
+    (See docs/2026-06-01-fsm-resurrection-gap.md.)
+
+    Until a proper FSM fix lands, this guard does NOT auto-promote (too risky
+    without full testing). It only ALERTS + LOGS when a PENDING/ACKED record
+    has a matching broker position, so an operator can reconcile manually
+    before the timeout fires. Returns the set of resurrected trade ids so the
+    caller can skip auto-phantom-escalation on them.
+    """
+    resurrected = set()
+    try:
+        broker_positions = broker.get_positions() or []
+    except Exception as e:
+        log(f"  [resurrection-guard] broker.get_positions failed: {e} — skipping check")
+        return resurrected
+    broker_syms = set()
+    for p in broker_positions:
+        sym = p.get("symbol") if isinstance(p, dict) else None
+        if sym:
+            broker_syms.add(str(sym))
+    if not broker_syms:
+        return resurrected
+
+    for t in all_trades:
+        if t.get("status") not in ("PENDING",):
+            continue
+        if not str(t.get("source", "")).startswith("agent"):
+            continue
+        legs = t.get("legs", [])
+        leg_syms = {str(lg.get("symbol") or "") for lg in legs}
+        if leg_syms & broker_syms:
+            tid = t.get("trade_id") or t.get("id")
+            resurrected.add(tid)
+            log(f"  🔴 [resurrection-guard] {tid} is PENDING but has a live broker "
+                f"position ({leg_syms & broker_syms}) — NOT auto-promoting; operator "
+                f"must reconcile. Skipping phantom escalation for this entry.")
+            try:
+                post_discord(
+                    f"🔴 **FSM resurrection guard** — `{tid}` is PENDING in the journal "
+                    f"but its leg(s) are LIVE at the broker. The fill arrived after the "
+                    f"status poll could see it. Manual reconciliation needed before the "
+                    f"3h timeout marks it PHANTOM_NEVER_FILLED. Legs: {sorted(leg_syms & broker_syms)}"
+                )
+            except Exception:
+                pass
+    return resurrected
+
+
 def _promote_pending_entries(broker, all_trades):
     """Check PENDING journal entries — promote to OPEN if filled,
     mark PHANTOM_NEVER_FILLED if dead or timed out.
@@ -1696,11 +1751,19 @@ def _promote_pending_entries(broker, all_trades):
     if not pending:
         return
 
+    # FSM resurrection guard: identify PENDING entries that already have a
+    # live broker position (fill arrived after the status poll). These are
+    # excluded from auto-phantom-escalation below.
+    resurrected = _detect_resurrected_pending(broker, all_trades)
+
     updates = {}
     now = datetime.now(ET)
 
     for t in pending:
         tid = t.get("trade_id") or t.get("id")
+        # Skip resurrection-flagged entries — operator reconciles these.
+        if tid in resurrected:
+            continue
         if not tid:
             continue
         oid = t.get("order_id", "")
@@ -1788,17 +1851,64 @@ def _promote_pending_entries(broker, all_trades):
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def _duplicate_ids(trades):
+    """Return the set of trade ids that appear more than once in the journal.
+
+    Duplicate-ID protection (added 2026-06-02 after the incident): a per-arm
+    reset that didn't dedupe the union journal produced two OPEN entries with
+    the same id. position_monitor processed both and fired duplicate close
+    orders, inverting the broker position. If duplicates exist, the caller
+    refuses to run the close loop until an operator resolves them.
+    """
+    from collections import Counter
+    counts = Counter(t.get("id") for t in trades if t.get("id"))
+    return {tid for tid, c in counts.items() if c > 1}
+
+
 def main():
     now = datetime.now(ET)
     log(f"Position monitor starting {'[DRY RUN] ' if DRY_RUN else ''}— {now.strftime('%H:%M ET %a')}")
 
     all_trades  = load_journal()
 
+    # Duplicate-ID guard — refuse to act if the journal has colliding ids.
+    # Firing closes on a duplicated OPEN entry doubles the close quantity and
+    # can invert the broker position (the 2026-06-01 incident). Halt the
+    # close loop entirely; alert once; let the operator dedupe the journal.
+    dupes = _duplicate_ids(all_trades)
+    if dupes:
+        msg = (f"🔴 Position monitor HALTED — duplicate journal ids detected: "
+               f"{sorted(dupes)}. Refusing to evaluate exits or fire closes "
+               f"until the journal is deduped (firing closes on a duplicated "
+               f"OPEN entry inverts the broker position — see 2026-06-01 incident).")
+        log(msg)
+        logging.error("position_monitor halted on duplicate ids: %s", sorted(dupes))
+        try:
+            post_discord(msg)
+        except Exception:
+            pass
+        # Still write the dashboard so the operator sees current P&L, then stop.
+        try:
+            open_for_dash = [t for t in all_trades
+                             if t.get("status") == "OPEN"
+                             and str(t.get("source", "")).startswith("agent")]
+            write_dashboard(open_for_dash, {})
+        except Exception:
+            pass
+        return
+
     # Promote PENDING → OPEN (or PHANTOM_NEVER_FILLED) before main evaluation
     broker_for_promotion = get_broker()
     _promote_pending_entries(broker_for_promotion, all_trades)
     # Reload after potential promotions
     all_trades = load_journal()
+
+    # Re-check duplicates after reload (promotion could not create dupes, but
+    # defensive — a concurrent writer might have).
+    dupes = _duplicate_ids(all_trades)
+    if dupes:
+        log(f"🔴 Position monitor HALTED post-promotion — duplicate ids: {sorted(dupes)}")
+        return
 
     open_trades = [t for t in all_trades
                    if t.get("status") == "OPEN"
