@@ -1467,6 +1467,23 @@ def run_pytest_if_stale(dry_run: bool, state: dict) -> dict:
         log_line("[DRY] would run pytest (stale + off-hours)")
         return result
 
+    # Fork-bomb guard (added 2026-06-02). NEVER spawn a pytest subprocess while
+    # we are already running inside pytest. The sentinel integration test
+    # test_reclassify_runs_during_apply calls run_apply(dry_run=False), which
+    # reaches this function; without the guard it shells out to a real
+    # `python3 -m pytest <test_dir>`, which re-runs the ENTIRE suite, which
+    # hits that test again → run_apply → real pytest → infinite recursion. The
+    # resulting fork bomb exhausted RAM+swap and OOM-killed the IBKR gateway
+    # twice (2026-05-29, 2026-06-02). PYTEST_CURRENT_TEST is set by pytest for
+    # the duration of every test; its presence means "we are inside a test run,
+    # do not recursively launch another one." Never set in production. Placed
+    # immediately before the subprocess.run so the skip-reason/dry-run unit
+    # tests above are unaffected — only the real-spawn path is guarded.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        result["reason"] = "skipped: already running inside pytest (fork-bomb guard)"
+        log_line("pytest auto-run suppressed — already inside a pytest process")
+        return result
+
     # Run pytest
     log_line("running built-in safe_auto: pytest (stale + off-hours)")
     try:
@@ -1557,6 +1574,18 @@ def run_graphify_if_stale(dry_run: bool, state: dict) -> dict:
     if dry_run:
         result["reason"] = "would run graphify (dry-run)"
         log_line("[DRY] would run graphify (stale + off-hours)")
+        return result
+
+    # Same fork-bomb-class guard as run_pytest_if_stale: don't shell out to a
+    # real `graphify` subprocess while inside a pytest run. run_apply() (called
+    # by the sentinel integration tests with dry_run=False) reaches here; the
+    # guard keeps the test run side-effect-free. Not a fork bomb (graphify
+    # doesn't re-run the suite) but the same unwanted recursion-into-subprocess.
+    # Placed before subprocess.run so the skip-reason/dry-run unit tests above
+    # are unaffected.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        result["reason"] = "skipped: already running inside pytest (subprocess guard)"
+        log_line("graphify auto-run suppressed — already inside a pytest process")
         return result
 
     # Run graphify

@@ -33,6 +33,88 @@ if SCRIPTS not in sys.path:
 import sentinel_agent as SA
 
 
+class TestForkBombGuard:
+    """Regression guards for the 2026-06-02 pytest fork-bomb incident.
+
+    The bug: run_pytest_if_stale shells out to `python3 -m pytest <test_dir>`.
+    When reached from inside a pytest run (via run_apply, called by the
+    sentinel integration tests with dry_run=False), it re-ran the whole suite
+    → recursion → fork bomb → OOM → IBKR gateway killed (twice).
+
+    The fix: a guard that skips the subprocess.run when PYTEST_CURRENT_TEST is
+    set. These tests assert the guard actually prevents the spawn. If anyone
+    removes the guard, these fail BEFORE the fork bomb can reach production.
+    """
+
+    def test_pytest_guard_blocks_subprocess_when_inside_pytest(self, tmp_path, monkeypatch):
+        """All other guards clear, but PYTEST_CURRENT_TEST set -> no subprocess."""
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_x.py::test_x (call)")
+        results = tmp_path / "results.json"
+        results.write_text("{}")
+        old = time.time() - (10 * 24 * 3600)
+        os.utime(results, (old, old))
+        state = {}
+        with patch.object(SA, "is_market_hours", return_value=False), \
+             patch.object(SA, "is_trading_window", return_value=False), \
+             patch.object(SA, "TEST_RESULTS_PATH", results), \
+             patch("subprocess.run") as mock_run:
+            result = SA.run_pytest_if_stale(dry_run=False, state=state)
+        mock_run.assert_not_called()          # the critical assertion
+        assert result["ran"] is False
+        assert "fork-bomb guard" in result["reason"]
+        assert "last_pytest_run" not in state  # no state mutation either
+
+    def test_graphify_guard_blocks_subprocess_when_inside_pytest(self, tmp_path, monkeypatch):
+        """Same guard for graphify auto-run."""
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_x.py::test_x (call)")
+        graph = tmp_path / "graph.json"
+        graph.write_text("{}")
+        old = time.time() - (6 * 24 * 3600)
+        os.utime(graph, (old, old))
+        state = {}
+        with patch.object(SA, "is_market_hours", return_value=False), \
+             patch.object(SA, "is_trading_window", return_value=False), \
+             patch.object(SA, "GRAPHIFY_GRAPH_PATH", graph), \
+             patch("subprocess.run") as mock_run:
+            result = SA.run_graphify_if_stale(dry_run=False, state=state)
+        mock_run.assert_not_called()
+        assert result["ran"] is False
+        assert "subprocess guard" in result["reason"]
+
+    def test_run_apply_does_not_spawn_pytest_subprocess(self, tmp_path, monkeypatch):
+        """End-to-end incident replay: run_apply(dry_run=False) inside pytest
+        must NOT invoke `python3 -m pytest`. This is the exact path that
+        fork-bombed. We patch subprocess.run and assert no pytest command is
+        ever issued through it."""
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "test_x.py::test_x (call)")
+        pytest_calls = []
+
+        def _record(cmd, *a, **k):
+            # Flag any attempt to spawn pytest as a subprocess
+            joined = " ".join(str(c) for c in cmd) if isinstance(cmd, (list, tuple)) else str(cmd)
+            if "pytest" in joined:
+                pytest_calls.append(joined)
+            m = MagicMock()
+            m.returncode = 0
+            m.stdout = ""
+            return m
+
+        with patch.object(SA, "is_market_hours", return_value=False), \
+             patch.object(SA, "is_trading_window", return_value=False), \
+             patch.object(SA, "call_llm", return_value={"summary": "", "findings": [], "proposals": []}), \
+             patch.object(SA, "post", return_value="msg-id"), \
+             patch("subprocess.run", side_effect=_record):
+            try:
+                SA.run_apply(dry_run=False, state={"attempts": {}, "quarantined": [], "last_run": {}})
+            except Exception:
+                # run_apply touches many subsystems; we only care that no pytest
+                # subprocess was attempted. Other failures (missing db etc.) are
+                # irrelevant to this guard.
+                pass
+
+        assert pytest_calls == [], f"run_apply tried to spawn pytest: {pytest_calls}"
+
+
 class TestPytestSafeAuto:
     """Verify run_pytest_if_stale() respects all safety guards."""
 
@@ -79,8 +161,15 @@ class TestPytestSafeAuto:
         assert result["ran"] is False
         assert "fresh" in result["reason"]
 
-    def test_pytest_runs_when_stale_and_offhours(self, tmp_path):
-        """Stale + off-hours + no cooldown -> ran=True."""
+    def test_pytest_runs_when_stale_and_offhours(self, tmp_path, monkeypatch):
+        """Stale + off-hours + no cooldown -> ran=True.
+
+        subprocess.run is mocked, so it is safe to bypass the PYTEST_CURRENT_TEST
+        fork-bomb guard here — no real pytest can spawn. The guard protects the
+        UN-mocked path (run_apply integration tests); this test exercises the
+        real run branch with a mocked subprocess.
+        """
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         test_results = tmp_path / "test-results.json"
         # Create file with old mtime (10 days ago)
         test_results.write_text('{"last_run": "old"}')
@@ -124,8 +213,13 @@ class TestPytestSafeAuto:
         assert "dry-run" in result["reason"]
         mock_run.assert_not_called()
 
-    def test_pytest_timeout_handled(self, tmp_path):
-        """subprocess.TimeoutExpired -> graceful failure."""
+    def test_pytest_timeout_handled(self, tmp_path, monkeypatch):
+        """subprocess.TimeoutExpired -> graceful failure.
+
+        subprocess.run is mocked, so bypass the fork-bomb guard to reach the
+        real run branch where the timeout is handled.
+        """
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         test_results = tmp_path / "test-results.json"
         test_results.write_text('{"last_run": "old"}')
         old_time = time.time() - (10 * 24 * 3600)
@@ -179,8 +273,13 @@ class TestGraphifySafeAuto:
         assert result["ran"] is False
         assert "fresh" in result["reason"]
 
-    def test_graphify_runs_when_stale_and_offhours(self, tmp_path):
-        """graph.json 6 days old + off-hours -> ran=True."""
+    def test_graphify_runs_when_stale_and_offhours(self, tmp_path, monkeypatch):
+        """graph.json 6 days old + off-hours -> ran=True.
+
+        subprocess.run is mocked, so bypassing the PYTEST_CURRENT_TEST guard is
+        safe — no real graphify spawns. Mirrors the pytest-run test above.
+        """
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         graph_path = tmp_path / "graph.json"
         graph_path.write_text('{}')
         old_time = time.time() - (6 * 24 * 3600)
@@ -211,8 +310,9 @@ class TestGraphifySafeAuto:
         assert result["ran"] is False
         assert "does not exist" in result["reason"]
 
-    def test_graphify_timeout_handled(self, tmp_path):
+    def test_graphify_timeout_handled(self, tmp_path, monkeypatch):
         """subprocess.TimeoutExpired -> graceful failure."""
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         graph_path = tmp_path / "graph.json"
         graph_path.write_text('{}')
         old_time = time.time() - (6 * 24 * 3600)
@@ -228,8 +328,9 @@ class TestGraphifySafeAuto:
         assert result["ran"] is False
         assert "timed out" in result["reason"]
 
-    def test_graphify_command_not_found_handled(self, tmp_path):
+    def test_graphify_command_not_found_handled(self, tmp_path, monkeypatch):
         """FileNotFoundError -> graceful failure."""
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         graph_path = tmp_path / "graph.json"
         graph_path.write_text('{}')
         old_time = time.time() - (6 * 24 * 3600)
