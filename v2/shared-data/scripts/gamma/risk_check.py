@@ -53,10 +53,31 @@ def open_arm_positions(journal: list, arm_id: str) -> list:
     return [t for t in journal if _is_arm_gamma(t, arm_id) and t.get("status") == "OPEN"]
 
 
-def consecutive_arm_losses(journal: list, arm_id: str) -> tuple[int, str]:
-    """Per-arm version of consecutive_gamma_losses — scoped via _is_arm_gamma."""
+def consecutive_arm_losses(journal: list, arm_id: str,
+                           since_iso: str | None = None) -> tuple[int, str]:
+    """Per-arm version of consecutive_gamma_losses — scoped via _is_arm_gamma.
+
+    ``since_iso`` (added 2026-06-03 after the incident): an experiment-reset
+    boundary. When provided, CLOSED trades that closed at/before ``since_iso``
+    are EXCLUDED entirely — they belong to a prior experiment and must not
+    count toward the current experiment's loss streak. Without this, the
+    8 reconciled incident-loss entries (booked the day of a fresh reset)
+    tripped the circuit breaker and would have blocked all 4 arms for 48h on
+    artifacts of the duplicate-close cascade, defeating the reset. The
+    experiment-reset timestamp is each arm's ``experiment_started_at``.
+    """
+    closed = [t for t in journal
+              if _is_arm_gamma(t, arm_id) and t.get("status") == "CLOSED"]
+    if since_iso:
+        kept = []
+        for t in closed:
+            ct = t.get("close_timestamp") or t.get("timestamp", "")
+            # Keep only trades that closed strictly after the reset boundary.
+            if ct and ct > since_iso:
+                kept.append(t)
+        closed = kept
     closed = sorted(
-        [t for t in journal if _is_arm_gamma(t, arm_id) and t.get("status") == "CLOSED"],
+        closed,
         key=lambda t: t.get("close_timestamp") or t.get("timestamp", ""),
         reverse=True,
     )
@@ -218,10 +239,17 @@ def filter_setups(setups: list[dict], journal: list,
 # ──────────────────────────────────────────────────────────────────────
 
 
-def check_portfolio_gates_for_arm(journal: list, arm_id: str) -> tuple[bool, str]:
+def check_portfolio_gates_for_arm(journal: list, arm_id: str,
+                                  since_iso: str | None = None) -> tuple[bool, str]:
     """Per-arm portfolio gate: max open, daily cap, circuit breaker — all
     scoped to ``arm_id``'s slice of the union journal. Other arms' state
-    has zero effect on this check."""
+    has zero effect on this check.
+
+    ``since_iso`` (the arm's ``experiment_started_at``) scopes the circuit
+    breaker to the current experiment so a fresh reset isn't blocked by the
+    prior experiment's (or an incident's) closed losses. See
+    consecutive_arm_losses for the rationale.
+    """
     open_arm = open_arm_positions(journal, arm_id)
     if len(open_arm) >= MAX_OPEN_POSITIONS:
         return False, f"arm {arm_id}: max {MAX_OPEN_POSITIONS} positions already open"
@@ -234,7 +262,7 @@ def check_portfolio_gates_for_arm(journal: list, arm_id: str) -> tuple[bool, str
     if len(todays) >= MAX_DAILY_ENTRIES:
         return False, f"arm {arm_id}: max {MAX_DAILY_ENTRIES} entries already today"
 
-    consec, last_ts = consecutive_arm_losses(journal, arm_id)
+    consec, last_ts = consecutive_arm_losses(journal, arm_id, since_iso=since_iso)
     if consec >= CIRCUIT_BREAKER_LOSSES and last_ts:
         hours = _hours_since(last_ts)
         if hours < CIRCUIT_BREAKER_HOURS:

@@ -938,7 +938,12 @@ def run_scan_4arm() -> int:
 
     for arm_id in VALID_ARM_IDS:
         # Per-arm portfolio gate — circuit breaker, daily cap, etc.
-        ok, why = check_portfolio_gates_for_arm(journal, arm_id)
+        # Pass the arm's experiment_started_at so the circuit breaker only
+        # counts losses from the CURRENT experiment — a fresh reset must not
+        # be blocked by a prior experiment's / incident's closed losses
+        # (2026-06-03 fix).
+        _arm_started = load_arm_state(arm_id).get("experiment_started_at")
+        ok, why = check_portfolio_gates_for_arm(journal, arm_id, since_iso=_arm_started)
         if not ok:
             decisions_record["skipped_arms"][arm_id] = why
             arm_summary[arm_id] = []
