@@ -1,7 +1,7 @@
 # Graph Report - QuantAI  (2026-06-05)
 
 ## Corpus Check
-- 202 files · ~330,436 words
+- 202 files · ~330,877 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
