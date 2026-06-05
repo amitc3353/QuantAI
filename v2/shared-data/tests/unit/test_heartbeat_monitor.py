@@ -248,3 +248,42 @@ class TestIbkrPortAlertInMain:
         self._run_main(tmp_path, monkeypatch, port_open=False)
         state = json.loads((tmp_path / "quantai-heartbeats.json").read_text())
         assert state["data"]["ibkr_port"]["consecutive_fails"] == 4  # 3 prior + 1 this run
+
+
+# ── TestPipelineAlphaPaused (added 2026-06-05) ──────────────────────────────
+
+class TestPipelineAlphaPaused:
+    """When ALPHA_ENABLED=0, the pipeline cron is intentionally off → the
+    heartbeat goes stale by design. The alert should be SUPPRESSED, not fired.
+    This was a 7-10 day noise source during the 2026-06-01 incident recovery."""
+
+    def _run_main(self, tmp_path, monkeypatch, alpha_enabled="0", beat_age=3600):
+        _write_probe_state(tmp_path, consecutive_fails=0)
+        _make_pipeline_beat(tmp_path, age_seconds=beat_age)
+        monkeypatch.setattr(hm, "is_market_hours", lambda: True)
+        monkeypatch.setenv("ALPHA_ENABLED", alpha_enabled)
+        discord_calls = []
+        monkeypatch.setattr(hm, "post_discord", lambda msg: discord_calls.append(msg))
+        monkeypatch.setattr(hm, "cooldown_ok", lambda _: True)
+        monkeypatch.setattr(hm, "record_cooldown", lambda _: None)
+        monkeypatch.setattr(hm, "should_print_status", lambda *a: False)
+        hm.main()
+        return discord_calls
+
+    def test_stale_beat_suppressed_when_alpha_paused(self, tmp_path, monkeypatch):
+        """ALPHA_ENABLED=0 + stale beat + market hours → NO Discord alert."""
+        calls = self._run_main(tmp_path, monkeypatch, alpha_enabled="0", beat_age=3600)
+        pipeline_alerts = [c for c in calls if "pipeline" in c.lower() or "heartbeat" in c.lower()]
+        assert pipeline_alerts == [], f"Expected no pipeline alert when Alpha paused, got: {pipeline_alerts}"
+
+    def test_stale_beat_fires_when_alpha_enabled(self, tmp_path, monkeypatch):
+        """ALPHA_ENABLED=1 + stale beat + market hours → Discord alert fires."""
+        calls = self._run_main(tmp_path, monkeypatch, alpha_enabled="1", beat_age=3600)
+        pipeline_alerts = [c for c in calls if "heartbeat" in c.lower()]
+        assert len(pipeline_alerts) >= 1, f"Expected pipeline alert when Alpha enabled, got: {calls}"
+
+    def test_fresh_beat_no_alert_regardless_of_flag(self, tmp_path, monkeypatch):
+        """Fresh beat (< STALE_MIN) → no alert regardless of ALPHA_ENABLED."""
+        calls = self._run_main(tmp_path, monkeypatch, alpha_enabled="0", beat_age=30)
+        pipeline_alerts = [c for c in calls if "pipeline" in c.lower() or "heartbeat" in c.lower()]
+        assert pipeline_alerts == []

@@ -231,17 +231,30 @@ def main():
         record_log(beat_status)
 
     # --- Alert if stale/missing during market hours ---
+    # Respect the ALPHA_ENABLED flag: when Alpha is paused (ALPHA_ENABLED=0),
+    # the pipeline cron is intentionally commented out → the heartbeat goes stale
+    # by design. Alerting on this creates noise that masks real signals (the
+    # 7-10 day stale-pipeline alert flood during the 2026-06-01→06-05 recovery
+    # was entirely this case). The pipeline should not be expected to beat when
+    # the operator has explicitly disabled it. (Added 2026-06-05.)
+    alpha_enabled = os.environ.get("ALPHA_ENABLED", "1") != "0"
     if market and beat_status in ("missing", "stale") and cooldown_ok("pipeline"):
-        time_str = now.strftime("%H:%M ET")
-        if beat_status == "missing":
-            msg = (f"⚠️ **QuantAI Heartbeat MISSING** — `pipeline.beat` not found. "
-                   f"Pipeline cron may be down. {time_str}")
+        if not alpha_enabled:
+            # Suppress: pipeline is intentionally paused
+            if should_print_status("stale-alpha-paused", market):
+                print(f"[{now.strftime('%H:%M ET')}] pipeline beat={beat_status} "
+                      f"SUPPRESSED (ALPHA_ENABLED=0 — pipeline intentionally paused)")
         else:
-            msg = (f"⚠️ **QuantAI Heartbeat STALE** — last beat {age_min:.0f}m ago "
-                   f"(threshold: {STALE_MIN}m). Pipeline may be stuck or crashed. {time_str}")
-        post_discord(msg)
-        record_cooldown("pipeline")
-        print(f"ALERT: sent Discord notification ({beat_status})")
+            time_str = now.strftime("%H:%M ET")
+            if beat_status == "missing":
+                msg = (f"⚠️ **QuantAI Heartbeat MISSING** — `pipeline.beat` not found. "
+                       f"Pipeline cron may be down. {time_str}")
+            else:
+                msg = (f"⚠️ **QuantAI Heartbeat STALE** — last beat {age_min:.0f}m ago "
+                       f"(threshold: {STALE_MIN}m). Pipeline may be stuck or crashed. {time_str}")
+            post_discord(msg)
+            record_cooldown("pipeline")
+            print(f"ALERT: sent Discord notification ({beat_status})")
 
     # --- Probe IBKR port 4002 (runs every tick, all hours including weekends) ---
     ibkr_connected = probe_ibkr_port()
