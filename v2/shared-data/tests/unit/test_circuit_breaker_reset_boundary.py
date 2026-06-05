@@ -95,9 +95,9 @@ def test_since_boundary_is_exclusive_of_equal_timestamp():
 
 def test_since_post_reset_win_breaks_streak():
     journal = [
-        _arm_closed("a", "Ga104", -50, "2026-06-03T12:30:00+00:00"),  # newest, loss
-        _arm_closed("a", "Ga103", +30, "2026-06-03T12:15:00+00:00"),  # win breaks streak
-        _arm_closed("a", "Ga102", -470, POST),                        # older loss (before win)
+        _arm_closed("a", "Ga104", -50, _iso_hours_ago(0.3)),   # newest, loss
+        _arm_closed("a", "Ga103", +30, _iso_hours_ago(0.6)),   # win breaks streak
+        _arm_closed("a", "Ga102", -470, POST),                 # older loss (before win)
     ]
     consec, _ = consecutive_arm_losses(journal, "a", since_iso=RESET)
     assert consec == 1  # only the newest loss before the win
@@ -131,9 +131,9 @@ def test_gate_allows_with_since_on_pre_reset_losses():
 def test_gate_still_fires_on_post_reset_loss_streak():
     """The breaker MUST still work for real post-reset losses."""
     journal = [
-        _arm_closed("a", "Ga201", -50, "2026-06-03T11:30:00+00:00"),
-        _arm_closed("a", "Ga202", -50, "2026-06-03T12:00:00+00:00"),
-        _arm_closed("a", "Ga203", -50, "2026-06-03T12:30:00+00:00"),
+        _arm_closed("a", "Ga201", -50, _iso_hours_ago(0.9)),
+        _arm_closed("a", "Ga202", -50, _iso_hours_ago(0.6)),
+        _arm_closed("a", "Ga203", -50, _iso_hours_ago(0.3)),
     ]
     ok, why = check_portfolio_gates_for_arm(journal, "a", since_iso=RESET)
     assert ok is False

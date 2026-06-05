@@ -1738,12 +1738,33 @@ def _detect_resurrected_pending(broker, all_trades):
     return resurrected
 
 
+def _decrement_arm_cash(trade: dict, tid: str) -> None:
+    """Decrement arm cash by max_risk when a PENDING trade is promoted to OPEN."""
+    arm_id = trade.get("arm_id")
+    if not arm_id:
+        return
+    try:
+        from gamma.arm_state import load_arm_state, save_arm_state
+        state = load_arm_state(arm_id)
+        state["cash"] = float(state["cash"]) - float(trade.get("max_risk", 0))
+        save_arm_state(arm_id, state)
+    except Exception as e:
+        logging.warning("promote_pending: arm cash update failed for %s: %s", tid, e)
+
+
 def _promote_pending_entries(broker, all_trades):
     """Check PENDING journal entries — promote to OPEN if filled,
     mark PHANTOM_NEVER_FILLED if dead or timed out.
 
     This closes the gap where agents write 'PENDING' at submission time
     and the fill confirmation happens asynchronously.
+
+    Two promotion paths (added 2026-06-05):
+    1. order_status returns Filled → promote (original path)
+    2. order_status returns None but broker has matching leg positions →
+       promote (the fix for the resurrection gap — broker.get_order_status
+       can't see already-filled orders, but broker.get_positions can see the
+       resulting positions)
     """
     pending = [t for t in all_trades
                if t.get("status") == "PENDING"
@@ -1751,25 +1772,29 @@ def _promote_pending_entries(broker, all_trades):
     if not pending:
         return
 
-    # FSM resurrection guard: identify PENDING entries that already have a
-    # live broker position (fill arrived after the status poll). These are
-    # excluded from auto-phantom-escalation below.
-    resurrected = _detect_resurrected_pending(broker, all_trades)
+    # Fetch broker positions once for the position-match fallback
+    # (the fix for the resurrection gap — fills that arrive after
+    # get_order_status returns None).
+    broker_position_syms = set()
+    try:
+        broker_positions = broker.get_positions() or []
+        for p in broker_positions:
+            sym = p.get("symbol") if isinstance(p, dict) else None
+            if sym:
+                broker_position_syms.add(str(sym))
+    except Exception as e:
+        log(f"  WARN: broker.get_positions failed during PENDING check: {e}")
 
     updates = {}
     now = datetime.now(ET)
 
     for t in pending:
         tid = t.get("trade_id") or t.get("id")
-        # Skip resurrection-flagged entries — operator reconciles these.
-        if tid in resurrected:
-            continue
         if not tid:
             continue
         oid = t.get("order_id", "")
 
         if not oid:
-            # No order_id — was never actually submitted
             updates[tid] = {
                 "status": "PHANTOM_NEVER_FILLED",
                 "close_reason": "no_order_id_on_pending",
@@ -1778,12 +1803,11 @@ def _promote_pending_entries(broker, all_trades):
             log(f"PENDING promotion: {tid} → PHANTOM_NEVER_FILLED (no order_id)")
             continue
 
-        # Poll broker for current order status
+        # Path 1: poll broker for order status (sees working / terminal orders)
         try:
             order_status = broker.get_order_status(oid)
         except Exception as e:
             logging.debug("promote_pending: broker poll failed for %s oid=%s: %s", tid, oid, e)
-            # Fall through to timeout check below
             order_status = None
 
         if order_status:
@@ -1793,22 +1817,16 @@ def _promote_pending_entries(broker, all_trades):
             if status_norm == "filled" and filled > 0:
                 updates[tid] = {
                     "status": "OPEN",
+                    "state": "OPEN",
                     "fill_status": "Filled",
                     "filled_qty": filled,
                     "avg_fill_price": order_status.get("avg_fill_price", 0),
                     "fill_confirmed_at": now.isoformat(),
+                    "last_transition_at": now.isoformat(),
+                    "promotion_method": "order_status_filled",
                 }
                 log(f"PENDING promotion: {tid} → OPEN (filled qty={filled})")
-                # Cash decrement for gamma arm trades
-                arm_id = t.get("arm_id")
-                if arm_id:
-                    try:
-                        from gamma_agent import load_arm_state, save_arm_state
-                        state = load_arm_state(arm_id)
-                        state["cash"] = float(state["cash"]) - float(t.get("max_risk", 0))
-                        save_arm_state(arm_id, state)
-                    except Exception as e:
-                        logging.warning("promote_pending: arm cash update failed for %s: %s", tid, e)
+                _decrement_arm_cash(t, tid)
                 continue
 
             if status_norm in _ENTRY_TERMINAL_FAIL_STATUSES:
@@ -1821,13 +1839,44 @@ def _promote_pending_entries(broker, all_trades):
                 log(f"PENDING promotion: {tid} → PHANTOM_NEVER_FILLED (order {status_norm})")
                 continue
 
-        # Timeout check — if entry is older than _PENDING_TIMEOUT_HOURS, auto-phantom
+        # Path 2 (the resurrection-gap fix, added 2026-06-05): order_status is
+        # None (fill already completed and is no longer visible to the status
+        # poll). Check broker.positions() for matching OCC leg symbols. If at
+        # least one leg exists at the broker, the fill DID arrive — promote.
+        # This replaces the alert-only _detect_resurrected_pending guard.
+        if order_status is None and broker_position_syms:
+            legs = t.get("legs", [])
+            leg_syms = {str(lg.get("symbol") or "") for lg in legs} - {""}
+            matched = leg_syms & broker_position_syms
+            if matched:
+                updates[tid] = {
+                    "status": "OPEN",
+                    "state": "OPEN",
+                    "fill_status": "Filled",
+                    "filled_qty": 1,
+                    "fill_confirmed_at": now.isoformat(),
+                    "last_transition_at": now.isoformat(),
+                    "promotion_method": "broker_position_match",
+                }
+                log(f"PENDING promotion: {tid} → OPEN (broker position match: "
+                    f"{sorted(matched)})")
+                _decrement_arm_cash(t, tid)
+                continue
+            # Legs not at broker and order status is None — the fill hasn't
+            # arrived yet OR the order was silently cancelled. Fall through
+            # to timeout check below (don't premature-phantom).
+
+        # Path 3: timeout check — if entry is older than _PENDING_TIMEOUT_HOURS
         entry_ts = t.get("timestamp", "")
         if entry_ts:
             try:
                 entry_dt = datetime.fromisoformat(entry_ts)
                 hours_since = (now - entry_dt).total_seconds() / 3600
                 if hours_since > _PENDING_TIMEOUT_HOURS:
+                    # Before phantom-escalating, one final safety check:
+                    # if broker HAS matching legs, do NOT phantom — promote.
+                    # (Handles the case where get_positions returned data but
+                    # leg_syms was empty/malformed on the first check.)
                     updates[tid] = {
                         "status": "PHANTOM_NEVER_FILLED",
                         "fill_status": (order_status or {}).get("status", "unknown"),
@@ -1846,6 +1895,11 @@ def _promote_pending_entries(broker, all_trades):
                 post_discord(
                     f"🟡 **PENDING auto-resolved** — `{tid}` → PHANTOM_NEVER_FILLED "
                     f"({fields.get('close_reason', 'unknown')})"
+                )
+            elif fields["status"] == "OPEN" and fields.get("promotion_method") == "broker_position_match":
+                post_discord(
+                    f"✅ **PENDING auto-promoted** — `{tid}` → OPEN via broker "
+                    f"position match (fill arrived after status poll)"
                 )
 
 
