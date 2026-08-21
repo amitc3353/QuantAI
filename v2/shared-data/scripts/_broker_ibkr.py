@@ -58,7 +58,7 @@ try:
         Bag,
         ComboLeg,
         MarketOrder,
-        util,
+        util,  # noqa: F401 — availability probe
     )
 except ImportError as e:
     raise ImportError(

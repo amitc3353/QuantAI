@@ -71,9 +71,8 @@ jobs:
         run: python -m pytest tests/ -q
 
   lint:
-    name: lint (advisory)
+    name: lint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +82,8 @@ jobs:
           python-version: '3.12'
 
       - name: Ruff over the live tree
+        # Rule selection and the reliability-philosophy rationale live in ruff.toml.
+        # Pinned so rule churn in new ruff releases can't break CI.
         run: |
-          pip install ruff
+          pip install 'ruff==0.16.4'
           ruff check v2/shared-data/scripts/ --output-format=github

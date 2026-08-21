@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import sys
 import time
@@ -374,7 +373,7 @@ def main() -> int:
         overlap = leg_syms & broker_syms_with_qty
         if overlap:
             log(f"  ⚠️  {tid} expected to be phantom but found broker positions: {overlap}")
-            log(f"  Skipping journal correction — manual triage required.")
+            log("  Skipping journal correction — manual triage required.")
             continue
         corrections[tid] = proposed_correction(tid, "phantom_journal_only", None, by_id[tid])
 

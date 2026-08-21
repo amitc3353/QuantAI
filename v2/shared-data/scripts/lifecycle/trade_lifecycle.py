@@ -19,12 +19,11 @@ FSM pure and easy to test without filesystem.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from lifecycle.states import (
-    DEADLINES, LEGAL_TRANSITIONS, TERMINAL_STATES, TradeState, assert_legal,
+    DEADLINES, TERMINAL_STATES, TradeState,
 )
 from lifecycle.broker_adapter import SubmitOutcome, SubmitResult, CloseOutcome, CloseResult
 from lifecycle.journal_io import get_state
@@ -89,7 +88,7 @@ class TradeLifecycle:
         if current is None or current in TERMINAL_STATES:
             return None, {}
 
-        trade_id = record.get("id", "?")
+
 
         # ── ACKED: check deadline (PRIMARY phantom guard — 67% of cases) ──────
         if current == TradeState.ACKED:

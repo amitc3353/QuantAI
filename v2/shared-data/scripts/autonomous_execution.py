@@ -24,7 +24,11 @@ Usage:
   python3 autonomous_execution.py --monitor-only
 """
 
-import json, os, sys, time, requests
+import json
+import os
+import sys
+import time
+import requests
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -541,7 +545,7 @@ def execute_diagonal_spread(symbol, trade, near_expiry, far_expiry):
     actual_buy_strike  = nearest_strike(far_strikes, buy_strike)   if far_strikes  else buy_strike
 
     if not actual_sell_strike or not actual_buy_strike:
-        log(f"  Could not find diagonal strikes in broker chain")
+        log("  Could not find diagonal strikes in broker chain")
         return None
 
     sell_sym = build_occ_symbol(symbol, near_expiry, option_type, actual_sell_strike)
@@ -861,7 +865,7 @@ def run():
 
         # Don't log in dry run mode
         if DRY_RUN:
-            log(f"  [DRY RUN] Would log as agent trade — not writing to journal")
+            log("  [DRY RUN] Would log as agent trade — not writing to journal")
             executed.append({"entry": {"id": "dry-run"}, "agent": agent_name, "trade": trade})
             continue
 

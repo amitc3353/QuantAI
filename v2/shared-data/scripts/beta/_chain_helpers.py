@@ -7,7 +7,7 @@ Operates on the option chain shape returned by broker.fetch_option_chain():
 """
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Optional
 
 

@@ -6,11 +6,10 @@ Spec § 6.1.
 """
 from __future__ import annotations
 
-from datetime import datetime, date
 from typing import Optional
 
 from .._chain_helpers import (
-    expiries_in_range, filter_chain, nearest_strike, mid, leg, dte, fill_quote,
+    expiries_in_range, nearest_strike, mid, leg, fill_quote,
 )
 
 

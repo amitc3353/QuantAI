@@ -16,7 +16,9 @@ Usage:
   python3 sheets_sync.py           # sync all trades
   python3 sheets_sync.py --setup   # first-time sheet structure setup
 """
-import json, os, sys
+import json
+import os
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 

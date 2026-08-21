@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .._chain_helpers import (
-    expiries_in_range, find_nearest_expiry, nearest_strike, mid, leg, fill_quote,
+    find_nearest_expiry, nearest_strike, mid, leg, fill_quote,
 )
 
 

@@ -1,0 +1,48 @@
+# Ruff configuration — deliberately curated, not maximal.
+#
+# This codebase has an explicit reliability philosophy that conflicts with
+# several popular lint rules:
+#
+#   - BLE001 (blind `except Exception`): OFF by selection. Monitor/alert/
+#     journal wrappers are *documented* as "never raise into the caller" —
+#     a monitoring helper that crashes the position monitor is worse than
+#     one that swallows an error and logs it. See docs/architecture.md §16.
+#   - E722 (bare `except`): ignored for the same reason in older scripts;
+#     new code should prefer `except Exception`. Tracked in docs/HARDENING.md.
+#   - LOG015 / UP045 / I001 etc. (style modernization): deferred — churn on
+#     a paused-for-hardening trading path buys nothing and risks noise in
+#     `git blame` around the exact code under review.
+#
+# What IS enforced is the real-signal tier: undefined names, unused
+# imports/variables, syntax-level errors — the bugs a linter actually catches.
+
+target-version = "py311"
+
+# Legacy v1 stack is retired and intentionally frozen; runtime data dirs excluded.
+exclude = [
+    "legacy",
+    "graphify-out",
+    "data",
+]
+
+[lint]
+select = [
+    "E4",   # import placement errors
+    "E7",   # comparison / statement errors
+    "E9",   # syntax errors
+    "F",    # pyflakes: undefined names, unused imports/vars, f-string issues
+    "PLE",  # pylint errors
+]
+ignore = [
+    "E722", # bare except — deliberate never-crash wrappers (see header)
+    "E731", # lambda assignment — used intentionally in small config maps
+    "E402", # imports not at top — scripts load .env BEFORE importing modules
+            # that read env at import time; the order is the point
+    "E741", # ambiguous single-letter names — existing style, low value churn
+    "E701", # `if x: return` one-liners — consistent compaction style here
+    "E702", # semicolon one-liners — same
+]
+
+[lint.per-file-ignores]
+# Tests may import fixtures/helpers for side effects and re-export.
+"v2/shared-data/tests/**" = ["F401", "F811"]

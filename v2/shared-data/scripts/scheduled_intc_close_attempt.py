@@ -26,12 +26,10 @@ All actions logged to /root/quantai-v2/shared-data/logs/scheduled_intc_close.log
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 LOG_PATH = Path("/root/quantai-v2/shared-data/logs/scheduled_intc_close.log")

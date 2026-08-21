@@ -534,7 +534,7 @@ def check_karna_backup_freshness() -> dict:
     except PermissionError:
         return {
             "status": "warning",
-            "error": f"backup log not readable as current user",
+            "error": "backup log not readable as current user",
             "hint": "system_monitor expects to run as root to read /root/logs/",
         }
     except Exception as e:

@@ -27,7 +27,10 @@ Modes:
   python3 run_pipeline.py eod      # end of day wrap-up
 """
 
-import os, sys, subprocess, json
+import os
+import sys
+import subprocess
+import json
 from datetime import datetime, date, timezone
 from zoneinfo import ZoneInfo
 

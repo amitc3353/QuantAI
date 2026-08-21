@@ -9,8 +9,11 @@ Scans for:
 
 All strategies collect premium. No shares required.
 """
-import json, os, sys, time
-from datetime import datetime, timedelta
+import json
+import os
+import sys
+import time
+from datetime import datetime
 import yfinance as yf
 import logging
 
@@ -269,7 +272,6 @@ def scan_credit_spreads(tickers, vix):
             if credit < 0.25:
                 continue
             max_loss = round((width - credit) * 100, 2)
-            max_loss_pct = round(credit / width * 100, 1)
 
             opportunities.append({
                 "symbol": sym, "price": round(price, 2),
@@ -379,7 +381,6 @@ def scan_diagonals(tickers, vix):
                 continue
 
             near_strike = float(near_row["strike"].iloc[0])
-            far_strike  = float(far_row["strike"].iloc[0])
 
             near_price  = float(near_row["lastPrice"].iloc[0])
             far_price   = float(far_row["lastPrice"].iloc[0])
@@ -433,7 +434,7 @@ def scan_diagonals(tickers, vix):
             })
             time.sleep(0.15)
 
-        except Exception as e:
+        except Exception:
             continue
 
     opportunities.sort(key=lambda x: x["score"], reverse=True)

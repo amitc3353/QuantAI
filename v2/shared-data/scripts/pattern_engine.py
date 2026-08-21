@@ -7,7 +7,9 @@ Requires 20+ closed trades before drawing conclusions.
 Usage: python3 pattern_engine.py
 Output: /home/trader/QuantAI/v2/shared-data/cache/patterns.json
 """
-import json, os, math
+import json
+import os
+import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 

@@ -11,7 +11,10 @@ Usage:
   python3 market_intelligence.py           # auto-detect session from time
   python3 market_intelligence.py --force   # force refresh regardless of age
 """
-import json, os, sys, time
+import json
+import os
+import sys
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -182,7 +185,8 @@ except Exception as e:
 FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "")
 if FINNHUB_KEY:
     try:
-        import urllib.request, urllib.parse
+        import urllib.request
+        import urllib.parse
         today = datetime.now(ET).date()
         end = (today + timedelta(days=30)).strftime("%Y-%m-%d")
         url = f"https://finnhub.io/api/v1/calendar/economic?token={FINNHUB_KEY}"

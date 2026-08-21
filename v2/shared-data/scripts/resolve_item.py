@@ -23,7 +23,6 @@ import json
 import os
 import sys
 from datetime import date
-from pathlib import Path
 
 from _paths import LEARNING_TRACKER as TRACKER, LEARNING_STATE as STATE
 

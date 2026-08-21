@@ -5,10 +5,8 @@ Independent from Alpha — counts only entries with `source == 'agent_beta'`.
 from __future__ import annotations
 
 import json
-import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")

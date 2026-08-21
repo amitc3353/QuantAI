@@ -7,7 +7,10 @@ Run this anytime to verify the system is healthy.
 Usage: python3 system_test.py
 """
 
-import json, os, sys, subprocess, requests
+import json
+import os
+import subprocess
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -70,7 +73,7 @@ for pkg in ["anthropic", "yfinance", "aiohttp", "requests"]:
         check(f"{pkg} importable", False, "pip3 install " + pkg + " --break-system-packages")
 
 try:
-    from google.oauth2.service_account import Credentials
+    from google.oauth2.service_account import Credentials  # noqa: F401 — availability probe
     check("google-auth importable", True)
 except ImportError:
     check("google-auth importable", False, "pip3 install google-api-python-client google-auth --break-system-packages")
@@ -162,7 +165,7 @@ check("market_intelligence.py runs", ok, last_line[-80:] if last_line else "")
 print("\n🔍 Running scan_options.py")
 ok, out = run_script("scan_options.py", "credit_spreads", timeout=120)
 check("scan_options.py runs", ok,
-      f"Found opportunities" if ok else out[-100:])
+      "Found opportunities" if ok else out[-100:])
 
 # ── 9. Debate chamber (dry check — just verify it reads packet) ───────
 print("\n⚖️  Debate Chamber")

@@ -7,7 +7,7 @@ smoothing at period=10, so we implement it here rather than reuse.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Iterable, Sequence
+from typing import Sequence
 
 
 def wilders_rsi(closes: Sequence[float], period: int = 10) -> float | None:

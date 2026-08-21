@@ -38,7 +38,6 @@ import argparse
 import fcntl
 import hashlib
 import json
-import logging
 import os
 import re
 import shutil

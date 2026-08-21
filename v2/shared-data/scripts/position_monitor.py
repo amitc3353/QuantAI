@@ -22,7 +22,11 @@ Usage:
   python3 position_monitor.py --dry-run  # read-only: no orders, no journal writes
 """
 
-import os, sys, json, subprocess, time
+import os
+import sys
+import json
+import subprocess
+import time
 from datetime import datetime, date, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -82,7 +86,7 @@ def _fsm_shadow_run(all_trades: list, broker_positions: dict, now: datetime) -> 
         return
     try:
         from lifecycle.trade_lifecycle import TradeLifecycle
-        from lifecycle.journal_io import get_state, is_terminal
+        from lifecycle.journal_io import get_state, is_terminal  # noqa: F401 — availability probe
         from lifecycle.transition_log import record as _tlog_record
         import json as _json
         from datetime import timezone as _tz
@@ -130,7 +134,7 @@ def _fsm_shadow_run(all_trades: list, broker_positions: dict, now: datetime) -> 
             log(f"[lifecycle] shadow log write error: {e}")
         log(f"[lifecycle] shadow mode: {len(divergences)} FSM transition(s) proposed (not applied)")
     else:
-        log(f"[lifecycle] shadow mode: 0 divergences this cycle")
+        log("[lifecycle] shadow mode: 0 divergences this cycle")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -530,7 +534,7 @@ def place_close_order(trade, legs, close_qty=1):
             }
         # Broker doesn't support poll_order (e.g., paper Alpaca) — fall through
         # to fresh submission. Log this since it's a degraded path.
-        log(f"  Close-poll skipped: broker has no poll_order (degraded — re-submitting)")
+        log("  Close-poll skipped: broker has no poll_order (degraded — re-submitting)")
 
     import time as _t
     coid = f"close-{trade.get('id','?')}-{int(_t.time())}"

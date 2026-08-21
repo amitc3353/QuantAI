@@ -827,9 +827,9 @@ def run_scan_4arm() -> int:
         filter_setups_for_arm,
         load_journal,
     )
-    from gamma.rankers import ARM_TO_RANKER, RANKERS, get_ranker
+    from gamma.rankers import ARM_TO_RANKER, get_ranker
     from gamma.arm_state import (
-        VALID_ARM_IDS, load_arm_state, save_arm_state,
+        VALID_ARM_IDS, load_arm_state,
     )
     from gamma.reward_risk_estimator import compute_reward_risk_estimates
 
@@ -1024,9 +1024,8 @@ def run_execute_4arm() -> int:
         logging.warning("IBKR connect raised: %s", e)
         return 0
 
-    from gamma import MAX_DAILY_ENTRIES
     from gamma.risk_check import (
-        check_portfolio_gates_for_arm, filter_setups_for_arm, load_journal,
+        load_journal,
     )
     from gamma.strike_selector import build_spread
     from gamma.arm_state import (
@@ -1041,7 +1040,7 @@ def run_execute_4arm() -> int:
         logging.error("get_account returned zero equity — refusing to execute")
         return 4
 
-    journal = load_journal()
+    load_journal()  # journal readability check (result unused here)
     today_iso = datetime.now(ET).date().isoformat()
 
     # 1. Load each arm's pending entries
@@ -1223,8 +1222,7 @@ def run_reset_experiment() -> int:
     WOULD happen. With --confirm, performs the reset.
     """
     from gamma.arm_state import (
-        VALID_ARM_IDS, reset_arm, _arm_state_path, _arm_journal_path,
-        load_arm_state, save_arm_state, JOURNAL_DIR,
+        VALID_ARM_IDS, reset_arm, load_arm_state, save_arm_state, JOURNAL_DIR,
     )
 
     reason = RESET_REASON or "operator-initiated"
@@ -1319,8 +1317,8 @@ def run_promote_arm() -> int:
         print(f"[gamma_agent] PROMOTE-ARM requested: arm {arm_id.upper()} ({ranker_name})")
         print("  This will:")
         print(f"    - Archive all 4 arms' state and journals to {archive_dir}/")
-        print(f"    - Disable GAMMA_AB_TEST_ENABLED in .env (set to 0)")
-        print(f"    - List other arms' open positions for operator to close")
+        print("    - Disable GAMMA_AB_TEST_ENABLED in .env (set to 0)")
+        print("    - List other arms' open positions for operator to close")
         for aid in VALID_ARM_IDS:
             try:
                 state = load_arm_state(aid)
@@ -1332,7 +1330,7 @@ def run_promote_arm() -> int:
             tag = " ← WINNER" if aid == arm_id else ""
             print(f"    - Arm {aid.upper()} ({ARM_TO_RANKER[aid]}): "
                    f"${eq} (P&L ${pnl}, {trades} trades){tag}")
-        print(f"  Re-run with --confirm to proceed.")
+        print("  Re-run with --confirm to proceed.")
         _post_discord(
             f"🏆 Gamma promote-arm requested: Arm {arm_id.upper()} ({ranker_name})\n"
             f"Re-run `gamma_agent.py --promote-arm {arm_id} --confirm` "
@@ -1362,7 +1360,7 @@ def run_promote_arm() -> int:
 
     # List other arms' open positions
     others = [a for a in VALID_ARM_IDS if a != arm_id]
-    print(f"\n  Open positions in non-winning arms (operator must close):")
+    print("\n  Open positions in non-winning arms (operator must close):")
     for aid in others:
         opens = arm_open_positions(aid)
         if not opens:
@@ -1377,11 +1375,11 @@ def run_promote_arm() -> int:
     if not DRY_RUN:
         try:
             _set_env_var_in_dotenv("GAMMA_AB_TEST_ENABLED", "0")
-            print(f"  GAMMA_AB_TEST_ENABLED set to 0 in .env")
+            print("  GAMMA_AB_TEST_ENABLED set to 0 in .env")
         except Exception as e:
             logging.error("failed to update .env: %s", e)
             print(f"  WARNING: could not update .env automatically: {e}")
-            print(f"  Manually: sudo sed -i 's/GAMMA_AB_TEST_ENABLED=1/GAMMA_AB_TEST_ENABLED=0/' /home/trader/QuantAI/.env")
+            print("  Manually: sudo sed -i 's/GAMMA_AB_TEST_ENABLED=1/GAMMA_AB_TEST_ENABLED=0/' /home/trader/QuantAI/.env")
 
     # Log promotion event
     if not DRY_RUN:
@@ -1404,14 +1402,14 @@ def run_promote_arm() -> int:
 
     final_equities = {aid: load_arm_state(aid).get("current_equity") for aid in VALID_ARM_IDS}
     msg_lines = [
-        f"🏆 Gamma 4-arm test concluded",
+        "🏆 Gamma 4-arm test concluded",
         f"Winner: Arm {arm_id.upper()} ({ranker_name})",
-        f"Final equity:",
+        "Final equity:",
     ]
     for aid in VALID_ARM_IDS:
         tag = " ← winner" if aid == arm_id else ""
         msg_lines.append(f"  Arm {aid.upper()}: ${final_equities[aid]:.2f}{tag}")
-    msg_lines.append(f"GAMMA_AB_TEST_ENABLED=0 — single-arm production resumes.")
+    msg_lines.append("GAMMA_AB_TEST_ENABLED=0 — single-arm production resumes.")
     _post_discord("\n".join(msg_lines))
     return 0
 
@@ -1445,11 +1443,11 @@ def run_evaluate_promotion() -> int:
         print(f"  Next step: gamma_agent.py --promote-arm {decision['winner']} --confirm")
     elif decision["decision"] == "extend":
         print()
-        print(f"  Next step: continue running. Re-evaluate in 30 days.")
+        print("  Next step: continue running. Re-evaluate in 30 days.")
     elif decision["decision"] == "hard_cap_default":
         print()
-        print(f"  Next step: gamma_agent.py --promote-arm a --confirm "
-               f"(hard cap default → Arm A)")
+        print("  Next step: gamma_agent.py --promote-arm a --confirm "
+               "(hard cap default → Arm A)")
     return 0
 
 
@@ -1475,7 +1473,8 @@ def _set_env_var_in_dotenv(key: str, value: str,
     if not found:
         new_lines.append(f"{key}={value}")
     # Atomic replace
-    import tempfile as _tf, os as _os
+    import tempfile as _tf
+    import os as _os
     fd, tmp = _tf.mkstemp(dir=str(env_path.parent), prefix=".env.", suffix=".tmp")
     try:
         with _os.fdopen(fd, "w") as f:

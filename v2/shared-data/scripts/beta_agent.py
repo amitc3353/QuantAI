@@ -188,7 +188,7 @@ def main() -> int:
         logging.error("IBKR connect failed")
         return 3
 
-    from beta.regime_detector import classify_regime, load_state, save_state, write_dashboard_state
+    from beta.regime_detector import classify_regime, load_state, write_dashboard_state
     state = load_state()
     if FORCE_REGIME:
         regime, reason = FORCE_REGIME, "forced via --force-regime"

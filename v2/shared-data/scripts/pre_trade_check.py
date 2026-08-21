@@ -8,8 +8,12 @@ Usage:
   python3 pre_trade_check.py
 """
 
-import os, sys, json, requests, subprocess
-from datetime import datetime, date, timedelta
+import os
+import sys
+import json
+import requests
+import subprocess
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import pathlib as _pl
 

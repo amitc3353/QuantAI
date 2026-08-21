@@ -14,14 +14,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, "/home/trader/QuantAI/v2/shared-data/scripts")
 
-from _journal_update import find_trade, update_trade_entry, DEFAULT_JOURNAL
+from _journal_update import find_trade, update_trade_entry
 from _paths import TRADE_REVIEWS_DIR as _REVIEWS_DIR
 
 REPO_AGENTS_DIR = Path("/home/trader/QuantAI/v2/shared-data/agents")

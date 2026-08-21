@@ -8,7 +8,8 @@ Called by run_pipeline.py in eod mode, or directly:
   python3 eod_summary.py
 """
 
-import json, os, requests
+import json
+import os
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
@@ -43,7 +44,6 @@ def format_trade(t):
     strategy = t.get("strategy", t.get("action", "?")).replace("_", " ").upper()
     symbol   = t.get("symbol", "?")
     credit   = t.get("estimated_credit") or t.get("premium") or 0
-    max_loss = t.get("max_loss_pct", 0)
     status   = t.get("status", "OPEN")
     pnl      = t.get("pnl", None)
     trade_id = t.get("id", "?")

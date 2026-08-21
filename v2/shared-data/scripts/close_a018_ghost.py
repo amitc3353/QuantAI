@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import sys
 import time
@@ -252,7 +251,7 @@ def main() -> int:
         log("  Abort — one or more legs was already closed (perhaps manually overnight).")
         log("  Re-check positions manually before deciding next action.")
         return 1
-    log(f"  All 4 expected legs confirmed open on broker:")
+    log("  All 4 expected legs confirmed open on broker:")
     for leg in EXPECTED_LEGS:
         p = pos_map[leg["symbol"]]
         log(f"    {leg['symbol']:30s} qty={p.get('qty'):+d}  "

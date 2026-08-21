@@ -331,7 +331,7 @@ def build_digest_lines(arm_states: dict, arm_journals: dict,
             f"all arms hit 80-trade floor around day {proj_day}."
         )
     elif projection.get("min_trades", 0) >= 80:
-        lines.append(f"Sample size: all arms ≥ 80 trades — eligible for promotion eval.")
+        lines.append("Sample size: all arms ≥ 80 trades — eligible for promotion eval.")
     else:
         lines.append(
             f"Sample size projection: insufficient data "
