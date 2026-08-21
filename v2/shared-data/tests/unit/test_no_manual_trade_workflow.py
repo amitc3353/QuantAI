@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path("/home/trader/QuantAI/v2/shared-data/scripts")
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
 # ── eod_summary.py ───────────────────────────────────────────────────
@@ -155,6 +155,10 @@ class TestRetiredScripts:
         assert not live.exists(), \
             "fetch_sofi.py is still live — should be fetch_sofi.py.retired.YYYY-MM-DD"
 
+    @pytest.mark.skipif(
+        not Path("/home/trader/QuantAI").exists(),
+        reason="*.retired.* archives are gitignored and exist only on the VPS runtime",
+    )
     def test_retired_artifacts_preserved(self):
         # We retire (rename), don't delete. At least one of each .retired.* file should exist.
         evolution_retired = list(SCRIPTS.glob("self_evolution.py.retired.*"))

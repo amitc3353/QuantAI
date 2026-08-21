@@ -12,6 +12,7 @@ reject it when:
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -19,6 +20,11 @@ import pytest
 
 SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+
+# Point sentinel_agent's REPO at this checkout so the allowlist rails
+# resolve correctly off-VPS (no-op on the VPS, where both are the same).
+import os
+os.environ.setdefault("QUANTAI_REPO", str(Path(__file__).resolve().parents[4]))
 
 import sentinel_agent as SA
 
@@ -252,6 +258,10 @@ class TestValidateCommandTargets:
         ok, _ = SA._validate_command_targets("cd build && make")
         assert ok
 
+    @pytest.mark.skipif(
+        shutil.which("systemctl") is None,
+        reason="needs systemctl (probe soft-fails open where systemd is absent)",
+    )
     def test_hallucinated_systemd_unit_rejected(self):
         # collect_clawroute is a cron job, not a systemd unit
         ok, why = SA._validate_command_targets("systemctl restart collect_clawroute")
@@ -264,6 +274,10 @@ class TestValidateCommandTargets:
         ok, _ = SA._validate_command_targets("systemctl status cron")
         assert ok
 
+    @pytest.mark.skipif(
+        shutil.which("systemctl") is None,
+        reason="needs systemctl (probe soft-fails open where systemd is absent)",
+    )
     def test_user_systemd_unit_rejected_when_missing(self):
         ok, why = SA._validate_command_targets(
             "systemctl --user restart fake_unit_xyz_999.service"

@@ -13,6 +13,11 @@ import pytest
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+# Point sentinel_agent's REPO at this checkout before ANY test module imports
+# it (module-level constant, frozen at first import). No-op on the VPS where
+# the default and this checkout are the same path.
+os.environ.setdefault("QUANTAI_REPO", str(Path(__file__).resolve().parents[3]))
+
 
 # ── Discord side-effect blocker (autouse) ────────────────────────────────────
 # Tests in test_agent_self_diagnosis.py / test_trade_reviewer.py / etc. mock

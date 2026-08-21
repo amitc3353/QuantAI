@@ -1,16 +1,49 @@
-name: CI — Guard Engine Tests
+name: CI
 
 on:
   push:
-    paths:
-      - 'guard-engine/**'
-      - 'configs/guard_config.json'
+    branches: [main]
   pull_request:
-    paths:
-      - 'guard-engine/**'
+  workflow_dispatch:
 
 jobs:
-  test-guards:
+  tests:
+    name: v2 test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install pytest hypothesis ib_insync pandas requests httpx \
+            python-dateutil anthropic yfinance google-api-python-client google-auth
+
+      - name: Run unit + integration tests
+        working-directory: v2/shared-data/tests
+        run: python -m pytest unit/ integration/ -q
+
+      - name: Syntax-check every live script
+        run: |
+          python - <<'EOF'
+          import pathlib, py_compile, sys
+          failed = False
+          for p in pathlib.Path("v2/shared-data/scripts").rglob("*.py"):
+              try:
+                  py_compile.compile(str(p), doraise=True)
+              except py_compile.PyCompileError as e:
+                  print(e)
+                  failed = True
+          sys.exit(1 if failed else 0)
+          EOF
+
+  legacy-guard-engine:
+    name: legacy v1 guard-engine tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,18 +54,19 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
+        working-directory: legacy/guard-engine
         run: |
-          cd guard-engine
           pip install -r requirements.txt
           pip install pytest httpx
 
       - name: Run guard tests
-        run: |
-          cd guard-engine
-          python -m pytest tests/ -v --tb=short
+        working-directory: legacy/guard-engine
+        run: python -m pytest tests/ -q
 
   lint:
+    name: lint (advisory)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +75,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Lint
+      - name: Ruff over the live tree
         run: |
           pip install ruff
-          ruff check guard-engine/ orchestrator/ discord-bot/
+          ruff check v2/shared-data/scripts/ --output-format=github

@@ -365,7 +365,7 @@ class TestPlaceMlegOrderRecovery:
 import importlib.util
 import types
 
-_PM_PATH = Path("/home/trader/QuantAI/v2/shared-data/scripts/position_monitor.py")
+_PM_PATH = Path(__file__).resolve().parents[2] / "scripts" / "position_monitor.py"
 
 
 @pytest.fixture()

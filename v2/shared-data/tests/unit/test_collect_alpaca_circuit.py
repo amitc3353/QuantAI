@@ -15,6 +15,13 @@ ET = ZoneInfo("America/New_York")
 
 COLLECT_ALPACA_PATH = Path("/var/dashboard/collect_alpaca.py")
 
+# collect_alpaca.py is an out-of-repo VPS component (see HARDENING 7.2) —
+# skip this module anywhere it isn't deployed (CI, laptops).
+pytestmark = pytest.mark.skipif(
+    not COLLECT_ALPACA_PATH.exists(),
+    reason="requires /var/dashboard/collect_alpaca.py (VPS runtime)",
+)
+
 
 @pytest.fixture()
 def ca(tmp_path, monkeypatch):

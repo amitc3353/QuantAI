@@ -67,7 +67,9 @@ for _ef in [Path("/home/trader/QuantAI/.env"), Path("/root/quantai-v2/.env")]:
 # --- Constants -----------------------------------------------------
 ET = ZoneInfo("America/New_York")
 UTC = timezone.utc
-REPO = Path("/home/trader/QuantAI")
+# Env-overridable so the test suite runs off-VPS (CI, laptops); the
+# production default is unchanged when QUANTAI_REPO is unset.
+REPO = Path(os.environ.get("QUANTAI_REPO", "/home/trader/QuantAI"))
 SCRIPT_DIR = REPO / "v2" / "shared-data" / "scripts"
 AGENTS_DIR = REPO / "v2" / "shared-data" / "agents"
 DATA_DIR = SCRIPT_DIR / "auto_heal_data"  # reused; Sentinel inherits the dir layout
