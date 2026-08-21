@@ -1,3 +1,23 @@
+# Agent instructions
+
+This repo is developed *with* AI coding agents and *contains* AI agents.
+If you are an AI coding agent working on this codebase, read
+[`CLAUDE.md`](CLAUDE.md) first — it carries the full operating contract:
+security rules (never read `.env` or credentials), damage-prevention
+rules (backups before edits, no changes outside the working folder),
+pacing rules (plan-first, 3-attempt debug budget), and the architecture
+map. Those rules apply to every agent, not just Claude.
+
+Quick orientation:
+
+- Live system: `v2/shared-data/scripts/` (cron-driven, flat scripts).
+- Retired v1 stack: `legacy/` — do not "fix" it; it's kept for history.
+- Tests: `v2/shared-data/tests/` (`python3 -m pytest unit/ integration/ -q`).
+- Deterministic safety gates (`_*_gate.py`, `beta/risk_engine.py`,
+  `gamma/risk_check.py`) and the Gamma experiment internals are
+  guarded paths — treat them as read-only unless the task is explicitly
+  about them.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

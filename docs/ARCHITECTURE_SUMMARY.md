@@ -6,7 +6,9 @@ A short, public-facing tour of QuantAI. Read this first if you only have ten min
 
 ## What this is
 
-QuantAI is an autonomous, multi-agent options-trading system. It operates a $1,000,000 IBKR paper account around the clock, places carefully-controlled multi-leg option orders during US market hours, monitors its own positions, fixes its own infrastructure, and writes a weekly self-review of its own performance. The whole thing runs on a single Linux VPS, costs ~$4–5/month in LLM spend, and is operated by one person from their phone over Discord.
+QuantAI is an autonomous, multi-agent options-trading system. It operates a $1,000,000 IBKR paper account, places carefully-controlled multi-leg option orders during US market hours, monitors its own positions, fixes its own infrastructure, and writes a weekly self-review of its own performance. The whole thing runs on a single Linux VPS, costs ~$4–5/month in LLM spend, and is operated by one person from their phone over Discord.
+
+> **Status (2026-08):** entries are deliberately paused while the system goes through a production-hardening phase — see [`HARDENING.md`](./HARDENING.md). The exit path, monitors, and learning loop stay live.
 
 The single sentence that drives every design choice is this:
 
@@ -20,7 +22,7 @@ Most of what makes QuantAI interesting follows from taking that sentence serious
 
 QuantAI is four small, narrow Python programs, not one big system. Each agent has its own identity file, its own log, its own trade-ID prefix, and its own mandate. They share three things: the broker adapter, the journal, and the position monitor.
 
-**Agent Alpha** trades defined-risk options spreads on a 78-ticker ETF/equity universe. Before placing an order, Alpha runs a "debate chamber" — a Sonnet-class LLM proposes the top candidates, Python templates generate Bull and Bear cases for each, and a second Sonnet judge votes 0–100. Trades scoring ≥ 60 go through. Maximum loss per trade is 2% of a $50k effective sizing cap; daily entries are capped at 2; positions close at 3:30 PM ET. Trade IDs start with `A`. Cost per debate cycle is around two-tenths of a cent.
+**Agent Alpha** trades defined-risk options spreads on an 88-ticker ETF/equity universe. Before placing an order, Alpha runs a "debate chamber" — a Sonnet-class LLM proposes the top candidates, Python templates generate Bull and Bear cases for each, and a second Sonnet judge votes 0–100. Trades scoring ≥ 60 go through. Maximum loss per trade is 2% of a $50k effective sizing cap; daily entries are capped at 2; positions close at 3:30 PM ET. Trade IDs start with `A`. Cost per debate cycle is around two-tenths of a cent.
 
 **Agent Beta** trades native index options on SPX, XSP, and VIX through IBKR — not through equity ETF proxies. A 12-regime classifier (CRISIS, MEAN_REVERSION_OVERSOLD, HIGH_VOL, SQUEEZE, PRE_EVENT, TREND_UP, TREND_DOWN, LOW_VOL, RANGE, NORMAL, plus a HALT failsafe) maps to one of 8 strategies (event_strangle, broken_wing_butterfly, calendar_spread, ratio backspreads, debit/credit spreads, vix_calls). Beta is **fully deterministic** — zero LLM calls per cycle. Same inputs always produce the same trade. Trade IDs start with `B`. The reason for the IBKR-only path is structural: index options give Section 1256 tax treatment (60/40 long/short), European exercise (no early-assignment risk), and cash settlement (no share delivery). Equity-ETF options have none of those.
 
@@ -58,7 +60,7 @@ A self-learning loop runs after every closed trade. Two Haiku-class LLM passes �
 
 KARNA — the 24/7 Claude Sonnet 4.6 instance hosted by the OpenClaw runtime — is the operator's co-pilot, drafting partner, and Discord interface. KARNA does not trade. Four "workspaces" (`workspace-orchestrator`, `workspace-infra`, `workspace-journal`, `workspace-research`) keyed by Discord channel give KARNA different personalities and mandates depending on which channel the operator is talking to.
 
-Knowledge graph queries go through **graphify**, which builds a queryable map of the codebase (currently 2,800 nodes, 4,752 edges, 249 communities). AST-only rebuilds run free on every commit; a monthly Sonnet-driven refresh picks up doc-semantic edges. The measured token cost reduction per architecture query is ~44.8×.
+Knowledge graph queries go through **graphify**, which builds a queryable map of the codebase (currently 5,523 nodes, 9,588 edges, 626 communities). AST-only rebuilds run free on every commit; a monthly Sonnet-driven refresh picks up doc-semantic edges. The measured token cost reduction per architecture query is ~44.8×.
 
 ---
 

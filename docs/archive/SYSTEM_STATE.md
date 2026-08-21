@@ -9,13 +9,13 @@ Start every new chat: "Read SYSTEM_STATE.md."
 
 | Component | Value |
 |---|---|
-| VPS | Hetzner CX31 · 87.99.141.55 |
+| VPS | Hetzner CX31 · <VPS_IP> |
 | OS | Ubuntu 24 |
 | Repo | github.com/amitc3353/QuantAI (local `main` is source of truth) |
 | Repo path on VPS | /home/trader/QuantAI |
 | OpenClaw gateway | /root/quantai-v2/ |
 | Trading mode | PAPER |
-| Paper account | IBKR DUP851506 — equity ~$1,000,000 |
+| Paper account | IBKR <IBKR_PAPER_ACCOUNT> — equity ~$1,000,000 |
 | Active broker | IBKR (port 4002, ib_insync) — Alpaca paper retained as fallback |
 
 **Two directory trees — both matter:**
@@ -172,7 +172,7 @@ sudo cat /var/dashboard/state/system-health-report.json | jq '.status, .data.che
 
 ## Google Sheets Journal
 
-URL: https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0
+URL: <google-sheet-url>
 
 | Tab | Contents |
 |---|---|

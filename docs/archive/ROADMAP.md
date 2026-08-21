@@ -7,7 +7,7 @@
 
 Three Claude trading agents (Alpha, Beta, Gamma) execute autonomously on cron. Sentinel (operations agent) watches the system 24/7 and self-heals routine issues. OpenClaw provides Discord-side conversational agents (Orchestrator / Research / Infra / Journal) that answer questions but never place trades. Everything logs to Google Sheets. System tests itself with 44 checks. The 13-check `system_monitor.py` runs every 2 min and feeds Sentinel.
 
-**Status: Paper trading on IBKR (DUP851506, ~$1M equity). Cron running. Self-learning chain operational. Sentinel deployed 2026-05-03.**
+**Status: Paper trading on IBKR (<IBKR_PAPER_ACCOUNT>, ~$1M equity). Cron running. Self-learning chain operational. Sentinel deployed 2026-05-03.**
 
 ---
 

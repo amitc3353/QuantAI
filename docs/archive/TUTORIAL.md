@@ -83,7 +83,7 @@ regime now               → Beta's current regime classification
 
 ## Google Sheet — Your Live Dashboard
 
-Bookmark: **https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0**
+Bookmark: **<google-sheet-url>
 
 | Tab | Contents |
 |---|---|
@@ -186,7 +186,7 @@ This syncs all `AGENTS.md` and `SOUL.md` files from the git repo to where OpenCl
 
 | Parameter | Value |
 |---|---|
-| IBKR paper account | $1,000,000 (DUP851506) |
+| IBKR paper account | $1,000,000 (<IBKR_PAPER_ACCOUNT>) |
 | Position-sizing cap (Alpha) | $50,000 (`AGENT_ACCOUNT_CAP`) |
 | Max loss per trade | 2% |
 | Stop loss | 2× credit |
