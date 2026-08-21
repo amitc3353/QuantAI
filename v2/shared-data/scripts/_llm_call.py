@@ -215,8 +215,11 @@ def _do_discord_post(msg: str) -> None:
 
 def _discord_alert(msg: str, caller: str) -> None:
     now = time.monotonic()
-    last = _discord_alert_timestamps.get(caller, 0)
-    if now - last < DISCORD_ALERT_COOLDOWN_SECONDS:
+    # None (not 0) is the "never alerted" sentinel: time.monotonic() starts
+    # near 0 at boot, so `now - 0 < cooldown` silently swallowed the FIRST
+    # alert after a reboot for up to an hour. Caught by CI on fresh runners.
+    last = _discord_alert_timestamps.get(caller)
+    if last is not None and now - last < DISCORD_ALERT_COOLDOWN_SECONDS:
         return
     _discord_alert_timestamps[caller] = now
     _do_discord_post(msg)
