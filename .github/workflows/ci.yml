@@ -24,6 +24,13 @@ jobs:
           pip install pytest hypothesis ib_insync pandas requests httpx \
             python-dateutil anthropic yfinance google-api-python-client google-auth
 
+      - name: Make VPS runtime paths probe-able
+        # Scripts probe /root/quantai-v2/.env at import time. On hosted
+        # runners /root is mode 700, so Path.exists() raises PermissionError
+        # (py3.12 propagates EACCES) instead of returning False. Making /root
+        # traversable turns the probe into a clean ENOENT -> False.
+        run: sudo chmod o+rx /root
+
       - name: Run unit + integration tests
         working-directory: v2/shared-data/tests
         run: python -m pytest unit/ integration/ -q
