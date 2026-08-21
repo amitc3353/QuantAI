@@ -87,7 +87,7 @@ Channel env vars (set in `.env`; all fall back to `DISCORD_CHANNEL_ALERTS` if un
 ## Mobile UX
 
 - **Discord** is the primary surface — works on iOS/Android.
-- **Dashboard tile** at `https://quantai.tail1465ff.ts.net/` shows `pending_count`, `pending_ids`, `quarantined`, `last_run` timestamps. Tile data lives at `/var/dashboard/state/quantai-auto-heal.json` and is rewritten by `auto_heal.py` itself at the end of every run (no separate collector needed).
+- **Dashboard tile** at `https://<dashboard-host>/` shows `pending_count`, `pending_ids`, `quarantined`, `last_run` timestamps. Tile data lives at `/var/dashboard/state/quantai-auto-heal.json` and is rewritten by `auto_heal.py` itself at the end of every run (no separate collector needed).
 
 ## What gets queued vs. what auto-runs
 

@@ -39,7 +39,7 @@ The fixes are in place. The leftover broker state from before the fixes is what'
 - LiteLLM: still running (Docker, legacy)
 - OpenClaw: `active`
 - Sentinel: running on schedule
-- Dashboard: live at `https://quantai.tail1465ff.ts.net/`
+- Dashboard: live at `https://<dashboard-host>/`
 - Heartbeat monitor: running every 2 min, alerts pipeline-silent-stale (expected, halt-related)
 
 ## Trade counts to date

@@ -16,7 +16,7 @@ Shipped 2026-05-09: Phase 2 Item #1 (reflection memory + multi-symbol retrieval 
   - Day 0: **2026-05-11**
   - First promotion eval: **2026-07-10** (day 60)
   - Hard cap: **2026-11-07** (day 180; if still inconclusive, ship Arm A by default)
-  - Capital: $10K/arm × 4 arms = **$40K** virtual, single IBKR paper account DUP851506
+  - Capital: $10K/arm × 4 arms = **$40K** virtual, single IBKR paper account <IBKR_PAPER_ACCOUNT>
   - Arms: A=RSI_ONLY (control), B=COMPOSITE, C=WEIGHTED_BLEND, D=REWARD_RISK_FIRST
   - Pre-committed promotion rules in `gamma/promotion_evaluator.py` (sample_floor → win_margin+Sharpe → near_tie (Ockham A>D>B>C) → inconclusive_band → hard_cap)
   - Frozen during test: universe, sectors, caps, ranker logic, thresholds (sentinel `NEVER_MODIFY_PATHS`)
@@ -96,7 +96,7 @@ Remaining items (recommended order):
 
 Rationale for #16 → #11 order: the skills loader is foundational infrastructure that #11's digest-reply handler can lean on for prompt assembly. Doing #16 first lets #11 reuse the loader rather than duplicating prompt-injection plumbing.
 
-Next session focus: Phase 2 closeout (#16 then #11) while Gamma experiment runs autonomously in the background. Watch dashboard https://quantai.tail1465ff.ts.net/ for the experiment banner + weekly digest.
+Next session focus: Phase 2 closeout (#16 then #11) while Gamma experiment runs autonomously in the background. Watch dashboard https://<dashboard-host>/ for the experiment banner + weekly digest.
 
 ## Phase Queue
 

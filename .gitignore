@@ -51,3 +51,11 @@ v2/shared-data/scripts/auto_heal_data/suppressed_patterns/
 google_service_account*.json
 *service_account*.json
 *credentials*.json
+
+# Runtime queue artifact — contained a live Discord webhook URL (rotated
+# 2026-08-21, untracked the same day). Must never re-enter history.
+data/cto_queue.json
+
+# Graphify graph build output (6.5 MB machine-generated artifact).
+# GRAPH_REPORT.md stays tracked; the raw graph is rebuilt locally.
+graphify-out/graph.json

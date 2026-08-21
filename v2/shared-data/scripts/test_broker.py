@@ -213,7 +213,11 @@ if not ALPACA_ONLY and i is not None:
         check("IBKRBroker.connect()", connected)
         if connected:
             accts = ibr._ib.managedAccounts()
-            check("managedAccounts contains DUP851506", "DUP851506" in accts, f"got {accts}")
+            expected_acct = os.environ.get("IBKR_PAPER_ACCOUNT", "")
+            if expected_acct:
+                check("managedAccounts contains expected account", expected_acct in accts, f"got {accts}")
+            else:
+                check("managedAccounts non-empty", bool(accts), f"got {accts}")
 
             acct = ibr.get_account()
             check_keys("IBKR get_account shape", acct, REQUIRED_ACCOUNT_KEYS)

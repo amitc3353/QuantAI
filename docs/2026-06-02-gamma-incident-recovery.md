@@ -35,7 +35,7 @@ reset deferred to next session before 13:30 UTC market open.
 | Stage | Action | Result |
 |---|---|---|
 | 1 | Paused `position_monitor` cron; killed the 28 orphan pytest processes | RAM 100%→49%, swap 100%→50%, 1.9 GB free |
-| 2 | Verified IBKR gateway (`systemctl is-active`, port 4002, connect test) | Active, 0.2s connect, account DUP851506 |
+| 2 | Verified IBKR gateway (`systemctl is-active`, port 4002, connect test) | Active, 0.2s connect, account <IBKR_PAPER_ACCOUNT> |
 | 3 | Flattened APD via direct ib_insync combo (BUY 12× 280C / SELL 12× 290C) | **APD flat.** WMT combo + single-leg both failed to fill after-hours |
 | 3D | Pivot: WMT left open (paper book won't stage it after-hours) | WMT still -4/+4 |
 | 4D | Marked Ga102-Gd102 (APD) CLOSED, restored arm cash | See P&L below |

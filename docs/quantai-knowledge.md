@@ -2,7 +2,7 @@
 Last updated: 2026-04-27 by Amit + Claude
 
 ## What QuantAI is
-Autonomous options trading system. Paper trading via broker adapter (`BROKER_TYPE=ibkr` default; Alpaca paper fallback). $1M IBKR paper equity (account DUP851506). Two autonomous agents — **Alpha** (defined-risk ETF spreads, LLM-driven debate) and **Beta** (regime-driven SPX/XSP/VIX index options, deterministic, zero-LLM) — plus manual SOFI collar. Goal: $3-10k/month income at $150k deployed. Currently in paper trading validation phase.
+Autonomous options trading system. Paper trading via broker adapter (`BROKER_TYPE=ibkr` default; Alpaca paper fallback). $1M IBKR paper equity (account <IBKR_PAPER_ACCOUNT>). Two autonomous agents — **Alpha** (defined-risk ETF spreads, LLM-driven debate) and **Beta** (regime-driven SPX/XSP/VIX index options, deterministic, zero-LLM) — plus manual SOFI collar. Goal: $3-10k/month income at $150k deployed. Currently in paper trading validation phase.
 
 ## Architecture (what's actually running)
 
@@ -231,7 +231,7 @@ Greek/quote fields are `None` when the broker can't supply (Alpaca's `/v2/option
 ### Smoke-test results (2026-04-26)
 - AlpacaBroker SPY chain (1-30 DTE): 3,874 contracts
 - IBKRBroker SPY chain: 242,840 (cross-exchange duplicates), XSP: 20,244, SPX: 29,362 (both SPX and SPXW present), VIX: 680
-- All 42 checks pass; managed account `DUP851506` confirmed
+- All 42 checks pass; managed account `<IBKR_PAPER_ACCOUNT>` confirmed
 
 ### Pipeline wiring (completed 2026-04-26)
 `get_broker()` wired into all four callers:
@@ -273,7 +273,7 @@ Reference: `docs/2026-04-26-agent-beta-implementation-plan-v2.md` for full desig
 
 ## Dashboard v2 (built 2026-04-17)
 - **Location:** `/var/dashboard/index.html` (served), mirrored collectors in `/home/trader/dashboard/` (not served)
-- **Access:** `https://quantai.tail1465ff.ts.net/` via Tailscale
+- **Access:** `https://<dashboard-host>/` via Tailscale
 - **Architecture:** Single-file React SPA — no build step. CDN-loaded React 18 + Tailwind + Recharts + Mermaid + Babel standalone. Browser transpiles JSX on load.
 - **Polling:** client fetches `/state/*.json` every 30s via `setInterval`. No websockets, no server push.
 - **Tabs:** Live, Agents, System, Workflows, Errors, History. Tab state is client-only (no routing).
@@ -586,7 +586,7 @@ is ≥80% consumed.
 ```bash
 sudo python3 /var/dashboard/collect_clawroute.py
 cat /var/dashboard/state/clawroute.json | python3 -m json.tool
-# Dashboard System tab at https://quantai.tail1465ff.ts.net/
+# Dashboard System tab at https://<dashboard-host>/
 ```
 
 ### Daily budget

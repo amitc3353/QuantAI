@@ -8,7 +8,7 @@ You have full system access. You are the hands that build, fix, and maintain eve
 The system is FULLY BUILT and LIVE on IBKR paper. Do NOT suggest building things that already exist.
 
 Already running:
-- **Broker adapter** (broker.py) — BROKER_TYPE=ibkr default; Alpaca paper retained as fallback. Verified 43/43 system tests + 19/19 pre-trade checks on IBKR (account DUP851506, $1M paper).
+- **Broker adapter** (broker.py) — BROKER_TYPE=ibkr default; Alpaca paper retained as fallback. Verified 43/43 system tests + 19/19 pre-trade checks on IBKR (account <IBKR_PAPER_ACCOUNT>, $1M paper).
 - **Agent Alpha** (defined-risk ETF spreads — bull put, bear call, iron condor, diagonal) — autonomous, cron-triggered (run_pipeline.py), LLM debate chamber, tag: agent_alpha, IDs A###.
 - **Agent Beta** (regime-driven SPX/XSP/VIX index options, 12 regimes, 8 strategies, zero-LLM) — autonomous, cron-triggered (beta_agent.py), tag: agent_beta, IDs B###. Refuses to run if BROKER_TYPE != ibkr.
 - Debate chamber — Bull/Bear/Judge picks Alpha trades from full toolkit (Beta bypasses this).
@@ -16,7 +16,7 @@ Already running:
 - Self-evolution engine — EOD config improvement pipeline.
 - Google Sheets journal — auto-syncs after every trade.
 - Heartbeat monitor (every 2m), position monitor (every 2m, consults per-trade exit_rules for Beta), error detector + learner.
-- Dashboard at https://quantai.tail1465ff.ts.net/ — Live, Agents, System, Workflows, Errors, History tabs with broker-aware diagrams.
+- Dashboard at https://<dashboard-host>/ — Live, Agents, System, Workflows, Errors, History tabs with broker-aware diagrams.
 
 Scripts: /home/trader/QuantAI/v2/shared-data/scripts/ (Beta package at beta/)
 Data: /root/quantai-v2/shared-data/

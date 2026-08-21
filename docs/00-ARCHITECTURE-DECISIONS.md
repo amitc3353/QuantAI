@@ -147,17 +147,17 @@ SPY options are the nearest alternative but carry American-style exercise risk a
 do not qualify for 1256 tax treatment.
 
 IB Gateway 10.37 was installed at `/opt/ibgateway/` and configured for paper mode
-(account DUP851506, port 4002) via IBC 3.23.0. The systemd unit
+(account <IBKR_PAPER_ACCOUNT>, port 4002) via IBC 3.23.0. The systemd unit
 `ibgateway.service` is enabled. The IBKR password was rotated on 2026-04-26 and
 is stored in `.env` as `IBKR_PASSWORD`, injected at runtime by
 `/opt/ibc/quantai_gateway_start.sh` via IBC's `--pw` argument.
 
 **Connection verified 2026-04-26:** ib_insync 0.9.86 connects to `localhost:4002`,
-`managedAccounts()` returns `['DUP851506']`. Index option chains confirmed:
+`managedAccounts()` returns `['<IBKR_PAPER_ACCOUNT>']`. Index option chains confirmed:
 XSP (47 expiries / 482 strikes), SPX (20 / 590), VIX (9 / 70).
 
 Root cause of initial failure: login username was misconfigured as the paper
-account number (`DUP851506`) instead of the IBKR login username. Fixed by adding
+account number (`<IBKR_PAPER_ACCOUNT>`) instead of the IBKR login username. Fixed by adding
 `IBKR_USERNAME` to `.env` and reading it from the environment in the IBC wrapper.
 
 **Decision:** IBKR (via IB Gateway + ib_insync) becomes the execution broker for

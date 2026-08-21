@@ -384,7 +384,7 @@ Reconciliation: on every read, check `last_updated` timestamp. If stale (>24h), 
 
 ### IBKR paper account caveat — confirmed correct approach
 
-The broker only knows total account balance (DUP851506 ≈ $1M paper equity). Per-arm equity is QuantAI-side accounting maintained in JSON state files independently of broker account balance. The arms SHARE the same broker account; the $10K/arm is purely a virtual partition.
+The broker only knows total account balance (<IBKR_PAPER_ACCOUNT> ≈ $1M paper equity). Per-arm equity is QuantAI-side accounting maintained in JSON state files independently of broker account balance. The arms SHARE the same broker account; the $10K/arm is purely a virtual partition.
 
 If all four arms together hold positions worth $5K, the broker shows $5K in positions on the $1M account. Our state files split this into "Arm A: $1500, Arm B: $1500, Arm C: $1000, Arm D: $1000" based on arm tags.
 

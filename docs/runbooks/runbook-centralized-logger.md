@@ -13,7 +13,7 @@ text-log-scanning `error_detector.py` (now archived to `legacy/`).
 | **Python `logging` handler** | `/home/trader/QuantAI/v2/shared-data/scripts/_logger.py` |
 | **Catalog** (canonical, JSON) | `/home/trader/QuantAI/docs/error-catalog.json` |
 | **Dashboard state** | `/var/dashboard/state/quantai-errors.json` |
-| **Dashboard tab** | `https://quantai.tail1465ff.ts.net/` → Errors |
+| **Dashboard tab** | `https://<dashboard-host>/` → Errors |
 | **Cron entry** | `*/2 * * * *  python3 /var/dashboard/collect_errors.py >> /root/logs/collect_errors.log 2>&1` |
 | **Logrotate** | `/etc/logrotate.d/quantai-errors` (caps QuantAI text logs at 50 MB / daily / 7 retain) |
 

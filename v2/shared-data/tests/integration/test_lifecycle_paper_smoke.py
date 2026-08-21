@@ -9,7 +9,7 @@ Run before any agent un-pause:
 
 Requirements:
   - IB Gateway running on localhost:4002
-  - IBKR paper account DUP851506 active
+  - IBKR paper account (env: IBKR_PAPER_ACCOUNT) active
   - Run as root (cron user) since broker paths are root-owned
 
 Safety note (2026-06-01 bug fix):

@@ -44,15 +44,15 @@ Amit (strategy, approvals via phone/Discord)
   |
   +-- Cowork (development — you)
   |
-  +-- VPS (87.99.141.55 / Tailscale 100.84.147.23)
+  +-- VPS (<VPS_IP> / Tailscale <TAILSCALE_IP>)
         |
         +-- KARNA (OpenClaw agent, Claude Sonnet 4.6)
         |   +-- Discord bot: #karna-command, #karna-approvals, etc.
         |
         +-- Agent Alpha Pipeline (Python cron, every 15 min during 9-16 ET Mon-Fri)
         |   +-- market_intelligence.py (yfinance: VIX, prices, technicals + SPX/Beta fields)
-        |   +-- scan_options.py (78 tickers x 4 strategies, SLOW: 10-15 min)
-        |   +-- debate_chamber.py (Bull/Bear/Judge LLM debate)
+        |   +-- scan_options.py (88 tickers x 3 strategies, SLOW: 10-15 min)
+        |   +-- debate_chamber.py (LLM proposal + judge; Bull/Bear are Python templates)
         |   +-- autonomous_execution.py (submits via broker.place_mleg_order, journal as A###)
         |
         +-- Agent Beta (Python cron, every 15 min during 9-16 ET Mon-Fri)
@@ -64,11 +64,11 @@ Amit (strategy, approvals via phone/Discord)
         |   +-- journals as B###; exit_rules stored on each entry
         |
         +-- broker.py (adapter — BROKER_TYPE=ibkr default, alpaca fallback)
-        |   +-- IBKR Bag/ComboLeg via ib_insync (port 4002, account DUP851506)
+        |   +-- IBKR Bag/ComboLeg via ib_insync (port 4002, account <IBKR_PAPER_ACCOUNT>)
         |   +-- Alpaca paper REST (paper-api.alpaca.markets, fallback only)
         |
-        +-- LiteLLM (Docker, localhost:4000)
-        +-- Dashboard (localhost:8080, Tailscale: https://quantai.tail1465ff.ts.net/)
+        +-- ClawRoute LLM ingress (localhost:18790; LiteLLM legacy at :4000)
+        +-- Dashboard (localhost:8080, Tailscale: https://<dashboard-host>/)
         +-- Docker legacy (trader-cto, trader-guards still running; trader-discord pruned 2026-05-06, source retained; trader-orchestrator no longer started)
 ```
 
@@ -80,7 +80,7 @@ Amit (strategy, approvals via phone/Discord)
 - `v2/shared-data/scripts/scan_options.py` — Options scanner
 - `v2/shared-data/scripts/debate_chamber.py` — Trade debate
 - `v2/shared-data/scripts/autonomous_execution.py` — Order execution + journaling
-- `v2/shared-data/scripts/system_test.py` — 43-check health test
+- `v2/shared-data/scripts/system_test.py` — dynamic multi-check health test
 
 ### Runtime Data (absolute paths on VPS)
 - `/root/quantai-v2/shared-data/journal/paper/trades.jsonl` — Trade journal
@@ -97,11 +97,11 @@ Amit (strategy, approvals via phone/Discord)
 ## Current State (April 27, 2026)
 
 - Paper trading via broker adapter; **BROKER_TYPE=ibkr is the default** (set in `.env` on 2026-04-27). Alpaca paper retained as a fallback adapter.
-- IBKR paper equity: $1,000,000 (account DUP851506). Alpaca paper kept active but no longer the active broker.
+- IBKR paper equity: $1,000,000 (account <IBKR_PAPER_ACCOUNT>). Alpaca paper kept active but no longer the active broker.
 - 0 open positions — Alpaca holdings closed via `DELETE /v2/positions` during the migration; queued for fill at Mon 9:30 ET. Journal A008/A009/A010 marked CLOSED with reason=ibkr_migration_reset.
 - Both Alpha (ETF spreads) and Beta (regime-driven SPX/XSP/VIX) live on IBKR.
-- 43/43 system tests passing on IBKR. pre_trade_check 19/19 GO.
-- Dashboard live at https://quantai.tail1465ff.ts.net/
+- Full system_test.py suite passing on IBKR at migration time. pre_trade_check all-GO.
+- Dashboard live at https://<dashboard-host>/
 - IB Gateway 10.37 active at localhost:4002 — **verified 2026-04-26**, full pipeline migration completed 2026-04-27.
 
 ## Alpaca API Gotchas
@@ -113,7 +113,7 @@ Amit (strategy, approvals via phone/Discord)
 ## IB Gateway (IBKR Paper)
 
 - Paper trading port: `localhost:4002`, clientId=1
-- Account: `DUP851506`
+- Account: `<IBKR_PAPER_ACCOUNT>`
 - Service: `ibgateway.service` (systemd, enabled)
 - Started by: `/opt/ibc/quantai_gateway_start.sh` (reads `IBKR_USERNAME` and `IBKR_PASSWORD` from `.env`)
 - **NEVER run `systemctl status ibgateway` or `ps aux | grep ibgateway`** — these leak credentials into terminal output.
@@ -125,10 +125,10 @@ Amit (strategy, approvals via phone/Discord)
 ```
 python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"
 ```
-Expected: `True ['DUP851506']`
+Expected: `True ['<IBKR_PAPER_ACCOUNT>']`
 
 ### Credential note
-Login username (`IBKR_USERNAME`) is the account login, not the paper account number DUP851506.
+Login username (`IBKR_USERNAME`) is the account login, not the paper account number <IBKR_PAPER_ACCOUNT>.
 Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runtime — never hardcoded.
 
 ## Cron Schedule
@@ -171,10 +171,10 @@ Both `IBKR_USERNAME` and `IBKR_PASSWORD` live in `.env` and are injected at runt
 */15 * * * *         collect_clawroute.py           # ClawRoute cost tracking
 
 # Auto-Heal (Claude-driven; added 2026-04-29) — see docs/runbooks/runbook-auto-heal.md
-30 12 * * 1-5        auto_heal.py --mode=apply      # 08:30 ET pre-market (overnight breakage)
-0  15 * * 1-5        auto_heal.py --mode=observe    # 11:00 ET mid-trading (read-only, queues digest)
-0  18 * * 1-5        auto_heal.py --mode=observe    # 14:00 ET mid-afternoon (read-only)
-45 20 * * 1-5        auto_heal.py --mode=apply      # 16:45 ET post-close (drains digest, applies)
+30 12 * * 1-5        sentinel_agent.py --apply      # 08:30 ET pre-market (overnight breakage)
+0  15 * * 1-5        sentinel_agent.py --observe    # 11:00 ET mid-trading (read-only, queues digest)
+0  18 * * 1-5        sentinel_agent.py --observe    # 14:00 ET mid-afternoon (read-only)
+45 20 * * 1-5        sentinel_agent.py --apply      # 16:45 ET post-close (drains digest, applies)
 ```
 
 ### Entry cron pause / un-pause procedure (lifecycle FSM refactor 2026-05-31)
@@ -206,7 +206,7 @@ Claude-driven triage layer that sits **on top of** the rule-based monitors (`err
 - **Out-of-window slots (12:30 / 20:45 UTC)** can mutate. Auto-applies safe-class fixes; queues riskier ones to `#karna-approvals` for one-tap ✅ on Discord.
 - **In-window slots (15:00 / 18:00 UTC)** are read-only. Queue findings into a daily digest posted at 20:45.
 - Hard rules enforced in Python (not LLM-overrideable): no `.env`, no openclaw/ibgateway service touch, no journal mutation, path allowlist, `.bak` before any edit, 80-line diff cap, 3-attempt budget, open-position guard on trading-path files.
-- Operator commands: `auto_heal.py --status` / `--dry-run` / `--rollback <fix_id>` / `--reset <fix_id>`.
+- Operator commands: `sentinel_agent.py --status` / `--dry-run` / `--rollback <fix_id>` / `--reset <fix_id>`.
 - Full doc: `docs/runbooks/runbook-auto-heal.md`.
 
 ## What Needs Building (priority order)

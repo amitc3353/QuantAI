@@ -294,7 +294,7 @@ class TestIbkrRunbook:
 
     def test_runbook_mentions_verify_command(self):
         text = self.RUNBOOK.read_text()
-        assert "isConnected" in text or "DUP851506" in text
+        assert "isConnected" in text or "managedAccounts" in text
 
 
 # ── lib_errors integration: catalog actually matches DB patterns ──────────────
@@ -305,7 +305,8 @@ class TestLibErrorsIntegration:
     @pytest.fixture(autouse=True)
     def catalog(self):
         sys.path.insert(0, "/var/dashboard")
-        import lib_errors as L
+        # lib_errors lives at /var/dashboard on the VPS only — skip elsewhere (CI, laptops).
+        L = pytest.importorskip("lib_errors", reason="requires /var/dashboard (VPS runtime)")
         self._L = L
         self._cat = L.load_catalog()
 
@@ -322,7 +323,7 @@ class TestLibErrorsIntegration:
         assert sev == "critical"
 
     def test_ufw_block_matches_as_info(self):
-        line = "QuantAI kernel: [UFW BLOCK] IN=eth0 OUT= MAC=92:00 SRC=1.2.3.4 DST=87.99.141.55"
+        line = "QuantAI kernel: [UFW BLOCK] IN=eth0 OUT= MAC=92:00 SRC=1.2.3.4 DST=192.0.2.55"
         result = self._match(line, "QuantAI kernel: [UFW BLOCK] IN=eth0")
         assert result is not None
         _, sev, _ = result

@@ -116,8 +116,8 @@ This is the wiring diagram. Every box is a real thing on the VPS. Arrows show wh
                   Discord bot  │                        │ SSHFS
                                ▼                        ▼
    ┌─────────────────────────────────────────────────────────────────┐
-   │                      VPS  (87.99.141.55)                         │
-   │                      Tailscale 100.84.147.23                     │
+   │                      VPS  (<VPS_IP>)                         │
+   │                      Tailscale <TAILSCALE_IP>                     │
    │  Ubuntu 6.8.0-90-generic · 75G disk · 3.7G RAM                   │
    │                                                                  │
    │  ┌───────────────────────────────────────────────────────────┐  │
@@ -147,7 +147,7 @@ This is the wiring diagram. Every box is a real thing on the VPS. Arrows show wh
    │                           │  IBKR    │  │ Alpaca   │             │
    │                           │ Gateway  │  │ Paper    │             │
    │                           │ :4002    │  │ REST     │             │
-   │                           │ DUP851506│  │          │             │
+   │                           │ <IBKR_PAPER_ACCOUNT>│  │          │             │
    │                           └────┬─────┘  └────┬─────┘             │
    │                                │             │                   │
    │                                └──────┬──────┘                   │
@@ -177,7 +177,7 @@ This is the wiring diagram. Every box is a real thing on the VPS. Arrows show wh
    └───────────────────────────────────┼──────────────────────────────┘
                                        │
                                        ▼ Tailscale serve
-                          https://quantai.tail1465ff.ts.net/
+                          https://<dashboard-host>/
 ```
 
 ### Node legend
@@ -185,7 +185,7 @@ This is the wiring diagram. Every box is a real thing on the VPS. Arrows show wh
 - **KARNA** — the 24/7 Claude Sonnet 4.6 instance hosted by the OpenClaw runtime. It is the supervisor that the operator talks to. It does not trade; it runs tools, drafts code, and answers questions in Discord channels.
 - **ClawRoute** — single LLM ingress on `localhost:18790`. Every Anthropic call from QuantAI scripts routes through this proxy. Provides tier routing (cheaper models for cheaper tasks), centralized cost tracking, audit trail. Escape valve: `LLM_BYPASS_CLAWROUTE=1` to bypass and call Anthropic directly.
 - **Broker adapter** (`broker.py`) — `BrokerBase` abstract class with `get_broker()` factory keyed off the `BROKER_TYPE` env var. Today's default is `ibkr`. Used by every trading-path script.
-- **IBKR Gateway** — IB Gateway 10.37 running on `localhost:4002`, paper account `DUP851506`, started by `/opt/ibc/quantai_gateway_start.sh` (IBC wrapper that injects credentials). Daily restart at 23:45 ET.
+- **IBKR Gateway** — IB Gateway 10.37 running on `localhost:4002`, paper account `<IBKR_PAPER_ACCOUNT>`, started by `/opt/ibc/quantai_gateway_start.sh` (IBC wrapper that injects credentials). Daily restart at 23:45 ET.
 - **Alpaca Paper REST** — `paper-api.alpaca.markets`. Demoted to fallback after the 2026-04-27 IBKR migration; retained because Alpaca supports ETF options and is a known-working second source.
 - **Journal** — `/root/quantai-v2/shared-data/journal/paper/trades.jsonl`. Append-only JSONL, one trade per line. The single source of truth for trade state.
 - **Collectors** — ten `collect_*.py` scripts on cron (1–15 min cadence). Each writes one or more JSON state files under `/var/dashboard/state/`. The dashboard reads these.
@@ -668,9 +668,9 @@ Switching brokers is a single env var change in `.env`: `BROKER_TYPE=alpaca` or 
 
 - **Library**: `ib_insync 0.9.86`
 - **Gateway**: IB Gateway 10.37, paper trading port `4002`, `clientId=1` (default; Beta uses 21, Gamma uses 22 to avoid clientId collisions)
-- **Account**: `DUP851506` (paper)
+- **Account**: `<IBKR_PAPER_ACCOUNT>` (paper)
 - **Service**: `ibgateway.service` (systemd, enabled). Started by `/opt/ibc/quantai_gateway_start.sh` which reads `IBKR_USERNAME` and `IBKR_PASSWORD` from `.env` and injects them via the IBC wrapper.
-- **Login note**: `IBKR_USERNAME` is the *login name*, not the paper account number `DUP851506`. Keep these distinct.
+- **Login note**: `IBKR_USERNAME` is the *login name*, not the paper account number `<IBKR_PAPER_ACCOUNT>`. Keep these distinct.
 - **Daily restart**: 23:45 ET (forced by IBC). Connect attempts during 23:30–00:15 ET fail by design — see the restart-window guard below.
 
 #### Bag/ComboLeg combos
@@ -1742,7 +1742,7 @@ Layer 3: TRANSPORT
   Tailscale serve --bg --https=443 http://127.0.0.1:8080
     Re-asserted every minute by quantai-tailscale-serve.timer
   ↓
-  https://quantai.tail1465ff.ts.net/   ← what you visit
+  https://<dashboard-host>/   ← what you visit
 ```
 
 ### §11.2 — The 10 collectors
@@ -1792,7 +1792,7 @@ sudo cp /home/trader/dashboard/index.html /var/dashboard/index.html
 
 ### §11.5 — Authentication
 
-Tailscale mesh identity. The HTTP server is bound to `127.0.0.1`; the only way in is via `quantai.tail1465ff.ts.net/` which only people on the operator's tailnet can reach. There is no app-level login. This is appropriate for a single-operator system; would not be appropriate for multi-tenant.
+Tailscale mesh identity. The HTTP server is bound to `127.0.0.1`; the only way in is via `<dashboard-host>/` which only people on the operator's tailnet can reach. There is no app-level login. This is appropriate for a single-operator system; would not be appropriate for multi-tenant.
 
 ### §11.6 — Failure mode: structural drift
 
@@ -2107,7 +2107,7 @@ The repo skips from 002 to 004 — no ADR-003 exists. (A retired draft on a tool
 
 ### ADR-004 — Migrate from Alpaca to IBKR (2026-04-26)
 
-**Decision**: IBKR via IB Gateway 10.37 (paper account `DUP851506`, port `4002`); ib_insync 0.9.86 client; `BrokerBase` adapter with `BROKER_TYPE` env var; `BROKER_TYPE=ibkr` is the default since 2026-04-27.
+**Decision**: IBKR via IB Gateway 10.37 (paper account `<IBKR_PAPER_ACCOUNT>`, port `4002`); ib_insync 0.9.86 client; `BrokerBase` adapter with `BROKER_TYPE` env var; `BROKER_TYPE=ibkr` is the default since 2026-04-27.
 
 **Why**: Alpaca paper rejects index options (SPX/XSP/VIX) with HTTP 422; Beta strategy needs XSP for European exercise + cash settlement + Section 1256 tax treatment.
 
@@ -2517,7 +2517,7 @@ Terms used throughout this document, with one-line definitions.
 - **safe-auto** — Sentinel fix class auto-applied without approval (post Python NEVER-list gate).
 - **never-touch** — Sentinel fix class refusing observation (path-allowlisted out).
 - **ghost position** — journal-vs-broker mismatch. Three flavors: true ghost, journal lie, entry phantom.
-- **paper trading** — broker-simulated trades with no real money. IBKR paper account `DUP851506`; Alpaca paper.
+- **paper trading** — broker-simulated trades with no real money. IBKR paper account `<IBKR_PAPER_ACCOUNT>`; Alpaca paper.
 - **dry run** — code path that simulates an order without actually placing it. Triggered by `BROKER_DRY_RUN=1`.
 - **fix-id** — sha1 hash of (diff + files + commands) for a Sentinel proposal. 3-attempt budget per fix-id.
 - **JSONL** — JSON Lines format. One JSON object per line; newline-terminated.

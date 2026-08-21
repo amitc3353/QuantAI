@@ -65,7 +65,7 @@ If the port is still refused after 00:15 ET, escalate to the main IBKR connectio
 sudo systemctl restart ibgateway
 sleep 90
 python3 -c "from ib_insync import IB; ib=IB(); ib.connect('127.0.0.1',4002,clientId=1); print(ib.isConnected(), ib.managedAccounts()); ib.disconnect()"
-# Expected: True ['DUP851506']
+# Expected: True ['<IBKR_PAPER_ACCOUNT>']
 ```
 
 ## Prevention

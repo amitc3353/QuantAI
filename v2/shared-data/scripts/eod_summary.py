@@ -155,7 +155,9 @@ def build_summary():
     if all_closed:
         lines.append(f"**Combined win rate:** {win_rate(all_closed)} | **Total P&L:** ${total_pnl(all_closed):+.0f}")
     lines.append("")
-    lines.append("📱 Full detail: https://docs.google.com/spreadsheets/d/1GidIf-oLY9NfeRGVTwwGFYzA4eZx2bYjvY7UOATiMM0")
+    sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
+    if sheet_id:
+        lines.append(f"📱 Full detail: https://docs.google.com/spreadsheets/d/{sheet_id}")
     lines.append("_Score today in #chat: `score today 78/100`_")
 
     return "\n".join(lines)
